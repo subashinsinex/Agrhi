@@ -1,0 +1,84 @@
+# ---------------------------
+# Global OS / Editor ignores
+# ---------------------------
+.DS_Store 
+Thumbs.db 
+*.log 
+*.swp 
+*.swo 
+*.tmp 
+.idea/ 
+.vscode/ 
+
+# ---------------------------
+# Flutter / Dart (App/)
+# ---------------------------
+App/.dart_tool/ 
+App/.packages 
+App/.flutter-plugins 
+App/.flutter-plugins-deps 
+App/.metadata 
+App/.fvm/ 
+App/build/ 
+App/ios/Pods/ 
+App/ios/.symlinks/ 
+App/ios/Flutter/Flutter.framework/ 
+App/ios/Flutter/Flutter.podspec 
+App/ios/Flutter/App.framework 
+App/ios/Flutter/Generated.xcconfig 
+App/ios/ServiceDefinitions.json 
+App/ios/Runner/GeneratedPluginRegistrant.* 
+App/android/.gradle/ 
+App/android/captures/ 
+App/android/local.properties 
+App/android/app/debug/ 
+App/android/app/profile/ 
+App/android/app/release/ 
+App/windows/x64/ 
+App/windows/x86/ 
+App/linux/**/CMakeFiles/ 
+App/linux/**/cmake-build*/ 
+App/macos/Pods/ 
+App/web/.dart_tool/ 
+App/.env 
+App/node_modules/ 
+App/.firebase/ 
+
+# Flutter build outputs
+App/**/build/ 
+App/**/.generated/ 
+
+# Package manager locks (optional keep one)
+App/pubspec.lock 
+
+# ---------------------------
+# Node.js backend (Server/)
+# ---------------------------
+Server/node_modules/ 
+Server/.env 
+Server/.env.* 
+Server/npm-debug.log* 
+Server/yarn-debug.log* 
+Server/yarn-error.log* 
+Server/pnpm-lock.yaml 
+Server/.pnpm-store/ 
+Server/.nyc_output 
+Server/coverage/ 
+Server/dist/ 
+Server/build/ 
+Server/.cache/ 
+Server/.eslintcache 
+Server/.tsbuildinfo 
+
+# If using TypeScript in Server
+Server/tsconfig.tsbuildinfo 
+
+# ---------------------------
+# Archives & misc
+# ---------------------------
+*.iml 
+*.apk 
+*.ipa 
+*.aab 
+*.keystore 
+*.jks 

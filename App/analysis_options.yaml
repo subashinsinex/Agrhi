@@ -1,0 +1,7 @@
+include: package:flutter_lints/flutter.yaml
+analyzer:
+  errors:
+    deprecated_member_use: ignore
+    avoid_print: ignore
+    control_flow_in_finally: ignore
+    unused_element: ignore
