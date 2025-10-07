@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../shared/sidebar.dart';
 import '../shared/placeholder_screen.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
-import '../../flutter_gen/gen_l10n/app_localizations.dart';
+import '../../src/services/language_service.dart';
 import 'components/weather_card.dart';
 import 'components/profile_card.dart';
 import 'components/feature_grid.dart';
-
 import '../features/disease_detection_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -21,6 +21,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? userData;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  Map<String, String> translatedTexts = {};
+  String _currentLanguage = ''; // Track current language
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadTranslations();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Automatically reload when language changes
+    final languageService = Provider.of<LanguageService>(context);
+    if (_currentLanguage != languageService.currentLocale.languageCode) {
+      _currentLanguage = languageService.currentLocale.languageCode;
+      _loadTranslations();
+    }
+  }
+
+  Future<void> _loadTranslations() async {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    final keys = {
+      'myDetails': 'My Details',
+      'features': 'Features',
+      'cropManagement': 'Crop Management',
+      'diseaseDetection': 'Disease Detection',
+      'soilInformation': 'Soil Information',
+      'marketPrices': 'Market Prices',
+      'expertAdvice': 'Expert Advice',
+      'detectionHistory': 'Detection History',
+      'notifications': 'Notifications',
+      'notificationsComingSoon': 'Notifications feature coming soon!',
+      'plotArea': 'Plot area',
+      'acres': 'acres',
+      'johnDoe': 'John Doe',
+    };
+
+    Map<String, String> newTranslated = {};
+    for (var entry in keys.entries) {
+      newTranslated[entry.key] = await languageService.translate(entry.value);
+    }
+
+    if (mounted) {
+      setState(() {
+        translatedTexts = newTranslated;
+      });
+    }
+  }
+
   void _navigateToFeature(String displayTitle, IconData icon) {
     Navigator.push(
       context,
@@ -32,8 +88,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _onProfileTap() {
-    final l10n = AppLocalizations.of(context);
-    _navigateToFeature(l10n.myDetails, Icons.person);
+    _navigateToFeature(
+      translatedTexts['myDetails'] ?? 'My Details',
+      Icons.person,
+    );
   }
 
   void _openSidebar() {
@@ -42,44 +100,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
-    // ✅ Direct approach - create features list with direct localization access
     final features = [
       FeatureItem(
-        title: l10n.cropManagement, // ✅ Direct access to translation
+        title: translatedTexts['cropManagement'] ?? 'Crop Management',
         icon: Icons.agriculture,
-        onTap: () => _navigateToFeature(l10n.cropManagement, Icons.agriculture),
-      ),
-      FeatureItem(
-        title: l10n.diseaseDetection,
-        icon: Icons.biotech,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const DetectDiseaseScreen(),
-          ),
+        onTap: () => _navigateToFeature(
+          translatedTexts['cropManagement'] ?? 'Crop Management',
+          Icons.agriculture,
         ),
       ),
       FeatureItem(
-        title: l10n.soilInformation, // ✅ Direct access to translation
+        title: translatedTexts['diseaseDetection'] ?? 'Disease Detection',
+        icon: Icons.biotech,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const DetectDiseaseScreen()),
+        ),
+      ),
+      FeatureItem(
+        title: translatedTexts['soilInformation'] ?? 'Soil Information',
         icon: Icons.grass,
-        onTap: () => _navigateToFeature(l10n.soilInformation, Icons.grass),
+        onTap: () => _navigateToFeature(
+          translatedTexts['soilInformation'] ?? 'Soil Information',
+          Icons.grass,
+        ),
       ),
       FeatureItem(
-        title: l10n.marketPrices, // ✅ Direct access to translation
+        title: translatedTexts['marketPrices'] ?? 'Market Prices',
         icon: Icons.attach_money,
-        onTap: () => _navigateToFeature(l10n.marketPrices, Icons.attach_money),
+        onTap: () => _navigateToFeature(
+          translatedTexts['marketPrices'] ?? 'Market Prices',
+          Icons.attach_money,
+        ),
       ),
       FeatureItem(
-        title: l10n.expertAdvice, // ✅ Direct access to translation
+        title: translatedTexts['expertAdvice'] ?? 'Expert Advice',
         icon: Icons.person,
-        onTap: () => _navigateToFeature(l10n.expertAdvice, Icons.person),
+        onTap: () => _navigateToFeature(
+          translatedTexts['expertAdvice'] ?? 'Expert Advice',
+          Icons.person,
+        ),
       ),
       FeatureItem(
-        title: l10n.detectionHistory, // ✅ Direct access to translation
+        title: translatedTexts['detectionHistory'] ?? 'Detection History',
         icon: Icons.history,
-        onTap: () => _navigateToFeature(l10n.detectionHistory, Icons.history),
+        onTap: () => _navigateToFeature(
+          translatedTexts['detectionHistory'] ?? 'Detection History',
+          Icons.history,
+        ),
       ),
     ];
 
@@ -96,11 +164,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: const Row(
+                  content: Row(
                     children: [
-                      Icon(Icons.info, color: Colors.white),
-                      SizedBox(width: 8),
-                      Text('Notifications feature coming soon!'),
+                      const Icon(Icons.info, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          translatedTexts['notificationsComingSoon'] ??
+                              'Notifications feature coming soon!',
+                        ),
+                      ),
                     ],
                   ),
                   backgroundColor: AppColors.successColor,
@@ -112,7 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               );
             },
-            tooltip: 'Notifications',
+            tooltip: translatedTexts['notifications'] ?? 'Notifications',
           ),
         ],
       ),
@@ -125,20 +198,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.symmetric(vertical: 25.0),
           child: Column(
             children: [
-              // Weather Card Component
-              WeatherCard(
-                location: "Chennai",
-              ),
-
+              WeatherCard(location: "Chennai"),
               const SizedBox(height: 10),
-
-              // My Details Section Header
               Align(
                 alignment: Alignment.centerLeft,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Text(
-                    l10n.myDetails,
+                    translatedTexts['myDetails'] ?? 'My Details',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w400,
@@ -147,32 +214,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 10),
-
-              // Profile Card Component
               ProfileCard(
                 name: userData != null
-                    ? (userData!['name'] as String? ?? 'John Doe')
-                    : 'John Doe',
+                    ? (userData!['name'] as String? ??
+                          (translatedTexts['johnDoe'] ?? 'John Doe'))
+                    : (translatedTexts['johnDoe'] ?? 'John Doe'),
                 email: userData != null
                     ? (userData!['email'] as String? ?? 'johndoe@gmail.com')
                     : null,
-                plotArea: "Plot area : 12345 acres",
+                plotArea:
+                    "${translatedTexts['plotArea'] ?? 'Plot area'} : 12345 ${translatedTexts['acres'] ?? 'acres'}",
                 totalPlots: 90,
                 totalCrops: 36,
                 onTap: _onProfileTap,
               ),
-
               const SizedBox(height: 20),
-
-              // Features Section Header
               Align(
                 alignment: Alignment.centerLeft,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Text(
-                    l10n.features, // ✅ Direct translation access
+                    translatedTexts['features'] ?? 'Features',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w400,
@@ -181,17 +244,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 10),
-
-              // Simplified Feature Grid - No translation logic needed here
               DirectFeatureGrid(
                 features: features,
                 crossAxisCount: 3,
                 childAspectRatio: 0.85,
                 spacing: 12,
               ),
-
               const SizedBox(height: 50),
             ],
           ),
@@ -201,7 +260,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// ✅ Simplified Feature Grid - No translation switch statements needed!
 class DirectFeatureGrid extends StatelessWidget {
   final List<FeatureItem> features;
   final int crossAxisCount;
@@ -232,8 +290,6 @@ class DirectFeatureGrid extends StatelessWidget {
         itemCount: features.length,
         itemBuilder: (context, index) {
           final feature = features[index];
-
-          // ✅ No translation logic needed - title is already translated!
           return InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: feature.onTap,
@@ -261,7 +317,7 @@ class DirectFeatureGrid extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Text(
-                    feature.title, // ✅ Already translated string
+                    feature.title,
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,

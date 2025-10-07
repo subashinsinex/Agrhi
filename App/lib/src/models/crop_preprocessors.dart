@@ -144,7 +144,7 @@ final Map<String, String> modelMap = {
   'Corn': 'assets/models/corn_model.tflite',
   'Coconut': 'assets/models/coconut_model.tflite',
   'Groundnut': 'assets/models/groundnut_model.tflite',
-  'Banana': 'assets/models/banana_model.tflite',
+  'Banana': 'assets/models/b3.tflite',
   'Coffee': 'assets/models/coffee_model.tflite',
   'Wheat': 'assets/models/wheatwork_model.tflite',
   'Tomato': 'assets/models/tomato_model.tflite',

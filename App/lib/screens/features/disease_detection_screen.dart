@@ -3,13 +3,14 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
 import '../../src/models/model_service.dart';
 import '../../src/models/crop_preprocessors.dart';
 import '../../src/models/disease_labels.dart';
+import '../../src/services/language_service.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
-import '../../flutter_gen/gen_l10n/app_localizations.dart';
 
 class DetectDiseaseScreen extends StatefulWidget {
   const DetectDiseaseScreen({super.key});
@@ -20,7 +21,6 @@ class DetectDiseaseScreen extends StatefulWidget {
 
 class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     with TickerProviderStateMixin {
-  // Hardcoded crop list - no database needed
   final List<String> availableCrops = [
     'Corn',
     'Rice',
@@ -46,24 +46,93 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   late AnimationController _progressController;
   late AnimationController _resultController;
 
+  Map<String, String> translatedTexts = {};
+  String _currentLanguage = ''; // Track current language
+
   @override
   void initState() {
     super.initState();
-    // ✅ Production: Smooth animation timing
     _progressController = AnimationController(
-      duration: const Duration(
-        milliseconds: 2000,
-      ), // Slightly slower for smoothness
+      duration: const Duration(milliseconds: 2000),
       vsync: this,
     );
     _resultController = AnimationController(
-      duration: const Duration(milliseconds: 1000), // Smooth result reveal
+      duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
 
     if (availableCrops.isNotEmpty) {
       selectedCrop = availableCrops.first;
       _loadModelForCrop(selectedCrop!);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadTranslations();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Automatically reload when language changes
+    final languageService = Provider.of<LanguageService>(context);
+    if (_currentLanguage != languageService.currentLocale.languageCode) {
+      _currentLanguage = languageService.currentLocale.languageCode;
+      _loadTranslations();
+    }
+  }
+
+  Future<void> _loadTranslations() async {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    final keys = {
+      'selectCrop': 'Select Crop',
+      'selectACrop': 'Select a crop',
+      'captureImage': 'Capture Image',
+      'takePhoto': 'Take Photo',
+      'chooseFromGallery': 'Choose From Gallery',
+      'loadingAIModel': 'Loading AI model...',
+      'removeImage': 'Remove image',
+      'processingImage': 'Processing image data...',
+      'runningDetection': 'Running disease detection...',
+      'analyzingHealth': 'Analyzing crop health...',
+      'generatingResults': 'Generating results...',
+      'finalizingDiagnosis': 'Finalizing diagnosis...',
+      'detectionResults': 'Detection Results',
+      'diseaseLabel': 'Disease Label',
+      'confidence': 'Confidence',
+      'error': 'Error',
+      'failedToLoadModel': 'Failed to load model for',
+      'failedToPickImage': 'Failed to pick image',
+      'analysisFailed': 'Analysis failed',
+      'dismiss': 'Dismiss',
+      'diseaseDetection': 'Disease Detection',
+      'progress': 'Progress',
+      // Crop names
+      'corn': 'Corn',
+      'rice': 'Rice',
+      'sugarcane': 'Sugarcane',
+      'cotton': 'Cotton',
+      'coconut': 'Coconut',
+      'groundnut': 'Groundnut',
+      'banana': 'Banana',
+      'coffee': 'Coffee',
+      'wheat': 'Wheat',
+      'tomato': 'Tomato',
+    };
+
+    Map<String, String> newTranslated = {};
+    for (var entry in keys.entries) {
+      newTranslated[entry.key] = await languageService.translate(entry.value);
+    }
+
+    if (mounted) {
+      setState(() {
+        translatedTexts = newTranslated;
+      });
     }
   }
 
@@ -76,14 +145,15 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
   Future<void> _loadModelForCrop(String cropName) async {
     setState(() => _isModelLoading = true);
-
     try {
       if (modelMap.containsKey(cropName)) {
         await ModelService.loadModel(modelMap[cropName]!);
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackBar('Failed to load model for $cropName');
+        _showErrorSnackBar(
+          '${translatedTexts['failedToLoadModel'] ?? 'Failed to load model for'} $cropName',
+        );
       }
     } finally {
       if (mounted) {
@@ -94,7 +164,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
   Future<void> _pickImage(ImageSource source) async {
     if (_isLoading || selectedCrop == null) return;
-
     try {
       final picked = await _picker.pickImage(
         source: source,
@@ -102,16 +171,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         maxHeight: 800,
         imageQuality: 85,
       );
-
       if (picked == null) return;
-
       setState(() {
         _isLoading = true;
         result = null;
         imagePath = picked.path;
         _analysisProgress = 0.0;
       });
-
       imageBytes = await picked.readAsBytes();
       _progressController.reset();
       _progressController.forward();
@@ -123,22 +189,19 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
           _isLoading = false;
           result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
         });
-        _showErrorSnackBar('Failed to pick image: ${e.toString()}');
+        _showErrorSnackBar(
+          '${translatedTexts['failedToPickImage'] ?? 'Failed to pick image'}: ${e.toString()}',
+        );
       }
     }
   }
 
   Future<void> _analyzeImage(String imagePath) async {
     try {
-      // ✅ Production: Realistic AI analysis timing (3-4 seconds total)
-      // 20 steps × 175ms = 3.5 seconds - feels professional and realistic
       for (int i = 0; i <= 100; i += 5) {
-        // 5% increments = 20 smooth steps
         if (!mounted) return;
         setState(() => _analysisProgress = i / 100);
-        await Future.delayed(
-          const Duration(milliseconds: 175),
-        ); // 175ms per step
+        await Future.delayed(const Duration(milliseconds: 175));
       }
 
       final preprocessor = preprocessMap[selectedCrop];
@@ -172,7 +235,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       setState(() {
         result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
       });
-      _showErrorSnackBar('Analysis failed: ${e.toString()}');
+      _showErrorSnackBar(
+        '${translatedTexts['analysisFailed'] ?? 'Analysis failed'}: ${e.toString()}',
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -182,7 +247,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
   void _showErrorSnackBar(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -199,7 +263,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
-          label: 'Dismiss',
+          label: translatedTexts['dismiss'] ?? 'Dismiss',
           textColor: Colors.white,
           onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
         ),
@@ -237,9 +301,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  // ✅ Combined Crop Selection + Camera Actions Widget
+  String _getTranslatedCropName(String crop) {
+    final key = crop.toLowerCase();
+    return translatedTexts[key] ?? crop;
+  }
+
   Widget _buildCropAndCameraSection() {
-    final l10n = AppLocalizations.of(context);
     final isEnabled = selectedCrop != null && !_isLoading && !_isModelLoading;
 
     return Card(
@@ -251,17 +318,16 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Crop Selection Section
             Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.agriculture,
                   color: AppColors.primaryGreen,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  l10n.selectCrop,
+                  translatedTexts['selectCrop'] ?? 'Select Crop',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -272,7 +338,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
             ),
             const SizedBox(height: 12),
             AnimatedContainer(
-              // ✅ Production: Smooth dropdown animation
               duration: const Duration(milliseconds: 350),
               width: double.infinity,
               decoration: BoxDecoration(
@@ -289,7 +354,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 child: DropdownButton<String>(
                   value: selectedCrop,
                   hint: Text(
-                    l10n.selectCropHint,
+                    translatedTexts['selectACrop'] ?? 'Select a crop',
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                   isExpanded: true,
@@ -307,7 +372,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                               ),
                               const SizedBox(width: 12),
                               Text(
-                                crop,
+                                _getTranslatedCropName(crop),
                                 style: const TextStyle(
                                   color: AppColors.textPrimary,
                                   fontSize: 16,
@@ -330,22 +395,18 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 ),
               ),
             ),
-
-            // Divider between sections
             const SizedBox(height: 20),
             Divider(
               color: AppColors.primaryGreen.withOpacity(0.2),
               thickness: 1,
             ),
             const SizedBox(height: 16),
-
-            // Camera Actions Section
             Row(
               children: [
-                Icon(Icons.camera_alt, color: AppColors.primaryGreen, size: 20),
+                const Icon(Icons.camera_alt, color: AppColors.primaryGreen, size: 20),
                 const SizedBox(width: 8),
                 Text(
-                  l10n.captureImage,
+                  translatedTexts['captureImage'] ?? 'Capture Image',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -355,19 +416,17 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               ],
             ),
             const SizedBox(height: 12),
-
             IntrinsicHeight(
               child: Row(
                 children: [
                   Expanded(
                     child: AnimatedContainer(
-                      // ✅ Production: Smooth button animations
                       duration: const Duration(milliseconds: 250),
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.photo_camera, size: 20),
                         label: Flexible(
                           child: Text(
-                            l10n.takePhoto,
+                            translatedTexts['takePhoto'] ?? 'Take Photo',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -401,13 +460,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   const SizedBox(width: 12),
                   Expanded(
                     child: AnimatedContainer(
-                      // ✅ Production: Smooth button animations
                       duration: const Duration(milliseconds: 250),
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.photo_library, size: 20),
                         label: Flexible(
                           child: Text(
-                            l10n.chooseFromGallery,
+                            translatedTexts['chooseFromGallery'] ??
+                                'Choose From Gallery',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -447,14 +506,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 ],
               ),
             ),
-
-            // Model loading indicator
             if (!isEnabled && _isModelLoading)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Row(
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -466,7 +523,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Loading AI model...',
+                      translatedTexts['loadingAIModel'] ?? 'Loading AI model...',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
@@ -488,7 +545,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Stack(
         children: [
-          // Image container
           Container(
             width: double.infinity,
             height: 280,
@@ -516,8 +572,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     ),
             ),
           ),
-
-          // Close button positioned at top-right
           Positioned(
             top: 8,
             right: 8,
@@ -538,7 +592,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 onPressed: _resetAnalysis,
                 padding: const EdgeInsets.all(8),
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                tooltip: 'Remove image',
+                tooltip: translatedTexts['removeImage'] ?? 'Remove image',
               ),
             ),
           ),
@@ -562,14 +616,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Sophisticated circular progress
               SizedBox(
                 width: 100,
                 height: 100,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    // Outer rotating ring
                     AnimatedBuilder(
                       animation: _progressController,
                       builder: (context, child) {
@@ -589,8 +641,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         );
                       },
                     ),
-
-                    // Main progress circle
                     SizedBox(
                       width: 80,
                       height: 80,
@@ -598,7 +648,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         value: _analysisProgress,
                         strokeWidth: 5,
                         strokeCap: StrokeCap.round,
-                        valueColor: AlwaysStoppedAnimation(
+                        valueColor: const AlwaysStoppedAnimation(
                           AppColors.primaryGreen,
                         ),
                         backgroundColor: AppColors.primaryGreen.withOpacity(
@@ -606,8 +656,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         ),
                       ),
                     ),
-
-                    // Center icon
                     Container(
                       width: 40,
                       height: 40,
@@ -615,7 +663,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         shape: BoxShape.circle,
                         color: AppColors.primaryGreen.withOpacity(0.1),
                       ),
-                      child: Icon(
+                      child: const Icon(
                         Icons.biotech,
                         size: 24,
                         color: AppColors.primaryGreen,
@@ -624,17 +672,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   ],
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Dynamic status messages
               AnimatedSwitcher(
-                // ✅ Production: Smooth text transitions
                 duration: const Duration(milliseconds: 600),
                 child: Text(
                   _getStatusMessage(_analysisProgress),
                   key: ValueKey(_getStatusMessage(_analysisProgress)),
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
@@ -643,10 +687,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   textAlign: TextAlign.center,
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              // Enhanced progress display
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -666,7 +707,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Progress',
+                          translatedTexts['progress'] ?? 'Progress',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -678,7 +719,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                           builder: (context, child) {
                             return Text(
                               '${(_analysisProgress * 100).toInt()}%',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.primaryGreen,
@@ -697,7 +738,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                           backgroundColor: AppColors.primaryGreen.withOpacity(
                             0.1,
                           ),
-                          valueColor: AlwaysStoppedAnimation(
+                          valueColor: const AlwaysStoppedAnimation(
                             AppColors.primaryGreen,
                           ),
                           minHeight: 5,
@@ -715,22 +756,20 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   }
 
   String _getStatusMessage(double progress) {
-    // ✅ Production: More detailed status messages for better UX
     if (progress < 0.2) {
-      return 'Processing image data...';
+      return translatedTexts['processingImage'] ?? 'Processing image data...';
     } else if (progress < 0.4) {
-      return 'Running disease detection...';
+      return translatedTexts['runningDetection'] ?? 'Running disease detection...';
     } else if (progress < 0.6) {
-      return 'Analyzing crop health...';
+      return translatedTexts['analyzingHealth'] ?? 'Analyzing crop health...';
     } else if (progress < 0.8) {
-      return 'Generating results...';
+      return translatedTexts['generatingResults'] ?? 'Generating results...';
     } else {
-      return 'Finalizing diagnosis...';
+      return translatedTexts['finalizingDiagnosis'] ?? 'Finalizing diagnosis...';
     }
   }
 
   Widget _buildResults() {
-    final l10n = AppLocalizations.of(context);
     final isError = result!.containsKey('error');
     final isHealthy =
         !isError &&
@@ -770,7 +809,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   padding: const EdgeInsets.all(24),
                   child: Column(
                     children: [
-                      // Result header
                       Row(
                         children: [
                           Container(
@@ -809,7 +847,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                           const SizedBox(width: 16),
                           Expanded(
                             child: Text(
-                              l10n.detectionResults,
+                              translatedTexts['detectionResults'] ??
+                                  'Detection Results',
                               style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
@@ -819,15 +858,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 20),
                       const Divider(),
                       const SizedBox(height: 20),
-
-                      // Disease info
                       _buildResultRow(
                         icon: Icons.biotech,
-                        label: l10n.diseaseLabel,
+                        label: translatedTexts['diseaseLabel'] ?? 'Disease Label',
                         value: result!['label'].toString(),
                         valueColor: isError
                             ? AppColors.errorColor
@@ -835,19 +871,14 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                                   ? AppColors.successColor
                                   : AppColors.errorColor),
                       ),
-
                       const SizedBox(height: 16),
-
-                      // Confidence info
                       if (!isError)
                         _buildResultRow(
                           icon: Icons.analytics,
-                          label: l10n.confidenceLabel,
+                          label: translatedTexts['confidence'] ?? 'Confidence',
                           value: '${confidence.toStringAsFixed(1)}%',
                           valueColor: AppColors.textPrimary,
                         ),
-
-                      // Error details
                       if (isError && result!['error'] != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 16),
@@ -862,7 +893,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                             ),
                             child: Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.info_outline,
                                   color: AppColors.errorColor,
                                   size: 16,
@@ -870,8 +901,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'Error: ${result!['error']}',
-                                    style: TextStyle(
+                                    '${translatedTexts['error'] ?? 'Error'}: ${result!['error']}',
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: AppColors.errorColor,
                                     ),
@@ -940,10 +971,10 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
     return Scaffold(
-      appBar: CustomAppBar(title: l10n.diseaseDetection),
+      appBar: CustomAppBar(
+        title: translatedTexts['diseaseDetection'] ?? 'Disease Detection',
+      ),
       body: RefreshIndicator(
         color: AppColors.primaryGreen,
         onRefresh: () async {
@@ -960,23 +991,14 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Combined Crop Selection + Camera Actions
                 _buildCropAndCameraSection(),
-
                 const SizedBox(height: 16),
-
-                // Loading Indicator
                 if (_isLoading) _buildLoadingIndicator(),
-
-                // Image Preview
                 if (imagePath != null && !_isLoading) ...[
                   _buildImagePreview(),
                   const SizedBox(height: 16),
                 ],
-
-                // Results
                 if (result != null && !_isLoading) _buildResults(),
-
                 const SizedBox(height: 32),
               ],
             ),

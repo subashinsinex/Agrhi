@@ -21,6 +21,10 @@ dependencies:
   geolocator: ^12.0.0
   permission_handler: ^12.0.1
   geocoding: ^3.0.0
+  google_mlkit_translation: ^0.13.0
+  dio: ^5.9.0
+  flutter_launcher_icons: ^0.14.4 
+  flutter_native_splash: ^2.4.6
 
 dev_dependencies:
   flutter_test:
@@ -33,3 +37,20 @@ flutter:
   assets:
     - assets/images/
     - assets/models/
+
+flutter_native_splash:
+  color: "#ffffff"
+  color_dark: "#ffffff"
+  image: assets/images/logo_nb.png
+  android: true
+  ios: true
+  fullscreen: false
+
+flutter_launcher_icons:
+  android: "launcher_icons"
+  ios: true
+  image_path: "assets/images/logo_nb.png"
+  remove_alpha_ios: true
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/images/logo_nb.png"
+  

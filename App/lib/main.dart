@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'utils/colors.dart';
 import 'utils/routes.dart';
 import 'src/services/language_service.dart';
-import 'flutter_gen/gen_l10n/app_localizations.dart';
 
 void main() async {
   // Ensure Flutter widgets are initialized
@@ -33,28 +31,6 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             title: 'AGRHI - Smart Farming Solutions',
             debugShowCheckedModeBanner: false,
-
-            // Default Flutter i18n Configuration
-            locale: languageService.currentLocale,
-            localizationsDelegates: const [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            supportedLocales: LanguageService.supportedLocales,
-
-            // Handle locale resolution
-            localeResolutionCallback: (locale, supportedLocales) {
-              if (locale != null) {
-                for (var supportedLocale in supportedLocales) {
-                  if (supportedLocale.languageCode == locale.languageCode) {
-                    return supportedLocale;
-                  }
-                }
-              }
-              return supportedLocales.first;
-            },
 
             // App Theme
             theme: ThemeData(

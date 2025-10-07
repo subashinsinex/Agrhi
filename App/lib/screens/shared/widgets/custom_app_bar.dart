@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../utils/colors.dart';
-import '../../../flutter_gen/gen_l10n/app_localizations.dart';
+import '../../../src/services/language_service.dart';
 import 'language_switcher.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -35,12 +36,10 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
     return AppBar(
-      title: _buildTitle(context, l10n),
-      actions: _buildActions(context, l10n),
-      leading: leading ?? _buildLeading(context, l10n),
+      title: _buildTitle(context),
+      actions: _buildActions(),
+      leading: leading ?? _buildLeading(context),
       automaticallyImplyLeading: false,
       backgroundColor: backgroundColor ?? AppColors.appBarBackground,
       foregroundColor: foregroundColor ?? AppColors.textWhite,
@@ -51,15 +50,13 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  List<Widget>? _buildActions(BuildContext context, AppLocalizations l10n) {
+  List<Widget>? _buildActions() {
     final actionsList = <Widget>[];
 
-    // Add language switcher first if enabled
     if (showLanguageSwitcher) {
       actionsList.add(const LanguageSwitcher(showAsIcon: true));
     }
 
-    // Add custom actions
     if (actions != null) {
       actionsList.addAll(actions!);
     }
@@ -67,79 +64,67 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     return actionsList.isEmpty ? null : actionsList;
   }
 
-  Widget? _buildTitle(BuildContext context, AppLocalizations l10n) {
+  Widget? _buildTitle(BuildContext context) {
     if (title == null && subtitle == null) return null;
 
-    // ✅ Fixed: Better null handling
-    String? translatedTitle;
-    String? translatedSubtitle;
+    final languageService = Provider.of<LanguageService>(context);
 
-    // Handle title translation
-    if (title != null) {
-      switch (title) {
-        case 'Welcome':
-          translatedTitle = l10n.welcome;
-          break;
-        case 'Profile':
-          translatedTitle = 'Profile'; // Add to ARB files if needed
-          break;
-        default:
-          translatedTitle = title;
-      }
-    }
-
-    // Handle subtitle translation
-    if (subtitle != null) {
-      switch (subtitle) {
-        case 'Enjoy our Services':
-          translatedSubtitle = l10n.enjoyServices;
-          break;
-        default:
-          translatedSubtitle = subtitle;
-      }
-    }
-
-    // ✅ Fixed: Proper null checking
-    if (translatedSubtitle != null && translatedTitle != null) {
+    if (subtitle != null && title != null) {
       return Column(
         crossAxisAlignment: centerTitle
             ? CrossAxisAlignment.center
             : CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            translatedTitle,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: foregroundColor ?? AppColors.textWhite,
-              fontWeight: FontWeight.bold,
-            ),
+          FutureBuilder<String>(
+            future: languageService.translate(title!),
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data ?? title!,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: foregroundColor ?? AppColors.textWhite,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            },
           ),
-          Text(
-            translatedSubtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: (foregroundColor ?? AppColors.textWhite).withOpacity(0.8),
-              fontWeight: FontWeight.w500,
-            ),
+          FutureBuilder<String>(
+            future: languageService.translate(subtitle!),
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data ?? subtitle!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: (foregroundColor ?? AppColors.textWhite).withOpacity(
+                    0.8,
+                  ),
+                  fontWeight: FontWeight.w500,
+                ),
+              );
+            },
           ),
         ],
       );
     }
 
-    // ✅ Fixed: Handle case with only title
-    if (translatedTitle != null) {
-      return Text(
-        translatedTitle,
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-          color: foregroundColor ?? AppColors.textWhite,
-          fontWeight: FontWeight.bold,
-        ),
+    if (title != null) {
+      return FutureBuilder<String>(
+        future: languageService.translate(title!),
+        builder: (context, snapshot) {
+          return Text(
+            snapshot.data ?? title!,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: foregroundColor ?? AppColors.textWhite,
+              fontWeight: FontWeight.bold,
+            ),
+          );
+        },
       );
     }
 
     return null;
   }
 
-  Widget? _buildLeading(BuildContext context, AppLocalizations l10n) {
+  Widget? _buildLeading(BuildContext context) {
     if (onMenuPressed != null) {
       return IconButton(
         icon: Icon(Icons.menu, color: foregroundColor ?? AppColors.textWhite),
@@ -172,7 +157,6 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
-// ✅ Updated DashboardAppBar with language switcher
 class DashboardAppBar extends CustomAppBar {
   const DashboardAppBar({super.key, super.actions})
     : super(
@@ -204,10 +188,7 @@ class FeatureAppBar extends CustomAppBar {
     super.actions,
     super.onBackPressed,
     super.showLanguageSwitcher,
-  }) : super(
-         title: featureName,
-         centerTitle: true,
-       );
+  }) : super(title: featureName, centerTitle: true);
 }
 
 class ProfileAppBar extends CustomAppBar {
@@ -219,10 +200,7 @@ class ProfileAppBar extends CustomAppBar {
     super.actions,
     super.onBackPressed,
     super.showLanguageSwitcher,
-  }) : super(
-         title: 'Profile',
-         subtitle: 'Hello, $userName',
-       );
+  }) : super(title: 'Profile', subtitle: 'Hello, $userName');
 }
 
 class MenuAppBar extends CustomAppBar {
@@ -233,9 +211,7 @@ class MenuAppBar extends CustomAppBar {
     super.actions,
     required VoidCallback super.onMenuPressed,
     super.showLanguageSwitcher = true,
-  }) : super(
-         automaticallyImplyLeading: false,
-       );
+  }) : super(automaticallyImplyLeading: false);
 }
 
 class BackAppBar extends CustomAppBar {

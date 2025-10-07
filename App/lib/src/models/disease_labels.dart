@@ -24,8 +24,8 @@ const Map<String, List<String>> diseaseLabels = {
   'Cotton': ['Bacterial_blight', 'Curl_virus', 'Fusarium_wilt', 'Healthy'],
   'Corn': ['Blight', 'Common_Rust', 'Grey_leaf_spot', 'Healthy'],
   'Coconut': ['budrooting', 'budrot', 'healthy', 'leafrot', 'leafspot'],
-  'Banana': ['Cordana', 'Healthy', 'Pestalotiopsis', 'Sigatoka'],
+  'Banana': ['Black Sigatoka', 'Cordana', 'Healthy' ,'Panama Disease', 'Yellow Sigatoka'],
   'Coffee': ['Healthy', 'Leaf_Rust', 'Cerscospora', 'Phoma'],
-  'Wheat': ['Healthy', 'Smut', 'Septoria', 'Brown_Rust','Yellow_Rust'],
+  'Wheat': ['Healthy', 'Septoria', 'Brown_Rust','Yellow_Rust'],
   'Tomato': ['Bacterial_spot', 'Early_blight', 'Late_blight', 'Leaf_Mold','Target_Spot', 'Healthy', 'Black_spot'],
 };

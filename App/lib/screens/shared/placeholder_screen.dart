@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../utils/colors.dart';
-import '../../flutter_gen/gen_l10n/app_localizations.dart';
 
 class PlaceholderScreen extends StatelessWidget {
   final String title;
@@ -20,8 +19,6 @@ class PlaceholderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
@@ -36,7 +33,6 @@ class PlaceholderScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Icon Container
               Container(
                 padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
@@ -50,8 +46,6 @@ class PlaceholderScreen extends StatelessWidget {
                 child: Icon(icon, size: 80, color: AppColors.primaryGreen),
               ),
               const SizedBox(height: 32),
-
-              // Title
               Text(
                 title,
                 style: TextStyle(
@@ -62,8 +56,6 @@ class PlaceholderScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-
-              // Coming Soon Badge
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
@@ -74,7 +66,7 @@ class PlaceholderScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  subtitle ?? l10n.comingSoon,
+                  subtitle ?? 'Coming Soon',
                   style: TextStyle(
                     fontSize: 18,
                     color: AppColors.warningColor,
@@ -83,11 +75,8 @@ class PlaceholderScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Description
               Text(
-                description ??
-                    l10n.featureUnderDevelopment,
+                description ?? 'This feature is under development',
                 style: TextStyle(
                   fontSize: 16,
                   color: AppColors.textSecondary,
@@ -96,12 +85,10 @@ class PlaceholderScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
-
-              // Back Button
               ElevatedButton.icon(
                 onPressed: onBackPressed ?? () => Navigator.pop(context),
                 icon: const Icon(Icons.arrow_back_rounded),
-                label: Text(l10n.backToDashboard), 
+                label: const Text('Back to Dashboard'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
                   foregroundColor: AppColors.textWhite,

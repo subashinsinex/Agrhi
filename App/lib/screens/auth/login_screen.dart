@@ -1,9 +1,10 @@
-import '../shared/widgets/language_switcher.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../shared/widgets/language_switcher.dart';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
-import '../../flutter_gen/gen_l10n/app_localizations.dart';
+import '../../../src/services/language_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,6 +22,63 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _isLoadingTranslations = false;
+
+  Map<String, String> translatedTexts = {};
+  String _currentLanguage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadTranslations();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final languageService = Provider.of<LanguageService>(context);
+    if (_currentLanguage != languageService.currentLocale.languageCode) {
+      _currentLanguage = languageService.currentLocale.languageCode;
+      _loadTranslations();
+    }
+  }
+
+  Future<void> _loadTranslations() async {
+    if (!mounted) return;
+
+    setState(() => _isLoadingTranslations = true);
+
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    final keys = {
+      'signIn': 'Sign In',
+      'loginSuccessful': 'Login Successful',
+      'phoneNumber': 'Phone Number',
+      'password': 'Password',
+      'dontHaveAccount': "Don't have an account?",
+      'signUp': 'Sign Up',
+      'agrhi': 'Agrhi',
+      'smartFarmApp': 'Smart Farm App',
+      'skipForDemo': 'Skip for demo',
+    };
+
+    Map<String, String> newTranslated = {};
+    for (var entry in keys.entries) {
+      newTranslated[entry.key] = await languageService.translate(entry.value);
+    }
+
+    if (mounted) {
+      setState(() {
+        translatedTexts = newTranslated;
+        _isLoadingTranslations = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -36,14 +94,13 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
-        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 8),
-                Text(l10n.loginSuccessful),
+                Text(translatedTexts['loginSuccessful'] ?? 'Login Successful'),
               ],
             ),
             backgroundColor: AppColors.successColor,
@@ -82,16 +139,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
       resizeToAvoidBottomInset: true,
-      // ✅ Remove AppBar and use Stack with Positioned widget instead
       body: SafeArea(
         child: Stack(
           children: [
-            // ✅ Main content
             LayoutBuilder(
               builder: (context, constraints) {
                 return SingleChildScrollView(
@@ -107,10 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            const SizedBox(
-                              height: 60,
-                            ), // ✅ Extra space for language switcher
-                            // Logo and branding
+                            const SizedBox(height: 60),
                             Column(
                               children: [
                                 CircleAvatar(
@@ -124,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 5),
                                 Text(
-                                  l10n.appTitle,
+                                  translatedTexts['agrhi'] ?? 'Agrhi',
                                   style: TextStyle(
                                     fontSize: 36,
                                     fontWeight: FontWeight.bold,
@@ -134,7 +184,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  l10n.appSubtitle,
+                                  translatedTexts['SmartFarmApp'] ??
+                                      'Smart Farming',
                                   style: TextStyle(
                                     fontSize: 16,
                                     color: AppColors.textSecondary,
@@ -143,14 +194,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
-
-                            // Form fields
                             Column(
                               children: [
                                 TextFormField(
                                   controller: _phoneController,
                                   decoration: InputDecoration(
-                                    hintText: l10n.phoneNumber,
+                                    hintText:
+                                        translatedTexts['phoneNumber'] ??
+                                        'Phone Number',
                                     hintStyle: TextStyle(
                                       color: AppColors.textSecondary,
                                     ),
@@ -163,11 +214,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                   validator: Validators.validatePhone,
                                 ),
                                 const SizedBox(height: 16),
-
                                 TextFormField(
                                   controller: _passwordController,
                                   decoration: InputDecoration(
-                                    hintText: l10n.password,
+                                    hintText:
+                                        translatedTexts['password'] ??
+                                        'Password',
                                     hintStyle: TextStyle(
                                       color: AppColors.textSecondary,
                                     ),
@@ -192,7 +244,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   validator: Validators.validatePassword,
                                 ),
                                 const SizedBox(height: 24),
-
                                 SizedBox(
                                   width: double.infinity,
                                   height: 56,
@@ -211,7 +262,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                             ),
                                           )
                                         : Text(
-                                            l10n.signIn,
+                                            translatedTexts['signIn'] ??
+                                                'Sign In',
                                             style: const TextStyle(
                                               fontSize: 18,
                                               fontWeight: FontWeight.bold,
@@ -222,20 +274,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
-
-                            // Sign up link
                             GestureDetector(
                               onTap: () => Routes.navigateToSignup(context),
                               child: RichText(
                                 text: TextSpan(
-                                  text: '${l10n.dontHaveAccount} ',
+                                  text:
+                                      translatedTexts['dontHaveAccount'] ??
+                                      "Don't have an account? ",
                                   style: TextStyle(
                                     color: AppColors.textSecondary,
                                     fontSize: 16,
                                   ),
                                   children: [
                                     TextSpan(
-                                      text: l10n.signUp,
+                                      text:
+                                          translatedTexts['signUp'] ??
+                                          'Sign Up',
                                       style: TextStyle(
                                         color: AppColors.primaryGreen,
                                         fontWeight: FontWeight.bold,
@@ -246,14 +300,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
-
                             const SizedBox(height: 20),
-
-                            // skip for demo
                             GestureDetector(
                               onTap: () => Routes.navigateToDashboard(context),
                               child: Text(
-                                'Skip for demo',
+                                translatedTexts['skipForDemo'] ??
+                                    'Skip for demo',
                                 style: TextStyle(
                                   color: AppColors.textSecondary,
                                   fontSize: 14,
@@ -269,8 +321,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               },
             ),
-
-            // ✅ Language switcher positioned at top right
             Positioned(
               top: 16,
               right: 16,
@@ -289,6 +339,46 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: const LanguageSwitcher(showAsIcon: true),
               ),
             ),
+            // Translation loading overlay
+            if (_isLoadingTranslations)
+              Container(
+                color: Colors.black.withOpacity(0.3),
+                child: Center(
+                  child: Card(
+                    elevation: 8,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 60,
+                            height: 60,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 4,
+                              valueColor: AlwaysStoppedAnimation(
+                                AppColors.primaryGreen,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Loading translations...',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
