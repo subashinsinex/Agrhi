@@ -401,60 +401,32 @@ class _LanguageSwitcherState extends State<LanguageSwitcher> {
 
                                     Navigator.pop(bottomSheetContext);
 
-                                    // NEW: Show loading with preloading message
-                                    showDialog(
-                                      context: context,
-                                      barrierDismissible: false,
-                                      builder: (context) => Container(
-                                        color: Colors.black.withOpacity(0.5),
-                                        child: Center(
-                                          child: Card(
-                                            elevation: 8,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(16),
-                                            ),
-                                            child: const Padding(
-                                              padding: EdgeInsets.all(32.0),
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  SizedBox(
-                                                    width: 60,
-                                                    height: 60,
-                                                    child: CircularProgressIndicator(
-                                                      strokeWidth: 4,
-                                                      valueColor:
-                                                          AlwaysStoppedAnimation(
-                                                            AppColors
-                                                                .primaryGreen,
-                                                          ),
+                                    // OPTIMIZED: Show non-blocking snackbar
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Row(
+                                          children: [
+                                            const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation(
+                                                      Colors.white,
                                                     ),
-                                                  ),
-                                                  SizedBox(height: 24),
-                                                  Text(
-                                                    'Changing language...',
-                                                    style: TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color:
-                                                          AppColors.textPrimary,
-                                                    ),
-                                                  ),
-                                                  SizedBox(height: 8),
-                                                  Text(
-                                                    'Preparing translations',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: AppColors
-                                                          .textSecondary,
-                                                    ),
-                                                  ),
-                                                ],
                                               ),
                                             ),
-                                          ),
+                                            const SizedBox(width: 12),
+                                            Text(
+                                              'Switching to ${LanguageService.languageNames[languageCode]}...',
+                                            ),
+                                          ],
+                                        ),
+                                        backgroundColor: AppColors.primaryGreen,
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: const Duration(
+                                          milliseconds: 1200,
                                         ),
                                       ),
                                     );
@@ -463,17 +435,16 @@ class _LanguageSwitcherState extends State<LanguageSwitcher> {
                                       final previousLocale =
                                           languageService.currentLocale;
 
-                                      // Change language (includes preloading)
+                                      // Language switches instantly now!
                                       await languageService.changeLanguage(
                                         locale,
                                         previousLocale: previousLocale,
                                       );
 
                                       if (context.mounted) {
-                                        Navigator.pop(context);
-                                      }
-
-                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).hideCurrentSnackBar();
                                         ScaffoldMessenger.of(
                                           context,
                                         ).showSnackBar(
@@ -481,7 +452,7 @@ class _LanguageSwitcherState extends State<LanguageSwitcher> {
                                             content: Row(
                                               children: [
                                                 const Icon(
-                                                  Icons.language,
+                                                  Icons.check_circle,
                                                   color: Colors.white,
                                                 ),
                                                 const SizedBox(width: 8),
@@ -495,10 +466,6 @@ class _LanguageSwitcherState extends State<LanguageSwitcher> {
                                             backgroundColor:
                                                 AppColors.successColor,
                                             behavior: SnackBarBehavior.floating,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
                                             duration: const Duration(
                                               seconds: 2,
                                             ),
@@ -507,10 +474,9 @@ class _LanguageSwitcherState extends State<LanguageSwitcher> {
                                       }
                                     } catch (e) {
                                       if (context.mounted) {
-                                        Navigator.pop(context);
-                                      }
-
-                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).hideCurrentSnackBar();
                                         ScaffoldMessenger.of(
                                           context,
                                         ).showSnackBar(
@@ -601,14 +567,69 @@ class _LanguageSwitcherState extends State<LanguageSwitcher> {
                 ? () async {
                     if (isSelected) return;
 
+                    // Show loading snackbar
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation(
+                                  Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Switching to ${LanguageService.languageNames[languageCode]}...',
+                            ),
+                          ],
+                        ),
+                        backgroundColor: AppColors.primaryGreen,
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(milliseconds: 1200),
+                      ),
+                    );
+
                     try {
                       final previousLocale = languageService.currentLocale;
                       await languageService.changeLanguage(
                         locale,
                         previousLocale: previousLocale,
                       );
+
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Language changed to ${LanguageService.languageNames[languageCode]}',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            backgroundColor: AppColors.successColor,
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
                     } catch (e) {
                       debugPrint('Error changing language: $e');
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      }
                     }
                   }
                 : null,

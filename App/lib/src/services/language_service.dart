@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_translation/google_mlkit_translation.dart';
 import 'dart:convert';
+import 'dart:async' show unawaited;
 
 class LanguageService extends ChangeNotifier {
   static const String _languageKey = 'selected_language';
   static const String _downloadedModelsKey = 'downloaded_models';
-  static const String _cacheKey = 'translation_cache'; // NEW
+  static const String _cacheKey = 'translation_cache';
   static const Locale defaultLocale = Locale('en');
 
   Locale _currentLocale = defaultLocale;
@@ -18,11 +19,10 @@ class LanguageService extends ChangeNotifier {
 
   Key _rebuildKey = UniqueKey();
 
-  // Track download progress
   final Map<String, double> _downloadProgress = {};
   final Map<String, bool> _isDownloading = {};
 
-  // NEW: Translation cache
+  // Translation cache
   final Map<String, Map<String, String>> _translationCache = {};
 
   Locale get currentLocale => _currentLocale;
@@ -31,7 +31,24 @@ class LanguageService extends ChangeNotifier {
   bool get hasError => _hasError;
   Key get rebuildKey => _rebuildKey;
 
-  // NEW: Common phrases to preload
+  // Critical phrases for instant switching
+  static const List<String> criticalPhrases = [
+    'Welcome',
+    'Dashboard',
+    'Smart Farming',
+    'Language',
+    'Changing language...',
+    "Don't have an account?",
+    'Sign Up',
+    'Smart Farm App',
+    'Skip for demo',
+    'Password',
+    'Phone Number',
+    'Login Successful',
+    'Sign In',
+  ];
+
+  // Full list for background loading
   static const List<String> commonPhrases = [
     'Welcome',
     'Enjoy our Services',
@@ -100,7 +117,7 @@ class LanguageService extends ChangeNotifier {
 
       _hasError = false;
 
-      // NEW: Load cache from disk
+      // Load cache from disk
       await _loadCacheFromDisk();
 
       if (!_isDisposed) {
@@ -113,7 +130,6 @@ class LanguageService extends ChangeNotifier {
     }
   }
 
-  // NEW: Load cache from SharedPreferences
   Future<void> _loadCacheFromDisk() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -139,7 +155,6 @@ class LanguageService extends ChangeNotifier {
     }
   }
 
-  // NEW: Save cache to SharedPreferences
   Future<void> _saveCacheToDisk() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -151,30 +166,30 @@ class LanguageService extends ChangeNotifier {
     }
   }
 
-  // NEW: Preload common translations
-  Future<void> preloadTranslations() async {
+  // OPTIMIZED: Fast preload with optional full load
+  Future<void> preloadTranslations({bool fullLoad = false}) async {
     if (_currentLocale.languageCode == 'en') {
       debugPrint('✓ English - no preload needed');
       return;
     }
 
     final cacheKey = _currentLocale.languageCode;
+    final phrasesToLoad = fullLoad ? commonPhrases : criticalPhrases;
 
     // Check if already preloaded
     if (_translationCache.containsKey(cacheKey) &&
-        _translationCache[cacheKey]!.length >= commonPhrases.length * 0.8) {
+        _translationCache[cacheKey]!.length >= phrasesToLoad.length * 0.8) {
       debugPrint('✅ Translations already preloaded from cache');
       return;
     }
 
-    debugPrint('⏬ Preloading ${commonPhrases.length} common phrases...');
+    debugPrint('⏬ Preloading ${phrasesToLoad.length} phrases...');
 
     _translationCache[cacheKey] = _translationCache[cacheKey] ?? {};
 
     int loaded = 0;
-    for (String phrase in commonPhrases) {
+    for (String phrase in phrasesToLoad) {
       try {
-        // Skip if already cached
         if (_translationCache[cacheKey]!.containsKey(phrase)) {
           loaded++;
           continue;
@@ -184,8 +199,7 @@ class LanguageService extends ChangeNotifier {
         _translationCache[cacheKey]![phrase] = translated;
         loaded++;
 
-        // Save progress every 5 translations
-        if (loaded % 5 == 0) {
+        if (loaded % 3 == 0) {
           await _saveCacheToDisk();
         }
       } catch (e) {
@@ -193,13 +207,23 @@ class LanguageService extends ChangeNotifier {
       }
     }
 
-    debugPrint('✅ Preloaded $loaded/${commonPhrases.length} phrases');
+    debugPrint('✅ Preloaded $loaded/${phrasesToLoad.length} phrases');
 
-    // Final save
     await _saveCacheToDisk();
     notifyListeners();
+
+    // Load remaining phrases in background
+    if (!fullLoad) {
+      unawaited(_loadRemainingPhrases());
+    }
   }
 
+  Future<void> _loadRemainingPhrases() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    await preloadTranslations(fullLoad: true);
+  }
+
+  // OPTIMIZED: Instant language switch with background preloading
   Future<void> changeLanguage(Locale locale, {Locale? previousLocale}) async {
     if (_isDisposed) return;
 
@@ -227,17 +251,27 @@ class LanguageService extends ChangeNotifier {
       await _prepareTranslators();
       _hasError = false;
 
-      // NEW: Preload translations for new language
-      await preloadTranslations();
-
+      // Update UI immediately
       _rebuildKey = UniqueKey();
 
       if (!_isDisposed) {
         notifyListeners();
       }
+
+      // Preload translations in background (non-blocking)
+      unawaited(_preloadTranslationsInBackground());
     } catch (e) {
       debugPrint('Error changing language: $e');
       await _resetToEnglishOnError();
+    }
+  }
+
+  Future<void> _preloadTranslationsInBackground() async {
+    try {
+      await preloadTranslations();
+      debugPrint('✅ Background preloading completed');
+    } catch (e) {
+      debugPrint('⚠️ Background preloading failed: $e');
     }
   }
 
@@ -317,7 +351,6 @@ class LanguageService extends ChangeNotifier {
     }
   }
 
-  // MODIFIED: Use cache first, then translate
   Future<String> translate(String text) async {
     if (_isDisposed || _hasError || text.trim().isEmpty) return text;
 
@@ -325,7 +358,7 @@ class LanguageService extends ChangeNotifier {
       return text;
     }
 
-    // NEW: Check cache first
+    // Check cache first
     final cacheKey = _currentLocale.languageCode;
     if (_translationCache.containsKey(cacheKey) &&
         _translationCache[cacheKey]!.containsKey(text)) {
@@ -338,14 +371,14 @@ class LanguageService extends ChangeNotifier {
     try {
       final translated = await _translateText(text);
 
-      // NEW: Store in cache
+      // Store in cache
       if (!_translationCache.containsKey(cacheKey)) {
         _translationCache[cacheKey] = {};
       }
       _translationCache[cacheKey]![text] = translated;
 
       // Save to disk (async, don't wait)
-      _saveCacheToDisk();
+      unawaited(_saveCacheToDisk());
 
       return translated;
     } catch (e) {
@@ -356,7 +389,6 @@ class LanguageService extends ChangeNotifier {
     }
   }
 
-  // NEW: Helper method for actual translation logic
   Future<String> _translateText(String text) async {
     if (_englishToTargetTranslator == null) {
       await _prepareTranslators();
@@ -417,7 +449,6 @@ class LanguageService extends ChangeNotifier {
     return results;
   }
 
-  // NEW: Clear cache for specific language or all
   Future<void> clearCache([String? languageCode]) async {
     if (languageCode != null) {
       _translationCache.remove(languageCode);
@@ -431,7 +462,6 @@ class LanguageService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // NEW: Get cache statistics
   Map<String, int> getCacheStats() {
     final stats = <String, int>{};
     _translationCache.forEach((lang, translations) {
@@ -499,7 +529,7 @@ class LanguageService extends ChangeNotifier {
     super.dispose();
   }
 
-  // ============ MODEL MANAGEMENT METHODS (unchanged) ============
+  // ============ MODEL MANAGEMENT METHODS ============
 
   Future<bool> isLanguageModelDownloaded(String languageCode) async {
     try {
@@ -599,9 +629,9 @@ class LanguageService extends ChangeNotifier {
           debugPrint('✅✅ Model $languageCode verified and ready!');
           await _markAsDownloaded(languageCode);
 
-          // NEW: Preload translations after model download
+          // Preload translations after model download
           if (_currentLocale.languageCode == languageCode) {
-            await preloadTranslations();
+            unawaited(preloadTranslations());
           }
 
           notifyListeners();
@@ -695,7 +725,6 @@ class LanguageService extends ChangeNotifier {
         downloaded.remove(languageCode);
         await prefs.setStringList(_downloadedModelsKey, downloaded);
 
-        // NEW: Clear cache for deleted language
         await clearCache(languageCode);
 
         notifyListeners();
