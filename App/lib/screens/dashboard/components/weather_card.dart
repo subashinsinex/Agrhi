@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../utils/colors.dart';
 import '../../../src/services/weather_service.dart';
+import '../../../src/services/language_service.dart';
 
 class WeatherCard extends StatefulWidget {
   final String location;
@@ -19,34 +21,69 @@ class _WeatherCardState extends State<WeatherCard> {
   IconData weatherIcon = Icons.cloud;
   bool isLoading = true;
 
+  Map<String, String> translatedTexts = {};
+  String _currentLanguage = '';
+
   @override
   void initState() {
     super.initState();
-    _fetchWeather();
+    _loadTranslations().then((_) => _fetchWeather());
   }
 
-  // Modified to handle refresh UI state
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final langService = Provider.of<LanguageService>(context);
+    if (_currentLanguage != langService.currentLocale.languageCode) {
+      _currentLanguage = langService.currentLocale.languageCode;
+      _loadTranslations().then((_) => _fetchWeather());
+    }
+  }
+
+  Future<void> _loadTranslations() async {
+    final langService = Provider.of<LanguageService>(context, listen: false);
+    final keys = {
+      'refreshing': 'Refreshing weather data...',
+      'unavailable': 'Unavailable',
+      'kmh': 'km/h',
+      'degreeCelsius': '°C',
+      'clear': 'Clear',
+      'partlyCloudy': 'Partly Cloudy',
+      'fog': 'Fog',
+      'rain': 'Rain',
+      'snow': 'Snow',
+      'thunderstorm': 'Thunderstorm',
+      'unknown': 'Unknown',
+    };
+
+    final Map<String, String> newTranslations = {};
+    for (var entry in keys.entries) {
+      newTranslations[entry.key] = await langService.translate(entry.value);
+    }
+    if (!mounted) return;
+    setState(() {
+      translatedTexts = newTranslations;
+    });
+  }
+
   Future<void> _fetchWeather({bool isRefresh = false}) async {
-    // Show loading indicator on refresh, but not if it's already loading
     if (isRefresh && !isLoading) {
-      setState(() {
-        isLoading = true;
-      });
+      setState(() => isLoading = true);
     }
 
-    // Show the SnackBar when triggered by a tap
     if (isRefresh) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Row(
+          content: Row(
             children: [
-              Icon(Icons.refresh, color: Colors.white),
-              SizedBox(width: 8),
-              Text('Refreshing weather data...'),
+              const Icon(Icons.refresh, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(
+                translatedTexts['refreshing'] ?? 'Refreshing weather data...',
+              ),
             ],
           ),
-          backgroundColor:
-              AppColors.infoColor, // Assuming AppColors.infoColor is defined
+          backgroundColor: AppColors.infoColor,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
@@ -58,30 +95,68 @@ class _WeatherCardState extends State<WeatherCard> {
 
     try {
       final weather = await WeatherService().getWeatherByPlace(widget.location);
+      if (!mounted) return;
 
-      if (mounted) {
-        setState(() {
-          temperature = "${weather.temperature.toStringAsFixed(1)}°C";
-          condition = weather.condition;
-          wind = "${weather.windSpeed.toStringAsFixed(1)} km/h";
-          weatherIcon = _mapWeatherToIcon(weather.weatherCode);
-          isLoading = false;
-        });
-      }
+      final conditionStr = _translateCondition(weather.weatherCode);
+
+      setState(() {
+        temperature =
+            "${weather.temperature.toStringAsFixed(1)}${translatedTexts['degreeCelsius'] ?? '°C'}";
+        condition = conditionStr;
+        wind =
+            "${weather.windSpeed.toStringAsFixed(1)} ${translatedTexts['kmh'] ?? 'km/h'}";
+        weatherIcon = _mapWeatherToIcon(weather.weatherCode);
+        isLoading = false;
+      });
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-          temperature = "--";
-          condition = "Unavailable";
-          wind = "--";
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        isLoading = false;
+        temperature = "--";
+        condition = translatedTexts['unavailable'] ?? 'Unavailable';
+        wind = "--";
+      });
+    }
+  }
+
+  String _translateCondition(int code) {
+    switch (code) {
+      case 0:
+        return translatedTexts['clear'] ?? 'Clear';
+      case 1:
+      case 2:
+      case 3:
+        return translatedTexts['partlyCloudy'] ?? 'Partly Cloudy';
+      case 45:
+      case 48:
+        return translatedTexts['fog'] ?? 'Fog';
+      case 51:
+      case 53:
+      case 55:
+      case 61:
+      case 63:
+      case 65:
+      case 80:
+      case 81:
+      case 82:
+        return translatedTexts['rain'] ?? 'Rain';
+      case 71:
+      case 73:
+      case 75:
+      case 77:
+      case 85:
+      case 86:
+        return translatedTexts['snow'] ?? 'Snow';
+      case 95:
+      case 96:
+      case 99:
+        return translatedTexts['thunderstorm'] ?? 'Thunderstorm';
+      default:
+        return translatedTexts['unknown'] ?? 'Unknown';
     }
   }
 
   IconData _mapWeatherToIcon(int code) {
-    // Your existing _mapWeatherToIcon implementation is perfect.
     switch (code) {
       case 0:
         return Icons.wb_sunny_rounded;
@@ -91,7 +166,7 @@ class _WeatherCardState extends State<WeatherCard> {
         return Icons.cloud_rounded;
       case 45:
       case 48:
-        return Icons.foggy; // Assuming you have 'foggy' icon
+        return Icons.foggy; // ensure this icon exists in your app
       case 51:
       case 53:
       case 55:
@@ -120,12 +195,9 @@ class _WeatherCardState extends State<WeatherCard> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Wrap the UI in an InkWell for the tap effect
     return InkWell(
       onTap: () => _fetchWeather(isRefresh: true),
-      borderRadius: BorderRadius.circular(
-        18,
-      ), // Match container's border radius
+      borderRadius: BorderRadius.circular(18),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
@@ -153,7 +225,6 @@ class _WeatherCardState extends State<WeatherCard> {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-          // 2. The rest of your layout code remains unchanged
           child: Row(
             children: [
               _WeatherIcon(icon: weatherIcon),
@@ -223,12 +294,9 @@ class _WeatherCardState extends State<WeatherCard> {
   }
 }
 
-// Your _WeatherIcon widget remains the same
 class _WeatherIcon extends StatelessWidget {
   final IconData icon;
-
   const _WeatherIcon({required this.icon});
-
   @override
   Widget build(BuildContext context) {
     return Container(

@@ -51,6 +51,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final keys = {
       'myDetails': 'My Details',
+      'johnDoe': 'John Doe',
+      'plotArea': 'Plot area',
+      'acres': 'acres',
       'features': 'Features',
       'cropManagement': 'Crop Management',
       'diseaseDetection': 'Disease Detection',
@@ -60,9 +63,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'detectionHistory': 'Detection History',
       'notifications': 'Notifications',
       'notificationsComingSoon': 'Notifications feature coming soon!',
-      'plotArea': 'Plot area',
-      'acres': 'acres',
-      'johnDoe': 'John Doe',
     };
 
     Map<String, String> newTranslated = {};
@@ -280,7 +280,7 @@ class DirectFeatureGrid extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: spacing),
       child: GridView.builder(
         shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
+        physics: const ClampingScrollPhysics(),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
           crossAxisSpacing: spacing,

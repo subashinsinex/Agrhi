@@ -47,7 +47,7 @@ Future<String> wheatPreprocessor(String imagePath) async {
 // GROUNDNUT - Standard preprocessing
 Future<String> groundnutPreprocessor(String imagePath) async {
   final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 224, height: 224);
+  final resized = img.copyResize(image, width: 256, height: 256);
   final normalized = _normalize01(resized);
   final processedPath = '${imagePath}_groundnut.jpg';
   await File(processedPath).writeAsBytes(img.encodeJpg(normalized));
@@ -144,9 +144,9 @@ final Map<String, String> modelMap = {
   'Corn': 'assets/models/corn_model.tflite',
   'Coconut': 'assets/models/coconut_model.tflite',
   'Groundnut': 'assets/models/groundnut_model.tflite',
-  'Banana': 'assets/models/b3.tflite',
+  'Banana': 'assets/models/banana_model.tflite',
   'Coffee': 'assets/models/coffee_model.tflite',
-  'Wheat': 'assets/models/wheatwork_model.tflite',
+  'Wheat': 'assets/models/wheat_model.tflite',
   'Tomato': 'assets/models/tomato_model.tflite',
 };
 
@@ -154,7 +154,7 @@ final Map<String, String> modelMap = {
 final Map<String, List<int>> inputShapeMap = {
   'Rice': [1, 224, 224, 3],
   'Sugarcane': [1, 224, 224, 3],
-  'Groundnut': [1, 224, 224, 3],
+  'Groundnut': [1, 256, 256, 3],
   'Corn': [1, 224, 224, 3],
   'Cotton': [1, 128, 128, 3],
   'Banana': [1, 256,256, 3],

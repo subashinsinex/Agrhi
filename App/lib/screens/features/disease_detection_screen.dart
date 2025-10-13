@@ -47,7 +47,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   late AnimationController _resultController;
 
   Map<String, String> translatedTexts = {};
-  String _currentLanguage = ''; // Track current language
+  String _currentLanguage = '';
 
   @override
   void initState() {
@@ -74,7 +74,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Automatically reload when language changes
     final languageService = Provider.of<LanguageService>(context);
     if (_currentLanguage != languageService.currentLocale.languageCode) {
       _currentLanguage = languageService.currentLocale.languageCode;
@@ -88,7 +87,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       listen: false,
     );
 
-    final keys = {
+    // Basic UI keys
+    final Map<String, String> keys = {
       'selectCrop': 'Select Crop',
       'selectACrop': 'Select a crop',
       'captureImage': 'Capture Image',
@@ -109,31 +109,35 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'failedToPickImage': 'Failed to pick image',
       'analysisFailed': 'Analysis failed',
       'dismiss': 'Dismiss',
-      'diseaseDetection': 'Disease Detection',
       'progress': 'Progress',
-      // Crop names
-      'corn': 'Corn',
-      'rice': 'Rice',
-      'sugarcane': 'Sugarcane',
-      'cotton': 'Cotton',
-      'coconut': 'Coconut',
-      'groundnut': 'Groundnut',
-      'banana': 'Banana',
-      'coffee': 'Coffee',
-      'wheat': 'Wheat',
-      'tomato': 'Tomato',
+      'diseaseDetection': 'Disease Detection',
     };
 
-    Map<String, String> newTranslated = {};
-    for (var entry in keys.entries) {
-      newTranslated[entry.key] = await languageService.translate(entry.value);
+    // Add crop and disease label keys with consistent lowercase and underscores replaced by spaces
+    for (final crop in diseaseLabels.keys) {
+      keys[crop.toLowerCase()] = crop;
+      for (final label in diseaseLabels[crop] ?? []) {
+        final key = label.replaceAll('_', ' ').toLowerCase();
+        final display = label.replaceAll('_', ' ');
+        keys[key] = display;
+      }
     }
 
-    if (mounted) {
-      setState(() {
-        translatedTexts = newTranslated;
-      });
+    final Map<String, String> translated = {};
+    final futures = <Future>[];
+    for (final entry in keys.entries) {
+      futures.add(
+        languageService.translate(entry.value).then((tr) {
+          translated[entry.key] = tr;
+        }),
+      );
     }
+    await Future.wait(futures);
+
+    if (!mounted) return;
+    setState(() {
+      translatedTexts = translated;
+    });
   }
 
   @override
@@ -150,15 +154,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         await ModelService.loadModel(modelMap[cropName]!);
       }
     } catch (e) {
-      if (mounted) {
-        _showErrorSnackBar(
-          '${translatedTexts['failedToLoadModel'] ?? 'Failed to load model for'} $cropName',
-        );
-      }
+      if (!mounted) return;
+      _showErrorSnackBar(
+        '${translatedTexts['failedToLoadModel'] ?? 'Failed to load model for'} $cropName',
+      );
     } finally {
-      if (mounted) {
-        setState(() => _isModelLoading = false);
-      }
+      if (!mounted) return;
+      setState(() => _isModelLoading = false);
     }
   }
 
@@ -184,15 +186,14 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
       await _analyzeImage(picked.path);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
-        });
-        _showErrorSnackBar(
-          '${translatedTexts['failedToPickImage'] ?? 'Failed to pick image'}: ${e.toString()}',
-        );
-      }
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
+      });
+      _showErrorSnackBar(
+        '${translatedTexts['failedToPickImage'] ?? 'Failed to pick image'}: ${e.toString()}',
+      );
     }
   }
 
@@ -219,7 +220,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       );
 
       if (!mounted) return;
-
       final topResult = outputs.isNotEmpty
           ? outputs.first
           : {'label': 'Unknown', 'confidence': 0.0};
@@ -239,9 +239,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         '${translatedTexts['analysisFailed'] ?? 'Analysis failed'}: ${e.toString()}',
       );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (!mounted) return;
+      setState(() => _isLoading = false);
     }
   }
 
@@ -306,6 +305,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     return translatedTexts[key] ?? crop;
   }
 
+  String _getTranslatedLabel(String label) {
+    final key = label.replaceAll('_', ' ').toLowerCase();
+    return translatedTexts[key] ?? label.replaceAll('_', ' ');
+  }
+
   Widget _buildCropAndCameraSection() {
     final isEnabled = selectedCrop != null && !_isLoading && !_isModelLoading;
 
@@ -358,7 +362,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                   isExpanded: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   items: availableCrops
                       .map(
                         (crop) => DropdownMenuItem(
@@ -403,7 +406,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
             const SizedBox(height: 16),
             Row(
               children: [
-                const Icon(Icons.camera_alt, color: AppColors.primaryGreen, size: 20),
+                const Icon(
+                  Icons.camera_alt,
+                  color: AppColors.primaryGreen,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   translatedTexts['captureImage'] ?? 'Capture Image',
@@ -523,7 +530,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      translatedTexts['loadingAIModel'] ?? 'Loading AI model...',
+                      translatedTexts['loadingAIModel'] ??
+                          'Loading AI model...',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
@@ -564,12 +572,14 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       height: 280,
                       fit: BoxFit.cover,
                     )
-                  : Image.file(
-                      File(imagePath!),
-                      width: double.infinity,
-                      height: 280,
-                      fit: BoxFit.cover,
-                    ),
+                  : (imagePath != null
+                        ? Image.file(
+                            File(imagePath!),
+                            width: double.infinity,
+                            height: 280,
+                            fit: BoxFit.cover,
+                          )
+                        : Container()),
             ),
           ),
           Positioned(
@@ -759,18 +769,21 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     if (progress < 0.2) {
       return translatedTexts['processingImage'] ?? 'Processing image data...';
     } else if (progress < 0.4) {
-      return translatedTexts['runningDetection'] ?? 'Running disease detection...';
+      return translatedTexts['runningDetection'] ??
+          'Running disease detection...';
     } else if (progress < 0.6) {
       return translatedTexts['analyzingHealth'] ?? 'Analyzing crop health...';
     } else if (progress < 0.8) {
       return translatedTexts['generatingResults'] ?? 'Generating results...';
     } else {
-      return translatedTexts['finalizingDiagnosis'] ?? 'Finalizing diagnosis...';
+      return translatedTexts['finalizingDiagnosis'] ??
+          'Finalizing diagnosis...';
     }
   }
 
   Widget _buildResults() {
     final isError = result!.containsKey('error');
+    final labelText = _getTranslatedLabel(result!['label'].toString());
     final isHealthy =
         !isError &&
         result!['label'].toString().toLowerCase().contains('healthy');
@@ -863,8 +876,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       const SizedBox(height: 20),
                       _buildResultRow(
                         icon: Icons.biotech,
-                        label: translatedTexts['diseaseLabel'] ?? 'Disease Label',
-                        value: result!['label'].toString(),
+                        label:
+                            translatedTexts['diseaseLabel'] ?? 'Disease Label',
+                        value: labelText,
                         valueColor: isError
                             ? AppColors.errorColor
                             : (isHealthy
@@ -975,36 +989,40 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       appBar: CustomAppBar(
         title: translatedTexts['diseaseDetection'] ?? 'Disease Detection',
       ),
-      body: RefreshIndicator(
-        color: AppColors.primaryGreen,
-        onRefresh: () async {
-          if (selectedCrop != null) {
-            await _loadModelForCrop(selectedCrop!);
-          }
-        },
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildCropAndCameraSection(),
-                const SizedBox(height: 16),
-                if (_isLoading) _buildLoadingIndicator(),
-                if (imagePath != null && !_isLoading) ...[
-                  _buildImagePreview(),
-                  const SizedBox(height: 16),
-                ],
-                if (result != null && !_isLoading) _buildResults(),
-                const SizedBox(height: 32),
-              ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics:
+                const ClampingScrollPhysics(), // Prevent overscroll glow and bounce
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildCropAndCameraSection(),
+                      const SizedBox(height: 16),
+                      if (_isLoading) _buildLoadingIndicator(),
+                      if (imagePath != null && !_isLoading) ...[
+                        _buildImagePreview(),
+                        const SizedBox(height: 16),
+                      ],
+                      if (result != null && !_isLoading) _buildResults(),
+                      const SizedBox(height: 32),
+                      Expanded(
+                        child: Container(),
+                      ), // Push content up when content is small
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
+
 }

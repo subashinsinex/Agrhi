@@ -413,7 +413,7 @@ class LanguageService extends ChangeNotifier {
         return translatedText;
       } catch (e) {
         debugPrint('Translation error: $e');
-        throw e;
+        rethrow;
       }
     }
 
@@ -431,7 +431,7 @@ class LanguageService extends ChangeNotifier {
         return targetText;
       } catch (e) {
         debugPrint('Two-step translation error: $e');
-        throw e;
+        rethrow;
       }
     }
 
