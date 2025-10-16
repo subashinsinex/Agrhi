@@ -24,6 +24,8 @@ class LanguageService extends ChangeNotifier {
 
   // Translation cache
   final Map<String, Map<String, String>> _translationCache = {};
+  Map<String, Map<String, String>> get translationCache =>
+      _translationCache;
 
   Locale get currentLocale => _currentLocale;
   Locale get previousLocale => _previousLocale;

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../utils/colors.dart';
-import '../../../src/services/weather_service.dart';
-import '../../../src/services/language_service.dart';
+import '../../utils/colors.dart';
+import '../../src/services/weather_service.dart';
+import '../../src/services/language_service.dart';
 
 class WeatherCard extends StatefulWidget {
   final String location;

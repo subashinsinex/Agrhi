@@ -5,10 +5,11 @@ import '../shared/placeholder_screen.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
-import 'components/weather_card.dart';
-import 'components/profile_card.dart';
-import 'components/feature_grid.dart';
+import '../components/weather_card.dart';
+import '../components/profile_card.dart';
+import '../components/feature_grid.dart';
 import '../features/disease_detection_screen.dart';
+import '../features/subsidy_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -57,7 +58,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'features': 'Features',
       'cropManagement': 'Crop Management',
       'diseaseDetection': 'Disease Detection',
-      'soilInformation': 'Soil Information',
+      'subsidy': 'Subsidy',
       'marketPrices': 'Market Prices',
       'expertAdvice': 'Expert Advice',
       'detectionHistory': 'Detection History',
@@ -118,11 +119,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       FeatureItem(
-        title: translatedTexts['soilInformation'] ?? 'Soil Information',
-        icon: Icons.grass,
-        onTap: () => _navigateToFeature(
-          translatedTexts['soilInformation'] ?? 'Soil Information',
-          Icons.grass,
+        title: translatedTexts['subsidy'] ?? 'Subsidy',
+        icon: Icons.monetization_on,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const SubsidyScreen()),
         ),
       ),
       FeatureItem(

@@ -15,6 +15,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
+    dependencies {
+        implementation("org.tensorflow:tensorflow-lite-gpu-api:2.12.0")
+    }
+
+
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }

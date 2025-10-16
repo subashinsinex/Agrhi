@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../utils/colors.dart';
+import '../../utils/colors.dart';
 
 class FeatureGrid extends StatelessWidget {
   final List<FeatureItem> features;

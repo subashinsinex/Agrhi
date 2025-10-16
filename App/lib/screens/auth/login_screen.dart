@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
 import '../shared/widgets/language_switcher.dart';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
@@ -15,8 +17,6 @@ class LoginScreen extends StatefulWidget {
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
-
-
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
@@ -94,8 +94,21 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
-      if (mounted) {
+      final phone = _phoneController.text.trim();
+      final password = _passwordController.text.trim();
+
+      final url = Uri.parse(
+        'http://10.21.69.186:5000/api/login',
+      ); 
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone_number': phone, 'password': password, 'platform': 'mobile'}),
+      );
+
+      if (response.statusCode == 200) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -114,26 +127,27 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
         Routes.navigateToDashboard(context);
+      } else {
+        throw Exception('Login failed: ${response.reasonPhrase}');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(child: Text(e.toString())),
-              ],
-            ),
-            backgroundColor: AppColors.errorColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(child: Text(e.toString())),
+            ],
           ),
-        );
-      }
+          backgroundColor: AppColors.errorColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -186,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  translatedTexts['SmartFarmApp'] ??
+                                  translatedTexts['smartFarmApp'] ??
                                       'Smart Farming',
                                   style: TextStyle(
                                     fontSize: 16,
@@ -341,7 +355,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: const LanguageSwitcher(showAsIcon: true),
               ),
             ),
-            // Translation loading overlay
             if (_isLoadingTranslations)
               Container(
                 color: Colors.black.withOpacity(0.3),
