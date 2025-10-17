@@ -82,3 +82,6 @@ Server/tsconfig.tsbuildinfo
 *.aab 
 *.keystore 
 *.jks 
+Web/public/logo192.png
+Web/public/logo512.png
+Web/public/favicon.ico

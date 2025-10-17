@@ -1,23 +1,24 @@
-require("dotenv").config({ quiet: true });
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-
-// Routes
-const userAuthRoutes = require("./routes/user_auth");
-
-// Initialize Express app
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Route Api Mappings
-app.use("/api/auth", userAuthRoutes);
+const loginRoutes = require("./routes/loginRoutes");
+const userRoutes = require("./routes/userManageRoutes");
+const subsidiesRoutes = require("./routes/subsidiesRoutes");
+const farmCropRoutes = require("./routes/farmCropRoutes");
+const diseaseRemediesRoutes = require("./routes/diseaseRemediesRoutes");
 
-// Server setup
-const PORT = process.env.Server_Port;
-const HOST = process.env.Server_Address;
+app.use("/api/login", loginRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/subsidies", subsidiesRoutes);
+app.use("/api/farmcrop", farmCropRoutes);
+app.use("/api/diseaseRemedies", diseaseRemediesRoutes);
 
-// Start the server
-app.listen(PORT, HOST, () => {
-  console.log(`Server is running on ${HOST}:${PORT}`);
+const PORT = process.env.PORT;
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
