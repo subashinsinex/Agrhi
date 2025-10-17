@@ -32,8 +32,6 @@ class Subsidy {
   }
 }
 
-enum SubsidySort { titleAsc, titleDesc, stateAsc, stateDesc }
-
 // Smart widget for translation that uses cache then re-translates once cache is ready
 class SmartReTranslator extends StatefulWidget {
   final String text;
@@ -53,7 +51,7 @@ class SmartReTranslator extends StatefulWidget {
 
 class _SmartReTranslatorState extends State<SmartReTranslator> {
   late LanguageService languageService;
-  late String displayedText;
+  String displayedText = ''; // Initialize with empty string instead of late
   bool _cacheLoaded = false;
 
   @override
@@ -81,12 +79,10 @@ class _SmartReTranslatorState extends State<SmartReTranslator> {
   void _getInitialTranslation() async {
     final cacheKey = languageService.currentLocale.languageCode;
     final cached = languageService.translationCache[cacheKey]?[widget.text];
-    if (cached != null && mounted) {
+    if (mounted) {
       setState(() {
-        displayedText = cached;
+        displayedText = cached ?? widget.text;
       });
-    } else {
-      displayedText = widget.text;
     }
   }
 
@@ -102,7 +98,7 @@ class _SmartReTranslatorState extends State<SmartReTranslator> {
   @override
   Widget build(BuildContext context) {
     return Text(
-      displayedText,
+      displayedText.isEmpty ? widget.text : displayedText,
       style: widget.style,
       textAlign: widget.textAlign,
     );
@@ -120,14 +116,43 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
   List<Subsidy> _allSubsidies = [];
   List<Subsidy> _filteredSubsidies = [];
   final TextEditingController _searchController = TextEditingController();
-  SubsidySort _sortOption = SubsidySort.titleAsc;
+  final ScrollController _scrollController = ScrollController();
   bool _hasError = false;
+  bool _showScrollToTop = false;
 
   @override
   void initState() {
     super.initState();
     _fetchData();
-    _searchController.addListener(_filterAndSortSubsidies);
+    _searchController.addListener(_filterSubsidies);
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.offset > 200 && !_showScrollToTop) {
+      setState(() {
+        _showScrollToTop = true;
+      });
+    } else if (_scrollController.offset <= 200 && _showScrollToTop) {
+      setState(() {
+        _showScrollToTop = false;
+      });
+    }
+  }
+
+  void _scrollToTop() {
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOut,
+    );
   }
 
   void _fetchData() {
@@ -147,7 +172,6 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
         setState(() {
           _allSubsidies = subsidies;
           _filteredSubsidies = List.of(_allSubsidies);
-          _applySort();
         });
         return subsidies;
       } else {
@@ -166,7 +190,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     });
   }
 
-  void _filterAndSortSubsidies() {
+  void _filterSubsidies() {
     final query = _searchController.text.toLowerCase().trim();
     setState(() {
       if (query.isEmpty) {
@@ -177,34 +201,13 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
               s.stateName.toLowerCase().contains(query);
         }).toList();
       }
-      _applySort();
     });
-  }
-
-  void _applySort() {
-    switch (_sortOption) {
-      case SubsidySort.titleAsc:
-        _filteredSubsidies.sort((a, b) => a.title.compareTo(b.title));
-        break;
-      case SubsidySort.titleDesc:
-        _filteredSubsidies.sort((a, b) => b.title.compareTo(a.title));
-        break;
-      case SubsidySort.stateAsc:
-        _filteredSubsidies.sort((a, b) => a.stateName.compareTo(b.stateName));
-        break;
-      case SubsidySort.stateDesc:
-        _filteredSubsidies.sort((a, b) => b.stateName.compareTo(a.stateName));
-        break;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final languageService = Provider.of<LanguageService>(
-      context,
-      listen: false,
-    );
     return Scaffold(
+      backgroundColor: AppColors.backgroundColor,
       appBar: AppBar(
         title: SmartReTranslator(
           text: 'Subsidy',
@@ -215,7 +218,6 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
         elevation: 8,
         shadowColor: AppColors.shadowColor,
       ),
-      backgroundColor: const Color(0xFFF8F4F9),
       body: _hasError
           ? Center(
               child: Column(
@@ -224,8 +226,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
                   const Icon(Icons.wifi_off, size: 80, color: Colors.grey),
                   const SizedBox(height: 16),
                   SmartReTranslator(
-                    text:
-                        'Please connect to the internet and try again.',
+                    text: 'Please connect to the internet and try again.',
                     style: const TextStyle(color: Colors.grey, fontSize: 16),
                     textAlign: TextAlign.center,
                   ),
@@ -233,7 +234,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
                   ElevatedButton.icon(
                     icon: const Icon(Icons.refresh),
                     label: SmartReTranslator(
-                      text: 'Reload]',
+                      text: 'Reload',
                       style: const TextStyle(),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -271,108 +272,60 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
                     ),
                   );
                 } else {
-                  return Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 2),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  SmartReTranslator(
-                                    text:
-                                        'Search by title or state',
-                                    style: const TextStyle(
-                                      color: AppColors.primaryGreen,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  TextField(
-                                    controller: _searchController,
-                                    decoration: InputDecoration(
-                                      prefixIcon: Icon(
-                                        Icons.search,
-                                        color: AppColors.primaryGreen,
-                                      ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            vertical: 0,
-                                            horizontal: 14,
-                                          ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                    ),
-                                  ),
-                                ],
+                  return CustomScrollView(
+                    controller: _scrollController,
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SmartReTranslator(
+                                text: 'Search by title or state',
+                                style: const TextStyle(
+                                  color: AppColors.primaryGreen,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            DropdownButton<SubsidySort>(
-                              value: _sortOption,
-                              style: TextStyle(color: AppColors.primaryGreen),
-                              icon: const Icon(Icons.sort, color: Colors.grey),
-                              underline: const SizedBox(),
-                              borderRadius: BorderRadius.circular(10),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setState(() {
-                                    _sortOption = val;
-                                    _applySort();
-                                  });
-                                }
-                              },
-                              items: [
-                                DropdownMenuItem(
-                                  value: SubsidySort.titleAsc,
-                                  child: SmartReTranslator(
-                                    text: 'Title A-Z',
+                              const SizedBox(height: 4),
+                              TextField(
+                                controller: _searchController,
+                                decoration: InputDecoration(
+                                  prefixIcon: Icon(
+                                    Icons.search,
+                                    color: AppColors.primaryGreen,
                                   ),
-                                ),
-                                DropdownMenuItem(
-                                  value: SubsidySort.titleDesc,
-                                  child: SmartReTranslator(
-                                    text: 'Title Z-A',
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 0,
+                                    horizontal: 14,
                                   ),
-                                ),
-                                DropdownMenuItem(
-                                  value: SubsidySort.stateAsc,
-                                  child: SmartReTranslator(
-                                    text: 'State A-Z',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
+                                  filled: true,
+                                  fillColor: Colors.white,
                                 ),
-                                DropdownMenuItem(
-                                  value: SubsidySort.stateDesc,
-                                  child: SmartReTranslator(
-                                    text: 'State Z-A',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Expanded(
-                        child: ListView.separated(
-                          padding: EdgeInsets.zero,
-                          itemCount: _filteredSubsidies.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 4),
-                          itemBuilder: (context, index) {
-                            final subsidy = _filteredSubsidies[index];
-                            return Card(
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final subsidy = _filteredSubsidies[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 0,
+                              vertical: 4,
+                            ),
+                            child: Card(
+                              key: ValueKey(
+                                subsidy.id,
+                              ), // Added key for proper updates
                               color: Colors.white,
                               elevation: 3,
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
                               shadowColor: AppColors.primaryGreen.withOpacity(
                                 0.13,
                               ),
@@ -414,15 +367,22 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
                                   );
                                 },
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        }, childCount: _filteredSubsidies.length),
                       ),
                     ],
                   );
                 }
               },
             ),
+      floatingActionButton: _showScrollToTop
+          ? FloatingActionButton(
+              onPressed: _scrollToTop,
+              backgroundColor: AppColors.primaryGreen,
+              child: const Icon(Icons.arrow_upward, color: Colors.white),
+            )
+          : null,
     );
   }
 }
@@ -437,7 +397,7 @@ class SubsidyDetailScreen extends StatelessWidget {
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Open Link]'),
+            title: const Text('Open Link'),
             content: const Text(
               'Do you want to open the link in your browser?',
             ),
@@ -451,6 +411,7 @@ class SubsidyDetailScreen extends StatelessWidget {
                 child: const Text('Open'),
               ),
             ],
+            backgroundColor: AppColors.appBarBackground,
           ),
         ) ??
         false;
@@ -466,10 +427,6 @@ class SubsidyDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final languageService = Provider.of<LanguageService>(
-      context,
-      listen: false,
-    );
     final descriptionText = subsidy.description.replaceAll(r'\n', '\n');
 
     return Scaffold(
@@ -486,7 +443,7 @@ class SubsidyDetailScreen extends StatelessWidget {
         elevation: 8,
         shadowColor: AppColors.shadowColor,
       ),
-      backgroundColor: const Color(0xFFF8F4F9),
+      backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(

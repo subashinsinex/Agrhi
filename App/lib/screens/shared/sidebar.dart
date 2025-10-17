@@ -11,6 +11,7 @@ class AppSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Drawer(
       elevation: 16,
+      backgroundColor: AppColors.backgroundColor,
       child: Column(
         children: [
           // Header with gradient and logo

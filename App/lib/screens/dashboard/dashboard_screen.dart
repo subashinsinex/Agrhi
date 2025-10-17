@@ -51,7 +51,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     final keys = {
-      'myDetails': 'My Details',
+      'Profile': 'Profile',
       'johnDoe': 'John Doe',
       'plotArea': 'Plot area',
       'acres': 'acres',
@@ -90,7 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _onProfileTap() {
     _navigateToFeature(
-      translatedTexts['myDetails'] ?? 'My Details',
+      translatedTexts['Profile'] ?? 'Profile',
       Icons.person,
     );
   }
@@ -193,6 +193,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       drawer: const AppSidebar(),
       drawerEnableOpenDragGesture: true,
       drawerEdgeDragWidth: 120,
+      backgroundColor: AppColors.backgroundColor,
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
         child: Padding(
@@ -206,7 +207,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Text(
-                    translatedTexts['myDetails'] ?? 'My Details',
+                    translatedTexts['Profile'] ?? 'Profile',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w400,

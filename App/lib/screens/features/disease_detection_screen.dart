@@ -989,6 +989,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       appBar: CustomAppBar(
         title: translatedTexts['diseaseDetection'] ?? 'Disease Detection',
       ),
+      backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(

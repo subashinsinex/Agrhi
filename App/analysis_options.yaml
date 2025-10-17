@@ -6,3 +6,5 @@ analyzer:
     avoid_print: ignore
     control_flow_in_finally: ignore
     unused_element: ignore
+    empty_catches: ignore
+    use_build_context_synchronously: ignore
