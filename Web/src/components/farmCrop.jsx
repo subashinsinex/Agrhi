@@ -1,1215 +1,1195 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { SERVER_IP } from "../constant";
+// Icons for better visual appeal
 import {
-  Search,
-  Plus,
-  Trash2,
-  Edit,
-  X,
-  Layers,
-  Droplet,
-  MapPin,
-  Zap,
-  Leaf,
-  Users,
-  Maximize,
-} from "lucide-react";
-// Removed unused 'Calendar' import to clear ESLint warning.
+  FaSeedling,
+  FaHome,
+  FaPlus,
+  FaPen,
+  FaEye,
+  FaTimes,
+  FaSave,
+  FaLandmark,
+  FaMapMarkerAlt,
+  FaTint,
+  FaSun,
+  FaFlask,
+} from "react-icons/fa";
 
-// FIX: Since '../constant' could not be resolved, we will define a placeholder IP here.
-// You MUST replace 'localhost' with your actual server IP address before deployment.
-const SERVER_IP = "localhost";
+// --- STYLE DEFINITIONS (Refined for professional look and animations) ---
+const PRIMARY_PURPLE = "#6c5ce7";
+const PRIMARY_DARK = "#130f40";
+const ACCENT_GREEN = "#2ecc71";
+const BG_LIGHT = "#f5f7fa";
+const TEXT_MUTED = "#666";
+const BORDER_COLOR = "#e0e0e0";
 
-// --- API Configuration ---
-// Note: apiBase is constructed using the defined SERVER_IP
-const apiBase = `http://${SERVER_IP}:5000/api/farmcrop`;
+const style = {
+  pageContainer: {
+    padding: "40px 20px",
+    background: BG_LIGHT,
+    minHeight: "100vh",
+    fontFamily: "'Inter', Arial, sans-serif",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  contentWrapper: { width: "100%", maxWidth: 1200 },
+  pageTitle: {
+    fontWeight: 800,
+    color: PRIMARY_DARK,
+    marginBottom: "2rem",
+    fontSize: "2.5rem",
+    display: "flex",
+    alignItems: "center",
+    gap: "15px",
+  },
+  farmCard: {
+    background: "#fff",
+    borderRadius: 16,
+    boxShadow: "0 10px 40px rgba(0, 0, 0, 0.08)",
+    margin: "2rem 0",
+    padding: "2.5rem",
+    width: "100%",
+    transition: "transform 0.3s ease-in-out", // Animation
+    "&:hover": { transform: "translateY(-5px)" },
+  },
+  cropCard: {
+    background: "#ffffff",
+    borderRadius: 10,
+    margin: "0.75rem 0",
+    padding: "1.5rem",
+    borderLeft: `5px solid ${ACCENT_GREEN}`,
+    fontSize: "0.95rem",
+    boxShadow: "0 2px 10px rgba(0, 0, 0, 0.05)",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+    gap: "10px 30px",
+    transition: "all 0.3s", // Animation
+    "&:hover": { borderLeftColor: PRIMARY_PURPLE, background: "#f9faff" },
+  },
+  addEditFormCard: {
+    // Unified style for add/edit forms
+    background: "#fff",
+    borderRadius: 12,
+    boxShadow: "0 6px 20px rgba(0, 0, 0, 0.05)",
+    margin: "1.5rem 0",
+    padding: "2rem",
+    borderTop: `5px solid ${PRIMARY_PURPLE}`,
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+    gap: "20px",
+  },
+  formField: {
+    padding: 14,
+    borderRadius: 10,
+    border: `1px solid ${BORDER_COLOR}`,
+    fontSize: "1rem",
+    width: "100%",
+    boxSizing: "border-box",
+    transition: "border-color 0.3s, box-shadow 0.3s", // Animation
+    "&:focus": {
+      borderColor: PRIMARY_PURPLE,
+      boxShadow: "0 0 0 3px rgba(108, 92, 231, 0.1)",
+    },
+  },
+  primaryButton: {
+    background: PRIMARY_PURPLE,
+    color: "#fff",
+    padding: "1rem 2.5rem",
+    borderRadius: 10,
+    border: "none",
+    fontWeight: 700,
+    fontSize: "1.1rem",
+    cursor: "pointer",
+    marginBottom: "1.5rem",
+    boxShadow: "0 6px 20px rgba(108, 92, 231, 0.3)",
+    transition: "background 0.3s, transform 0.1s", // Animation
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    "&:hover": { background: PRIMARY_DARK, transform: "translateY(-1px)" },
+    "&:active": { transform: "translateY(0)" },
+  },
+  submitButton: {
+    background: ACCENT_GREEN,
+    color: "#fff",
+    fontWeight: 700,
+    border: "none",
+    cursor: "pointer",
+    padding: 14,
+    borderRadius: 10,
+    fontSize: "1rem",
+    width: "100%",
+    boxSizing: "border-box",
+    gridColumn: "span 1",
+    transition: "background 0.3s", // Animation
+    "&:hover": { background: "#27ae60" },
+  },
+  cancelButton: {
+    background: BORDER_COLOR,
+    color: PRIMARY_DARK,
+    fontWeight: 600,
+    border: "none",
+    cursor: "pointer",
+    padding: 14,
+    borderRadius: 10,
+    fontSize: "1rem",
+    width: "100%",
+    boxSizing: "border-box",
+    gridColumn: "span 1",
+    transition: "background 0.3s", // Animation
+    "&:hover": { background: "#ccc" },
+  },
+  secondaryButtonBase: {
+    background: "#fff",
+    color: PRIMARY_PURPLE,
+    border: `1px solid ${PRIMARY_PURPLE}`,
+    fontWeight: 600,
+    padding: "0.8rem 1.2rem",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontSize: "0.9rem",
+    transition: "all 0.3s", // Animation
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    "&:hover": {
+      background: PRIMARY_PURPLE,
+      color: "#fff",
+      boxShadow: "0 2px 10px rgba(108, 92, 231, 0.2)",
+    },
+  },
+  farmHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: "1.5rem",
+    borderBottom: `1px solid ${BORDER_COLOR}`,
+    flexWrap: "wrap",
+    gap: "20px",
+  },
+  farmOwnerName: {
+    margin: "0 0 4px 0",
+    fontWeight: 700,
+    color: PRIMARY_DARK,
+    fontSize: "2rem",
+  },
+  farmIdLabel: { color: TEXT_MUTED, fontSize: "1rem", fontWeight: 500 },
+  actionButtons: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  farmDetailsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: "20px 40px",
+    marginTop: "2rem",
+    fontSize: "1rem",
+    color: TEXT_MUTED,
+  },
+  detailItem: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "center",
+  },
+  boldDetail: {
+    color: PRIMARY_DARK,
+    fontWeight: 600,
+    fontSize: "1.05rem",
+  },
+  cropHistoryTitle: {
+    margin: "0 0 1.5rem 0",
+    color: PRIMARY_DARK,
+    fontWeight: 700,
+    fontSize: "1.8rem",
+    paddingTop: "2rem",
+    borderTop: `1px solid ${BORDER_COLOR}`,
+    marginTop: "2.5rem",
+  },
+  errorMsgBox: {
+    color: "#a00000",
+    background: "#ffeded",
+    border: "1px solid #e74c3c",
+    padding: "1rem",
+    borderRadius: 8,
+    marginTop: "1.5rem",
+    fontWeight: 500,
+    gridColumn: "1 / -1", // Span all columns in the grid
+  },
+  successMsg: {
+    color: ACCENT_GREEN,
+    background: "#e9fff4",
+    border: `1px solid ${ACCENT_GREEN}`,
+    padding: "1rem",
+    marginTop: "1.5rem",
+    borderRadius: 8,
+    fontWeight: 500,
+    gridColumn: "1 / -1",
+  },
+  // New: Icon style for details
+  detailIcon: {
+    color: PRIMARY_PURPLE,
+    minWidth: "20px",
+  },
+};
 
-// --- Initial State Templates ---
+// --- FORM MODELS (unchanged) ---
 const initialFarmForm = {
-  farm_id: "",
-  owner_name: "", // For display/lookup
+  user_id: "",
   farm_size: "",
   survey_number: "",
   pincode: "",
   soil_type_id: "",
   irrigation_id: "",
-  water_source_id: "",
+  water_src_id: "",
 };
 
 const initialCropForm = {
-  crop_id: "",
-  farm_id: "", // Populated by the selected farm
-  crop_type_id: "",
-  plant_id: "",
-  sowing_date: "",
-  expected_harvest_date: "",
+  farm_id: "",
+  plant_name: "",
+  planting_date: "",
+  harvest_date: "",
+  field_size: "",
+  water_requirement: "",
+  status: "",
+  isactive: true,
+  // soil_type_id is not in initialCropForm but is used in the form/logic.
+  // We'll rely on its use in the openAddCrop/submitAddCrop logic.
 };
 
-// Helper component for displaying confirmation message (simulating alert/confirm replacement)
-const CustomModal = ({ title, children, isOpen, onClose, actions }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="modal-overlay">
-      <div className="modal-content">
-        <div className="modal-header">
-          <h3 className="modal-title">{title}</h3>
-          <button onClick={onClose} className="close-btn">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-        {actions && <div className="modal-actions">{actions}</div>}
-      </div>
-    </div>
-  );
-};
+const apiBase = `http://${SERVER_IP}:5000/api/farmcrop`;
 
 const FarmCrop = () => {
-  // --- Main Data States ---
   const [farms, setFarms] = useState([]);
   const [crops, setCrops] = useState([]);
-  const [lookups, setLookups] = useState({}); // Stores all dropdown data
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [soilTypes, setSoilTypes] = useState([]);
+  const [irrigations, setIrrigations] = useState([]);
+  const [waterSources, setWaterSources] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  // ADD AND EDIT STATE
+  const [farmForm, setFarmForm] = useState(initialFarmForm);
+  const [cropForm, setCropForm] = useState(initialCropForm);
+  const [showAddFarm, setShowAddFarm] = useState(false);
+  const [showAddCrop, setShowAddCrop] = useState(null);
+  const [showCropsForFarm, setShowCropsForFarm] = useState(null);
 
-  // --- UI States ---
-  const [selectedFarmId, setSelectedFarmId] = useState(null);
-  const [isFarmFormOpen, setIsFarmFormOpen] = useState(false);
-  const [isCropFormOpen, setIsCropFormOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [currentFarmForm, setCurrentFarmForm] = useState(initialFarmForm);
-  const [currentCropForm, setCurrentCropForm] = useState(initialCropForm);
-  const [formType, setFormType] = useState(null); // 'farm' or 'crop'
-  const [isEditing, setIsEditing] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  // EDIT STATE
+  const [showEditFarm, setShowEditFarm] = useState(null);
+  const [editFarmForm, setEditFarmForm] = useState(initialFarmForm);
+  const [showEditCrop, setShowEditCrop] = useState(null);
+  const [editCropForm, setEditCropForm] = useState(initialCropForm);
 
-  // --- Data Fetching Logic (CRUD operations assumed for Farm/Crop) ---
+  // STATUS/ERRORS
+  const [farmStatusMsg, setFarmStatusMsg] = useState("");
+  const [farmErrorMsg, setFarmErrorMsg] = useState("");
+  const [cropStatusMsg, setCropStatusMsg] = useState("");
+  const [cropErrorMsg, setCropErrorMsg] = useState("");
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage("");
-    try {
-      // 1. Fetch Farms
-      const farmResponse = await axios.get(`${apiBase}/farms`);
-      setFarms(farmResponse.data);
-
-      // 2. Fetch Crops
-      const cropResponse = await axios.get(`${apiBase}/crops`);
-      setCrops(cropResponse.data);
-
-      // 3. Fetch Lookup Data (Explicitly fetching all required lookup lists)
-      const lookupEndpoints = [
-        "soilTypes",
-        "irrigations",
-        "waterSources",
-        "cropTypes",
-        "plants",
-      ];
-
-      const lookupPromises = lookupEndpoints.map((endpoint) =>
-        // Note: The endpoint path is lowercased, but the key saved is as defined above.
-        axios
-          .get(`${apiBase}/${endpoint.toLowerCase()}`)
-          .then((res) => ({ key: endpoint, data: res.data }))
-      );
-
-      const lookupResults = await Promise.all(lookupPromises);
-
-      const newLookups = lookupResults.reduce((acc, current) => {
-        acc[current.key] = current.data;
-        return acc;
-      }, {});
-
-      setLookups(newLookups);
-
-      // Select the first farm by default if data exists
-      if (farmResponse.data.length > 0) {
-        setSelectedFarmId(farmResponse.data[0].farm_id);
-      }
-    } catch (error) {
-      console.error("Error fetching data:", error.message || error);
-      setErrorMessage(
-        "Failed to load application data. Check backend status and console. The configured IP is: " +
-          SERVER_IP
-      );
-    } finally {
-      setIsLoading(false);
+  // --- DATA FETCH (unchanged logic) ---
+  const fetchData = () => {
+    const access_token = localStorage.getItem("access_token");
+    if (!access_token) {
+      setErrorMsg("Authentication: access_token missing.");
+      setLoading(false);
+      return;
     }
-  }, []);
+    setLoading(true);
+    Promise.all([
+      axios.get(`${apiBase}/farms`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+      }),
+      axios.get(`${apiBase}/crops`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+      }),
+    ])
+      .then(([farmRes, cropRes]) => {
+        setFarms(farmRes.data ?? []);
+        setCrops(cropRes.data ?? []);
+      })
+      .catch((err) =>
+        setErrorMsg(
+          "Error loading farms/crops: " +
+            (err.response?.data?.message || err.message)
+        )
+      )
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, []);
 
-  // --- Form & Modal Handlers ---
+  // --- MASTER TABLES (unchanged logic) ---
+  useEffect(() => {
+    if (showAddFarm || showEditFarm || showAddCrop || showEditCrop) {
+      const access_token = localStorage.getItem("access_token");
+      const headers = { Authorization: `Bearer ${access_token}` };
+      // Helper to fetch masters and handle errors silently
+      const fetchMaster = (endpoint, setter) => {
+        axios
+          .get(`${apiBase}/masters/${endpoint}`, { headers })
+          .then((res) => setter(res.data))
+          .catch(() => setter([]));
+      };
 
-  const handleOpenFarmForm = (farm = null) => {
-    if (farm) {
-      setCurrentFarmForm(farm);
-      setIsEditing(true);
-    } else {
-      setCurrentFarmForm(initialFarmForm);
-      setIsEditing(false);
+      fetchMaster("soiltypes", setSoilTypes);
+      fetchMaster("irrigations", setIrrigations);
+      fetchMaster("watersources", setWaterSources);
     }
-    setFormType("farm");
-    setIsFarmFormOpen(true);
-  };
+  }, [showAddFarm, showEditFarm, showAddCrop, showEditCrop]);
 
-  const handleOpenCropForm = (crop = null) => {
-    if (!selectedFarmId) {
-      setErrorMessage("Please select a farm before adding a crop.");
-      return;
-    }
-    if (crop) {
-      setCurrentCropForm(crop);
-      setIsEditing(true);
-    } else {
-      setCurrentCropForm({ ...initialCropForm, farm_id: selectedFarmId });
-      setIsEditing(false);
-    }
-    setFormType("crop");
-    setIsCropFormOpen(true);
-  };
+  // --- FARMS AND CROPS (unchanged logic) ---
+  const cropsForFarm = (farm_id) =>
+    crops.filter((crop) => String(crop.farm_id) === String(farm_id));
 
-  const handleCloseForm = () => {
-    setIsFarmFormOpen(false);
-    setIsCropFormOpen(false);
-    setCurrentFarmForm(initialFarmForm);
-    setCurrentCropForm(initialCropForm);
-    setFormType(null);
-    setErrorMessage(""); // Clear error on close
+  // --- ADD (unchanged logic) ---
+  const openAddFarm = () => {
+    setFarmForm(initialFarmForm);
+    setShowAddFarm(true);
+    setFarmStatusMsg("");
+    setFarmErrorMsg("");
   };
-
-  const handleFormChange = (e, formType) => {
-    const { name, value } = e.target;
-    if (formType === "farm") {
-      setCurrentFarmForm((prev) => ({ ...prev, [name]: value }));
-    } else {
-      setCurrentCropForm((prev) => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const handleSave = async (e) => {
+  const closeAddFarm = () => setShowAddFarm(false);
+  const handleFarmInput = (e) =>
+    setFarmForm({ ...farmForm, [e.target.name]: e.target.value });
+  const submitAddFarm = async (e) => {
     e.preventDefault();
-    setErrorMessage("");
-
-    let dataToSave;
-    let endpoint;
-
-    if (formType === "farm") {
-      dataToSave = currentFarmForm;
-      endpoint = `${apiBase}/farms`;
-      // Simple validation example
-      if (
-        !dataToSave.owner_name ||
-        !dataToSave.farm_size ||
-        !dataToSave.soil_type_id
-      ) {
-        setErrorMessage("Please fill out all required farm fields.");
-        return;
-      }
-    } else if (formType === "crop") {
-      dataToSave = currentCropForm;
-      endpoint = `${apiBase}/crops`;
-      // Simple validation example
-      if (
-        !dataToSave.plant_id ||
-        !dataToSave.sowing_date ||
-        !dataToSave.expected_harvest_date
-      ) {
-        setErrorMessage("Please fill out all required crop fields.");
-        return;
-      }
-    } else {
-      return;
-    }
-
+    setFarmStatusMsg("");
+    setFarmErrorMsg("");
     try {
-      if (isEditing) {
-        // UPDATE
-        await axios.put(
-          `${endpoint}/${
-            formType === "farm" ? dataToSave.farm_id : dataToSave.crop_id
-          }`,
-          dataToSave
-        );
-      } else {
-        // CREATE
-        await axios.post(endpoint, dataToSave);
-      }
-      handleCloseForm();
-      fetchData(); // Refresh data
-    } catch (error) {
-      console.error(`Error saving ${formType}:`, error.response?.data || error);
-      setErrorMessage(`Failed to save ${formType}. Try again.`);
+      const access_token = localStorage.getItem("access_token");
+      await axios.post(`${apiBase}/addfarms`, farmForm, {
+        headers: { Authorization: `Bearer ${access_token}` },
+      });
+      setFarmStatusMsg("Farm added successfully!");
+      setShowAddFarm(false); // Close form on success
+      setFarmForm(initialFarmForm);
+      fetchData();
+    } catch (err) {
+      setFarmErrorMsg(err.response?.data?.message || err.message);
     }
   };
 
-  const [itemToDelete, setItemToDelete] = useState(null); // {type: 'farm'/'crop', id: '...'}
-
-  const handleDelete = (type, id) => {
-    setItemToDelete({ type, id });
-    setIsDeleteModalOpen(true);
+  const openAddCrop = (farm_id) => {
+    // CRITICAL: Need to clear soil_type_id in initialCropForm so the select shows the placeholder
+    setCropForm({ ...initialCropForm, farm_id, soil_type_id: "" });
+    setShowAddCrop(farm_id);
+    setCropStatusMsg("");
+    setCropErrorMsg("");
   };
-
-  const handleConfirmDelete = async () => {
-    if (!itemToDelete) return;
-    setErrorMessage("");
-
-    const { type, id } = itemToDelete;
-    const endpoint = `${apiBase}/${type}s/${id}`;
-
+  const closeAddCrop = () => setShowAddCrop(null);
+  const handleCropInput = (e) =>
+    setCropForm({ ...cropForm, [e.target.name]: e.target.value });
+  const submitAddCrop = async (e) => {
+    e.preventDefault();
+    setCropStatusMsg("");
+    setCropErrorMsg("");
     try {
-      await axios.delete(endpoint);
-      setIsDeleteModalOpen(false);
-      fetchData(); // Refresh data
-      // If deleting the selected farm, reset selection
-      if (type === "farm" && id === selectedFarmId) {
-        setSelectedFarmId(null);
-      }
-    } catch (error) {
-      console.error(`Error deleting ${type}:`, error.response?.data || error);
-      setErrorMessage(`Failed to delete ${type}. Try again.`);
-      setIsDeleteModalOpen(false);
+      const access_token = localStorage.getItem("access_token");
+      // RESOLVE SOIL TYPE NAME FOR ADD
+      const soilTypeName =
+        soilTypes.find(
+          (type) => String(type.soil_type_id) === String(cropForm.soil_type_id)
+        )?.name || "";
+      await axios.post(
+        `${apiBase}/addcrops`,
+        { ...cropForm, soil_type_name: soilTypeName },
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+        }
+      );
+      setCropStatusMsg("Crop added successfully!");
+      setShowAddCrop(null);
+      setCropForm(initialCropForm);
+      fetchData();
+    } catch (err) {
+      setCropErrorMsg(err.response?.data?.message || err.message);
     }
   };
 
-  // --- Computed/Filtered Data ---
-
-  const selectedFarm = useMemo(() => {
-    return farms.find((f) => f.farm_id === selectedFarmId);
-  }, [farms, selectedFarmId]);
-
-  // FIX: Added (farm.owner_name || "") to handle cases where owner_name is null/undefined,
-  // preventing the TypeError: Cannot read properties of null (reading 'toLowerCase').
-  const filteredFarms = useMemo(() => {
-    return farms.filter((farm) =>
-      (farm.owner_name || "").toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [farms, searchTerm]);
-
-  const cropsForSelectedFarm = useMemo(() => {
-    return crops.filter((crop) => crop.farm_id === selectedFarmId);
-  }, [crops, selectedFarmId]);
-
-  // --- Lookup Helpers ---
-
-  const getLookupName = (type, id) => {
-    const list = lookups[type] || [];
-    const item = list.find((i) => i.id === id);
-    return item ? item.name : "N/A";
+  // --- EDIT FARMS (unchanged logic) ---
+  const openEditFarm = (farm) => {
+    // Ensure IDs are strings for select value matching
+    setEditFarmForm({
+      ...farm,
+      farm_size: farm.farm_size || "",
+      survey_number: farm.survey_number || "",
+      pincode: farm.pincode || "",
+      soil_type_id: String(farm.soil_type_id || ""),
+      irrigation_id: String(farm.irrigation_id || ""),
+      water_src_id: String(farm.water_src_id || ""),
+    });
+    setShowEditFarm(farm.farm_id);
+    setFarmStatusMsg("");
+    setFarmErrorMsg("");
+  };
+  const closeEditFarm = () => setShowEditFarm(null);
+  const handleEditFarmInput = (e) =>
+    setEditFarmForm({ ...editFarmForm, [e.target.name]: e.target.value });
+  const submitEditFarm = async (e) => {
+    e.preventDefault();
+    setFarmStatusMsg("");
+    setFarmErrorMsg("");
+    try {
+      const access_token = localStorage.getItem("access_token");
+      await axios.put(
+        `${apiBase}/updatefarms/${editFarmForm.farm_id}`,
+        editFarmForm,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+        }
+      );
+      setFarmStatusMsg("Farm updated successfully!");
+      closeEditFarm();
+      fetchData();
+    } catch (err) {
+      setFarmErrorMsg(err.response?.data?.message || err.message);
+    }
   };
 
-  // --- Component Render ---
+  // --- EDIT CROPS (CRITICAL FIX applied: Set correct soil_type_id in openEditCrop) ---
+  const openEditCrop = (crop) => {
+    setCropStatusMsg(""); // Clear status for edit form
+    setCropErrorMsg(""); // Clear error for edit form
+    let resolvedSoilTypeId = crop.soil_type_id;
 
-  if (isLoading) {
-    return <div className="loading-state">Loading farm data...</div>;
-  }
+    // Fallback: If soil_type_id is null/undefined but soil_type_name exists, try to find the ID
+    if (!resolvedSoilTypeId && crop.soil_type_name) {
+      const match = soilTypes.find((type) => type.name === crop.soil_type_name);
+      if (match) resolvedSoilTypeId = match.soil_type_id;
+    }
 
-  // Injecting standard CSS styles directly into the component
-  const styles = (
-    <style>
-      {`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
-        /* --- Base & Utility --- */
-        :root {
-          --color-primary: #10b981; /* Emerald-500 */
-          --color-primary-dark: #059669; /* Emerald-600 */
-          --color-secondary: #f9fafb; /* Gray-50 */
-          --color-text-dark: #1f2937; /* Gray-800 */
-          --color-text-light: #ffffff;
-          --color-danger: #ef4444; /* Red-500 */
-          --color-border: #e5e7eb; /* Gray-200 */
-          --color-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-        }
+    // Ensure date fields are in "YYYY-MM-DD" format for input type="date"
+    const formatDate = (dateString) => {
+      if (!dateString) return "";
+      try {
+        return new Date(dateString).toISOString().split("T")[0];
+      } catch {
+        return "";
+      }
+    };
 
-        .app-container {
-          font-family: 'Inter', sans-serif;
-          min-height: 100vh;
-          background-color: var(--color-secondary);
-          color: var(--color-text-dark);
-          padding: 20px;
-        }
+    setEditCropForm({
+      ...crop,
+      // Ensure the value is a string for the select field
+      soil_type_id: String(
+        resolvedSoilTypeId || (soilTypes[0]?.soil_type_id ?? "")
+      ),
+      planting_date: formatDate(crop.planting_date),
+      harvest_date: formatDate(crop.harvest_date),
+    });
+    setShowEditCrop(crop.user_crop_id);
+  };
+  const closeEditCrop = () => setShowEditCrop(null);
+  const handleEditCropInput = (e) =>
+    setEditCropForm({ ...editCropForm, [e.target.name]: e.target.value });
+  const submitEditCrop = async (e) => {
+    e.preventDefault();
+    setCropStatusMsg("");
+    setCropErrorMsg("");
+    try {
+      const access_token = localStorage.getItem("access_token");
+      // CRITICAL: always resolve soil_type_name
+      const soilTypeName =
+        soilTypes.find(
+          (type) =>
+            String(type.soil_type_id) === String(editCropForm.soil_type_id)
+        )?.name || "";
+      const payload = { ...editCropForm, soil_type_name: soilTypeName };
+      await axios.put(
+        `${apiBase}/updatecrops/${editCropForm.user_crop_id}`,
+        payload,
+        { headers: { Authorization: `Bearer ${access_token}` } }
+      );
+      setCropStatusMsg("Crop updated successfully!");
+      closeEditCrop();
+      fetchData();
+    } catch (err) {
+      setCropErrorMsg(err.response?.data?.message || err.message);
+    }
+  };
 
-        /* --- Header --- */
-        .header-bar {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          padding: 15px 20px;
-          background-color: var(--color-text-light);
-          border-radius: 12px;
-          box-shadow: var(--color-shadow);
-        }
-        
-        .header-title {
-          font-size: 1.5rem;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .search-bar {
-          display: flex;
-          align-items: center;
-          border: 1px solid var(--color-border);
-          border-radius: 8px;
-          padding: 8px 12px;
-          background-color: #fff;
-          width: 300px; /* Default desktop size */
-        }
-        
-        .search-bar input {
-          border: none;
-          outline: none;
-          flex-grow: 1;
-          margin-left: 10px;
-          font-size: 1rem;
-          color: var(--color-text-dark);
-        }
-
-        /* --- Buttons --- */
-        .btn {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          padding: 10px 15px;
-          border-radius: 8px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: background-color 0.2s, box-shadow 0.2s;
-          border: none;
-        }
-
-        .btn-primary {
-          background-color: var(--color-primary);
-          color: var(--color-text-light);
-          box-shadow: 0 2px 4px rgba(16, 185, 129, 0.4);
-        }
-
-        .btn-primary:hover {
-          background-color: var(--color-primary-dark);
-        }
-
-        .btn-secondary {
-          background-color: var(--color-border);
-          color: var(--color-text-dark);
-        }
-        .btn-secondary:hover {
-          background-color: #d1d5db; /* Gray-300 */
-        }
-
-        .action-icon-btn {
-          background: none;
-          border: none;
-          cursor: pointer;
-          padding: 5px;
-          border-radius: 4px;
-          transition: background-color 0.15s;
-          color: #4b5563; /* Gray-600 */
-        }
-        .action-icon-btn:hover {
-          background-color: var(--color-border);
-        }
-        .action-icon-btn.delete {
-          color: var(--color-danger);
-        }
-        .action-icon-btn.delete:hover {
-          background-color: #fee2e2; /* Red-100 */
-        }
-        .action-icon-btn.edit {
-          color: #2563eb; /* Blue-600 */
-        }
-        .action-icon-btn.edit:hover {
-          background-color: #eff6ff; /* Blue-50 */
-        }
-        
-        /* --- Layout --- */
-        .main-layout {
-          display: grid;
-          grid-template-columns: 1fr 3fr; /* Farm list on left, detail on right */
-          gap: 20px;
-        }
-
-        /* --- Farm List (Left Panel) --- */
-        .farm-list-panel {
-          background-color: var(--color-text-light);
-          border-radius: 12px;
-          box-shadow: var(--color-shadow);
-          padding: 20px;
-          min-height: 600px;
-        }
-        
-        .farm-list-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 15px;
-          padding-bottom: 10px;
-          border-bottom: 1px solid var(--color-border);
-        }
-
-        .farm-list-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 15px;
-          border-radius: 8px;
-          margin-bottom: 10px;
-          transition: background-color 0.2s, box-shadow 0.2s;
-          border: 1px solid transparent;
-        }
-        
-        .farm-list-item > div:first-child {
-            flex-grow: 1;
-            cursor: pointer;
-        }
-        
-        .farm-list-item:hover {
-          background-color: #f3f4f6; /* Gray-100 */
-        }
-
-        .farm-list-item.selected {
-          background-color: #d1fae5; /* Emerald-100 */
-          border-color: var(--color-primary);
-          box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2);
-        }
-
-        .farm-item-title {
-          font-weight: 600;
-          font-size: 1.1rem;
-          color: var(--color-primary-dark);
-        }
-
-        .farm-item-details {
-          display: flex;
-          justify-content: space-between;
-          margin-top: 5px;
-          font-size: 0.9rem;
-          color: #6b7280; /* Gray-500 */
-        }
-        
-        .farm-actions {
-          display: flex;
-          gap: 5px;
-          flex-shrink: 0;
-        }
-
-        /* --- Farm Detail & Crops (Right Panel) --- */
-        .detail-panel {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-        
-        .detail-card {
-          background-color: var(--color-text-light);
-          border-radius: 12px;
-          box-shadow: var(--color-shadow);
-          padding: 25px;
-        }
-        
-        .farm-details-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 20px;
-          margin-top: 15px;
-        }
-        
-        .detail-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px;
-          background-color: var(--color-secondary);
-          border-radius: 8px;
-        }
-        
-        .detail-label {
-          font-size: 0.85rem;
-          font-weight: 500;
-          color: #6b7280;
-        }
-        
-        .detail-value {
-          font-weight: 600;
-          color: var(--color-text-dark);
-        }
-
-        /* --- Crop Table --- */
-        .crop-table-container {
-          overflow-x: auto;
-          margin-top: 15px;
-        }
-        
-        .crop-table {
-          width: 100%;
-          border-collapse: collapse;
-          text-align: left;
-        }
-
-        .crop-table th, .crop-table td {
-          padding: 12px 15px;
-          border-bottom: 1px solid var(--color-border);
-        }
-
-        .crop-table th {
-          background-color: #f3f4f6; /* Gray-100 */
-          font-weight: 600;
-          font-size: 0.9rem;
-          color: #4b5563; /* Gray-600 */
-        }
-        
-        .crop-table tr:last-child td {
-          border-bottom: none;
-        }
-        
-        .crop-table tbody tr:hover {
-          background-color: #fafafb;
-        }
-
-        /* --- Modal (Form) Styles --- */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: rgba(0, 0, 0, 0.5);
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 1000;
-        }
-
-        .modal-content {
-          background-color: var(--color-text-light);
-          padding: 30px;
-          border-radius: 12px;
-          box-shadow: var(--color-shadow);
-          width: 90%;
-          max-width: 600px;
-          max-height: 90vh;
-          overflow-y: auto;
-          position: relative;
-        }
-
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          padding-bottom: 10px;
-          border-bottom: 1px solid var(--color-border);
-        }
-
-        .modal-title {
-          font-size: 1.25rem;
-          font-weight: 600;
-        }
-
-        .close-btn {
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: #6b7280;
-          transition: color 0.2s;
-        }
-        .close-btn:hover {
-          color: var(--color-text-dark);
-        }
-
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 20px;
-        }
-        
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 5px;
-        }
-        
-        .form-group label {
-          font-weight: 500;
-          font-size: 0.9rem;
-          color: #374151; /* Gray-700 */
-        }
-        
-        .form-group input, .form-group select {
-          padding: 10px;
-          border: 1px solid var(--color-border);
-          border-radius: 6px;
-          transition: border-color 0.2s;
-          font-size: 1rem;
-        }
-        
-        .form-group input:focus, .form-group select:focus {
-          border-color: var(--color-primary);
-          outline: none;
-          box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
-        }
-
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          margin-top: 25px;
-          padding-top: 15px;
-          border-top: 1px solid var(--color-border);
-        }
-        
-        .error-message {
-          color: var(--color-danger);
-          background-color: #fee2e2;
-          padding: 10px;
-          border-radius: 6px;
-          margin-bottom: 15px;
-          font-weight: 500;
-        }
-        
-        /* Specific Delete Modal Styles */
-        .delete-modal-content {
-          max-width: 400px;
-          text-align: center;
-        }
-        
-        .delete-modal-content .modal-body {
-          font-size: 1.1rem;
-          margin-bottom: 20px;
-        }
-        
-        .btn-delete-confirm {
-          background-color: var(--color-danger);
-          color: var(--color-text-light);
-        }
-        .btn-delete-confirm:hover {
-          background-color: #b91c1c; /* Red-700 */
-        }
-        
-        .loading-state, .empty-state {
-          padding: 40px;
-          text-align: center;
-          font-size: 1.2rem;
-          color: #6b7280;
-        }
-        
-        /* --- Mobile Responsiveness --- */
-        @media (max-width: 900px) {
-          .main-layout {
-            grid-template-columns: 1fr; /* Stack panels vertically */
-          }
-          
-          .farm-list-panel {
-            min-height: auto;
-          }
-          
-          .header-bar {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 15px;
-          }
-          
-          .search-bar {
-            width: 100%;
-          }
-          
-          .farm-list-header {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 10px;
-          }
-          
-          .farm-details-grid {
-             grid-template-columns: 1fr; /* Single column for details */
-          }
-          
-          .form-grid {
-             grid-template-columns: 1fr; /* Single column for forms */
-          }
-        }
-      `}
-    </style>
-  );
-
-  const FarmForm = () => (
-    <form onSubmit={handleSave}>
-      <div className="form-grid">
-        <div className="form-group">
-          <label htmlFor="owner_name">Owner Name</label>
-          <input
-            type="text"
-            id="owner_name"
-            name="owner_name"
-            value={currentFarmForm.owner_name}
-            onChange={(e) => handleFormChange(e, "farm")}
-            required
-            placeholder="John Doe"
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="farm_size">Farm Size (Acres)</label>
-          <input
-            type="number"
-            id="farm_size"
-            name="farm_size"
-            value={currentFarmForm.farm_size}
-            onChange={(e) => handleFormChange(e, "farm")}
-            required
-            placeholder="e.g., 10.5"
-            step="0.1"
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="survey_number">Survey Number</label>
-          <input
-            type="text"
-            id="survey_number"
-            name="survey_number"
-            value={currentFarmForm.survey_number}
-            onChange={(e) => handleFormChange(e, "farm")}
-            placeholder="e.g., K-45/A"
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="pincode">Pincode</label>
-          <input
-            type="text"
-            id="pincode"
-            name="pincode"
-            value={currentFarmForm.pincode}
-            onChange={(e) => handleFormChange(e, "farm")}
-            placeholder="e.g., 123456"
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="soil_type_id">Soil Type</label>
-          <select
-            id="soil_type_id"
-            name="soil_type_id"
-            value={currentFarmForm.soil_type_id}
-            onChange={(e) => handleFormChange(e, "farm")}
-            required
-          >
-            <option value="">Select Soil Type</option>
-            {(lookups.soilTypes || []).map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label htmlFor="irrigation_id">Irrigation Method</label>
-          <select
-            id="irrigation_id"
-            name="irrigation_id"
-            value={currentFarmForm.irrigation_id}
-            onChange={(e) => handleFormChange(e, "farm")}
-          >
-            <option value="">Select Irrigation</option>
-            {(lookups.irrigations || []).map((method) => (
-              <option key={method.id} value={method.id}>
-                {method.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label htmlFor="water_source_id">Water Source</label>
-          <select
-            id="water_source_id"
-            name="water_source_id"
-            value={currentFarmForm.water_source_id}
-            onChange={(e) => handleFormChange(e, "farm")}
-          >
-            <option value="">Select Water Source</option>
-            {(lookups.waterSources || []).map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-    </form>
-  );
-
-  const CropForm = () => (
-    <form onSubmit={handleSave}>
-      <div className="form-grid">
-        <div className="form-group">
-          <label htmlFor="crop_type_id">Crop Type</label>
-          <select
-            id="crop_type_id"
-            name="crop_type_id"
-            value={currentCropForm.crop_type_id}
-            onChange={(e) => handleFormChange(e, "crop")}
-            required
-          >
-            <option value="">Select Crop Type</option>
-            {(lookups.cropTypes || []).map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label htmlFor="plant_id">Plant Name</label>
-          <select
-            id="plant_id"
-            name="plant_id"
-            value={currentCropForm.plant_id}
-            onChange={(e) => handleFormChange(e, "crop")}
-            required
-          >
-            <option value="">Select Plant</option>
-            {(lookups.plants || []).map((plant) => (
-              <option key={plant.id} value={plant.id}>
-                {plant.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group">
-          <label htmlFor="sowing_date">Sowing Date</label>
-          <input
-            type="date"
-            id="sowing_date"
-            name="sowing_date"
-            value={currentCropForm.sowing_date}
-            onChange={(e) => handleFormChange(e, "crop")}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="expected_harvest_date">Expected Harvest Date</label>
-          <input
-            type="date"
-            id="expected_harvest_date"
-            name="expected_harvest_date"
-            value={currentCropForm.expected_harvest_date}
-            onChange={(e) => handleFormChange(e, "crop")}
-            required
-          />
-        </div>
-        <input
-          type="hidden"
-          name="farm_id"
-          value={currentCropForm.farm_id}
-          readOnly
-        />
-      </div>
-    </form>
-  );
-
+  // --- UI RENDER ---
   return (
-    <div className="app-container">
-      {styles}
-      <div className="header-bar">
-        <h1 className="header-title">
-          <Leaf size={30} color="#10b981" /> Farm & Crop Management
-        </h1>
-        <div className="search-bar">
-          <Search size={20} color="#6b7280" />
-          <input
-            type="text"
-            placeholder="Search farms by owner name..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+    <div style={style.pageContainer}>
+      <div style={style.contentWrapper}>
+        <div style={style.pageTitle}>
+          <FaSeedling size={40} color={PRIMARY_PURPLE} /> Farm Management
+          Dashboard
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => handleOpenFarmForm(null)}
-        >
-          <Plus size={20} /> New Farm
+        <button style={style.primaryButton} onClick={openAddFarm}>
+          <FaPlus /> Add New Farm
         </button>
-      </div>
 
-      {errorMessage && <div className="error-message">{errorMessage}</div>}
-
-      {farms.length === 0 && !isLoading ? (
-        <div className="empty-state">No farms found. Add your first farm!</div>
-      ) : (
-        <div className="main-layout">
-          {/* Farm List Panel */}
-          <div className="farm-list-panel">
-            <div className="farm-list-header">
-              <h2 style={{ fontSize: "1.2rem", fontWeight: 600 }}>Farm List</h2>
-              {filteredFarms.length > 0 && (
-                <span style={{ fontSize: "0.9rem", color: "#6b7280" }}>
-                  {filteredFarms.length} Farms
-                </span>
-              )}
-            </div>
-            {filteredFarms.map((farm) => (
-              <div
-                key={farm.farm_id}
-                className={`farm-list-item ${
-                  farm.farm_id === selectedFarmId ? "selected" : ""
-                }`}
+        {/* Add Farm Form */}
+        {showAddFarm && (
+          <form style={style.addEditFormCard} onSubmit={submitAddFarm}>
+            <input
+              name="user_id"
+              style={style.formField}
+              value={farmForm.user_id}
+              placeholder="🧑‍🌾 Farmer ID"
+              onChange={handleFarmInput}
+              required
+            />
+            <input
+              name="farm_size"
+              type="number"
+              style={style.formField}
+              value={farmForm.farm_size}
+              placeholder="📏 Farm Size (e.g., Acres)"
+              onChange={handleFarmInput}
+              required
+            />
+            <input
+              name="survey_number"
+              style={style.formField}
+              value={farmForm.survey_number}
+              placeholder="# Survey Number"
+              onChange={handleFarmInput}
+              required
+            />
+            <input
+              name="pincode"
+              type="text"
+              pattern="\d*" // Basic pattern for numbers
+              style={style.formField}
+              value={farmForm.pincode}
+              placeholder="📍 Pincode"
+              onChange={handleFarmInput}
+              required
+            />
+            <select
+              name="soil_type_id"
+              style={style.formField}
+              value={farmForm.soil_type_id}
+              onChange={handleFarmInput}
+              required
+            >
+              <option value="">🧪 Select Soil Type</option>
+              {soilTypes.map((type) => (
+                <option key={type.soil_type_id} value={type.soil_type_id}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+            <select
+              name="irrigation_id"
+              style={style.formField}
+              value={farmForm.irrigation_id}
+              onChange={handleFarmInput}
+              required
+            >
+              <option value="">💧 Select Irrigation Method</option>
+              {irrigations.map((irr) => (
+                <option key={irr.irrigation_id} value={irr.irrigation_id}>
+                  {irr.method_name}
+                </option>
+              ))}
+            </select>
+            <select
+              name="water_src_id"
+              style={style.formField}
+              value={farmForm.water_src_id}
+              onChange={handleFarmInput}
+              required
+            >
+              <option value="">🌊 Select Water Source</option>
+              {waterSources.map((ws) => (
+                <option key={ws.water_src_id} value={ws.water_src_id}>
+                  {ws.source}
+                </option>
+              ))}
+            </select>
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                gridColumn: "span 2 / span 2",
+              }}
+            >
+              <button
+                type="submit"
+                style={{ ...style.submitButton, background: PRIMARY_PURPLE }}
               >
-                <div
-                  onClick={() => setSelectedFarmId(farm.farm_id)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <div className="farm-item-title">
-                    {farm.owner_name || "Untitled Farm"}'s Farm
-                  </div>
-                  <div className="farm-item-details">
-                    <span>Size: **{farm.farm_size}** Acres</span>
-                    <span>
-                      Soil: **{getLookupName("soilTypes", farm.soil_type_id)}**
-                    </span>
-                  </div>
-                </div>
-                <div className="farm-actions">
-                  <button
-                    className="action-icon-btn edit"
-                    onClick={() => handleOpenFarmForm(farm)}
-                    title="Edit Farm"
-                  >
-                    <Edit size={16} />
-                  </button>
-                  <button
-                    className="action-icon-btn delete"
-                    onClick={() => handleDelete("farm", farm.farm_id)}
-                    title="Delete Farm"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                <FaSave /> Save Farm
+              </button>
+              <button
+                type="button"
+                style={style.cancelButton}
+                onClick={closeAddFarm}
+              >
+                <FaTimes /> Cancel
+              </button>
+            </div>
+            {farmStatusMsg && (
+              <div style={style.successMsg}>
+                <FaSun /> {farmStatusMsg}
               </div>
-            ))}
-            {filteredFarms.length === 0 && searchTerm && (
-              <div className="empty-state">No farms match "{searchTerm}".</div>
             )}
-          </div>
+            {farmErrorMsg && (
+              <div style={style.errorMsgBox}>⚠️ {farmErrorMsg}</div>
+            )}
+          </form>
+        )}
 
-          {/* Farm Details and Crops Panel */}
-          <div className="detail-panel">
-            {selectedFarm ? (
-              <>
-                <div className="detail-card">
-                  <div className="farm-list-header">
-                    <h2 className="header-title">
-                      <Users size={24} color="#059669" /> Farm Details:{" "}
-                      {selectedFarm.owner_name || "Untitled Farm"}
-                    </h2>
-                  </div>
-                  <div className="farm-details-grid">
-                    <div className="detail-item">
-                      <Maximize size={20} color="#374151" />
-                      <div>
-                        <div className="detail-label">Size (Acres)</div>
-                        <div className="detail-value">
-                          {selectedFarm.farm_size || "N/A"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="detail-item">
-                      <MapPin size={20} color="#374151" />
-                      <div>
-                        <div className="detail-label">Survey No.</div>
-                        <div className="detail-value">
-                          {selectedFarm.survey_number || "N/A"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="detail-item">
-                      <Layers size={20} color="#374151" />
-                      <div>
-                        <div className="detail-label">Soil Type</div>
-                        <div className="detail-value">
-                          {getLookupName(
-                            "soilTypes",
-                            selectedFarm.soil_type_id
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="detail-item">
-                      <Droplet size={20} color="#374151" />
-                      <div>
-                        <div className="detail-label">Irrigation</div>
-                        <div className="detail-value">
-                          {getLookupName(
-                            "irrigations",
-                            selectedFarm.irrigation_id
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="detail-item">
-                      <Zap size={20} color="#374151" />
-                      <div>
-                        <div className="detail-label">Water Source</div>
-                        <div className="detail-value">
-                          {getLookupName(
-                            "waterSources",
-                            selectedFarm.water_source_id
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+        {/* Edit Farm Form */}
+        {showEditFarm && (
+          <form style={style.addEditFormCard} onSubmit={submitEditFarm}>
+            <input
+              name="farm_size"
+              type="number"
+              style={style.formField}
+              value={editFarmForm.farm_size}
+              placeholder="📏 Farm Size (e.g., Acres)"
+              onChange={handleEditFarmInput}
+              required
+            />
+            <input
+              name="survey_number"
+              style={style.formField}
+              value={editFarmForm.survey_number}
+              placeholder="# Survey Number"
+              onChange={handleEditFarmInput}
+              required
+            />
+            <input
+              name="pincode"
+              type="text"
+              pattern="\d*"
+              style={style.formField}
+              value={editFarmForm.pincode}
+              placeholder="📍 Pincode"
+              onChange={handleEditFarmInput}
+              required
+            />
+            <select
+              name="soil_type_id"
+              style={style.formField}
+              value={editFarmForm.soil_type_id}
+              onChange={handleEditFarmInput}
+              required
+            >
+              <option value="">🧪 Select Soil Type</option>
+              {soilTypes.map((type) => (
+                <option key={type.soil_type_id} value={type.soil_type_id}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+            <select
+              name="irrigation_id"
+              style={style.formField}
+              value={editFarmForm.irrigation_id}
+              onChange={handleEditFarmInput}
+              required
+            >
+              <option value="">💧 Select Irrigation Method</option>
+              {irrigations.map((irr) => (
+                <option key={irr.irrigation_id} value={irr.irrigation_id}>
+                  {irr.method_name}
+                </option>
+              ))}
+            </select>
+            <select
+              name="water_src_id"
+              style={style.formField}
+              value={editFarmForm.water_src_id}
+              onChange={handleEditFarmInput}
+              required
+            >
+              <option value="">🌊 Select Water Source</option>
+              {waterSources.map((ws) => (
+                <option key={ws.water_src_id} value={ws.water_src_id}>
+                  {ws.source}
+                </option>
+              ))}
+            </select>
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                gridColumn: "span 2 / span 2",
+              }}
+            >
+              <button type="submit" style={style.submitButton}>
+                <FaPen /> Update Farm
+              </button>
+              <button
+                type="button"
+                style={style.cancelButton}
+                onClick={closeEditFarm}
+              >
+                <FaTimes /> Cancel
+              </button>
+            </div>
+            {farmStatusMsg && (
+              <div style={style.successMsg}>
+                <FaSun /> {farmStatusMsg}
+              </div>
+            )}
+            {farmErrorMsg && (
+              <div style={style.errorMsgBox}>⚠️ {farmErrorMsg}</div>
+            )}
+          </form>
+        )}
 
-                {/* Crops Table */}
-                <div className="detail-card">
-                  <div className="farm-list-header">
-                    <h2 className="header-title">
-                      <Leaf size={24} color="#059669" /> Crops Planted
-                    </h2>
+        {/* Render Farms and Crop History */}
+        <div style={{ marginTop: "1.5rem" }}>
+          {errorMsg && <div style={style.errorMsgBox}>Error: {errorMsg}</div>}
+          {loading ? (
+            <div
+              style={{
+                fontStyle: "italic",
+                color: TEXT_MUTED,
+                textAlign: "center",
+                padding: "3rem",
+              }}
+            >
+              Loading farms and crops...
+            </div>
+          ) : farms.length === 0 ? (
+            <div
+              style={{
+                padding: "3rem",
+                textAlign: "center",
+                color: TEXT_MUTED,
+                border: "2px dashed #ccc",
+                borderRadius: 12,
+                marginTop: "2rem",
+              }}
+            >
+              <FaLandmark size={40} color={TEXT_MUTED} />
+              <p style={{ marginTop: "10px" }}>
+                No farms found. Add one to begin!
+              </p>
+            </div>
+          ) : (
+            farms.map((farm) => (
+              <div key={farm.farm_id} style={style.farmCard}>
+                <div style={style.farmHeader}>
+                  <div>
+                    <h3 style={style.farmOwnerName}>
+                      <FaHome
+                        size={24}
+                        style={{ marginRight: "10px", color: PRIMARY_PURPLE }}
+                      />
+                      {farm.owner_name ?? "Owner Unknown"}
+                    </h3>
+                    <div style={style.farmIdLabel}>
+                      Farm ID: **{farm.farm_id}**
+                    </div>
+                  </div>
+                  <div style={style.actionButtons}>
                     <button
-                      className="btn btn-primary"
-                      onClick={() => handleOpenCropForm(null)}
+                      onClick={() =>
+                        setShowCropsForFarm(
+                          showCropsForFarm === farm.farm_id
+                            ? null
+                            : farm.farm_id
+                        )
+                      }
+                      style={{
+                        ...style.secondaryButtonBase,
+                        ...(showCropsForFarm === farm.farm_id
+                          ? {
+                              background: PRIMARY_PURPLE,
+                              color: "#fff",
+                              border: "none",
+                            }
+                          : {}),
+                      }}
                     >
-                      <Plus size={20} /> Add Crop
+                      {showCropsForFarm === farm.farm_id ? (
+                        <FaTimes />
+                      ) : (
+                        <FaEye />
+                      )}
+                      {showCropsForFarm === farm.farm_id
+                        ? "Hide History"
+                        : "View History"}
+                    </button>
+                    <button
+                      onClick={() => openAddCrop(farm.farm_id)}
+                      style={style.secondaryButtonBase}
+                    >
+                      <FaPlus /> Add Crop
+                    </button>
+                    <button
+                      onClick={() => openEditFarm(farm)}
+                      style={style.secondaryButtonBase}
+                    >
+                      <FaPen /> Edit Farm
                     </button>
                   </div>
-                  <div className="crop-table-container">
-                    <table className="crop-table">
-                      <thead>
-                        <tr>
-                          <th>Plant</th>
-                          <th>Type</th>
-                          <th>Sowing Date</th>
-                          <th>Harvest Date</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cropsForSelectedFarm.length > 0 ? (
-                          cropsForSelectedFarm.map((crop) => (
-                            <tr key={crop.crop_id}>
-                              <td>{getLookupName("plants", crop.plant_id)}</td>
-                              <td>
-                                {getLookupName("cropTypes", crop.crop_type_id)}
-                              </td>
-                              <td>
-                                {new Date(
-                                  crop.sowing_date
-                                ).toLocaleDateString()}
-                              </td>
-                              <td>
-                                {new Date(
-                                  crop.expected_harvest_date
-                                ).toLocaleDateString()}
-                              </td>
-                              <td>
-                                <div className="farm-actions">
-                                  <button
-                                    className="action-icon-btn edit"
-                                    onClick={() => handleOpenCropForm(crop)}
-                                    title="Edit Crop"
-                                  >
-                                    <Edit size={16} />
-                                  </button>
-                                  <button
-                                    className="action-icon-btn delete"
-                                    onClick={() =>
-                                      handleDelete("crop", crop.crop_id)
-                                    }
-                                    title="Delete Crop"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan="5" className="empty-state">
-                              No crops planted on this farm.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                </div>
+                {/* Details */}
+                <div style={style.farmDetailsGrid}>
+                  <div style={style.detailItem}>
+                    <FaMapMarkerAlt style={style.detailIcon} />
+                    <span style={style.boldDetail}>Survey Number:</span>{" "}
+                    {farm.survey_number ?? "NA"}
+                  </div>
+                  <div style={style.detailItem}>
+                    <FaFlask style={style.detailIcon} />
+                    <span style={style.boldDetail}>Soil Type:</span>{" "}
+                    {farm.soil_type ?? "NA"}
+                  </div>
+                  <div style={style.detailItem}>
+                    <FaLandmark style={style.detailIcon} />
+                    <span style={style.boldDetail}>Size (Acre):</span>{" "}
+                    {farm.farm_size ?? "NA"}
+                  </div>
+                  <div style={style.detailItem}>
+                    <FaMapMarkerAlt style={style.detailIcon} />
+                    <span style={style.boldDetail}>Pincode:</span>{" "}
+                    {farm.pincode ?? "NA"}
+                  </div>
+                  <div style={style.detailItem}>
+                    <FaTint style={style.detailIcon} />
+                    <span style={style.boldDetail}>Irrigation:</span>{" "}
+                    {farm.irrigation ?? "NA"}
+                  </div>
+                  <div style={style.detailItem}>
+                    <FaTint style={style.detailIcon} />
+                    <span style={style.boldDetail}>Water Source:</span>{" "}
+                    {farm.water_source ?? "NA"}
                   </div>
                 </div>
-              </>
-            ) : (
-              <div className="empty-state detail-card">
-                Select a farm from the list to view its details and crops.
+
+                {/* Crop History SECTION */}
+                {showCropsForFarm === farm.farm_id && (
+                  <div style={{ marginTop: "2rem" }}>
+                    <h4 style={style.cropHistoryTitle}>🌾 Crop History</h4>
+                    {cropsForFarm(farm.farm_id).length === 0 ? (
+                      <div
+                        style={{
+                          color: TEXT_MUTED,
+                          padding: "1.5rem",
+                          background: "#fafafa",
+                          borderRadius: 8,
+                          border: "1px dashed #eee",
+                          textAlign: "center",
+                        }}
+                      >
+                        No crops found for this farm.
+                      </div>
+                    ) : (
+                      cropsForFarm(farm.farm_id).map((crop) => (
+                        <div key={crop.user_crop_id}>
+                          <div style={style.cropCard}>
+                            {/* Details */}
+                            <div style={style.detailItem}>
+                              <FaSeedling style={{ color: ACCENT_GREEN }} />
+                              <span style={style.boldDetail}>
+                                Plant Name:
+                              </span>{" "}
+                              {crop.plant_name ?? "NA"}
+                            </div>
+                            <div style={style.detailItem}>
+                              <FaLandmark style={style.detailIcon} />
+                              <span style={style.boldDetail}>
+                                Field Size:
+                              </span>{" "}
+                              {crop.field_size ?? "NA"}
+                            </div>
+                            <div style={style.detailItem}>
+                              <span style={style.boldDetail}>Planted:</span>{" "}
+                              {crop.planting_date
+                                ? new Date(
+                                    crop.planting_date
+                                  ).toLocaleDateString()
+                                : "NA"}
+                            </div>
+                            <div style={style.detailItem}>
+                              <span style={style.boldDetail}>Harvest:</span>{" "}
+                              {crop.harvest_date
+                                ? new Date(
+                                    crop.harvest_date
+                                  ).toLocaleDateString()
+                                : "NA"}
+                            </div>
+                            <div style={style.detailItem}>
+                              <FaTint style={style.detailIcon} />
+                              <span style={style.boldDetail}>
+                                Water Req:
+                              </span>{" "}
+                              {crop.water_requirement ?? "NA"}
+                            </div>
+                            <div style={style.detailItem}>
+                              <FaFlask style={style.detailIcon} />
+                              <span style={style.boldDetail}>
+                                Soil Type:
+                              </span>{" "}
+                              {crop.soil_type ?? "NA"}
+                            </div>
+                            <div style={style.detailItem}>
+                              <span style={style.boldDetail}>Status:</span>{" "}
+                              <span
+                                style={{
+                                  color:
+                                    crop.status === "Harvested"
+                                      ? ACCENT_GREEN
+                                      : PRIMARY_PURPLE,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {crop.status ?? "NA"}
+                              </span>
+                            </div>
+                            <div
+                              style={{
+                                gridColumn: "span 1 / span 1",
+                                display: "flex",
+                                justifyContent: "flex-end",
+                              }}
+                            >
+                              <button
+                                onClick={() => openEditCrop(crop)}
+                                style={style.secondaryButtonBase}
+                              >
+                                <FaPen /> Edit Crop
+                              </button>
+                            </div>
+                          </div>
+                          {/* --- EDIT CROP FORM --- */}
+                          {showEditCrop === crop.user_crop_id && (
+                            <form
+                              onSubmit={submitEditCrop}
+                              style={{
+                                ...style.addEditFormCard,
+                                borderTop: `5px solid ${ACCENT_GREEN}`,
+                                marginTop: "15px",
+                              }}
+                            >
+                              <input
+                                name="plant_name"
+                                style={style.formField}
+                                value={editCropForm.plant_name}
+                                placeholder="Plant Name"
+                                onChange={handleEditCropInput}
+                                required
+                              />
+                              <input
+                                name="planting_date"
+                                type="date"
+                                style={style.formField}
+                                value={editCropForm.planting_date}
+                                placeholder="Planting Date"
+                                onChange={handleEditCropInput}
+                                required
+                              />
+                              <input
+                                name="harvest_date"
+                                type="date"
+                                style={style.formField}
+                                value={editCropForm.harvest_date}
+                                placeholder="Harvest Date"
+                                onChange={handleEditCropInput}
+                                required
+                              />
+                              <input
+                                name="field_size"
+                                type="number"
+                                style={style.formField}
+                                value={editCropForm.field_size}
+                                placeholder="Field Size (e.g., Acres)"
+                                onChange={handleEditCropInput}
+                                required
+                              />
+                              <input
+                                name="water_requirement"
+                                style={style.formField}
+                                value={editCropForm.water_requirement}
+                                placeholder="Water Requirement"
+                                onChange={handleEditCropInput}
+                                required
+                              />
+                              <input
+                                name="status"
+                                style={style.formField}
+                                value={editCropForm.status}
+                                placeholder="Crop Status (e.g., Active, Harvested)"
+                                onChange={handleEditCropInput}
+                                required
+                              />
+                              <select
+                                name="soil_type_id"
+                                style={style.formField}
+                                value={editCropForm.soil_type_id}
+                                onChange={handleEditCropInput}
+                                required
+                              >
+                                <option value="">Select Soil Type</option>
+                                {soilTypes.map((type) => (
+                                  <option
+                                    key={type.soil_type_id}
+                                    value={type.soil_type_id}
+                                  >
+                                    {type.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "10px",
+                                  gridColumn: "span 2 / span 2",
+                                }}
+                              >
+                                <button
+                                  type="submit"
+                                  style={style.submitButton}
+                                >
+                                  <FaSave /> Update Crop
+                                </button>
+                                <button
+                                  type="button"
+                                  style={style.cancelButton}
+                                  onClick={closeEditCrop}
+                                >
+                                  <FaTimes /> Cancel
+                                </button>
+                              </div>
+                              {cropStatusMsg && (
+                                <div style={style.successMsg}>
+                                  <FaSun /> {cropStatusMsg}
+                                </div>
+                              )}
+                              {cropErrorMsg && (
+                                <div style={style.errorMsgBox}>
+                                  ⚠️ {cropErrorMsg}
+                                </div>
+                              )}
+                            </form>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+                {/* Add Crop Form */}
+                {showAddCrop === farm.farm_id && (
+                  <form
+                    onSubmit={submitAddCrop}
+                    style={{
+                      ...style.addEditFormCard,
+                      borderTop: `5px solid ${PRIMARY_PURPLE}`,
+                      marginTop: "20px",
+                    }}
+                  >
+                    <input
+                      name="plant_name"
+                      style={style.formField}
+                      value={cropForm.plant_name}
+                      placeholder="🌿 Plant Name"
+                      onChange={handleCropInput}
+                      required
+                    />
+                    <input
+                      name="planting_date"
+                      type="date"
+                      style={style.formField}
+                      value={cropForm.planting_date}
+                      placeholder="Planting Date"
+                      onChange={handleCropInput}
+                      required
+                    />
+                    <input
+                      name="harvest_date"
+                      type="date"
+                      style={style.formField}
+                      value={cropForm.harvest_date}
+                      placeholder="Harvest Date"
+                      onChange={handleCropInput}
+                      required
+                    />
+                    <input
+                      name="field_size"
+                      type="number"
+                      style={style.formField}
+                      value={cropForm.field_size}
+                      placeholder="📏 Field Size (e.g., Acres)"
+                      onChange={handleCropInput}
+                      required
+                    />
+                    <input
+                      name="water_requirement"
+                      style={style.formField}
+                      value={cropForm.water_requirement}
+                      placeholder="💧 Water Requirement"
+                      onChange={handleCropInput}
+                      required
+                    />
+                    <input
+                      name="status"
+                      style={style.formField}
+                      value={cropForm.status}
+                      placeholder="🌱 Status (e.g., Active, Harvested)"
+                      onChange={handleCropInput}
+                      required
+                    />
+                    <select
+                      name="soil_type_id"
+                      style={style.formField}
+                      value={cropForm.soil_type_id} // CRITICAL: Use cropForm for Add Crop
+                      onChange={handleCropInput}
+                      required
+                    >
+                      <option value="">🧪 Select Soil Type</option>
+                      {soilTypes.map((type) => (
+                        <option
+                          key={type.soil_type_id}
+                          value={type.soil_type_id}
+                        >
+                          {type.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        gridColumn: "span 2 / span 2",
+                      }}
+                    >
+                      <button
+                        type="submit"
+                        style={{
+                          ...style.submitButton,
+                          background: PRIMARY_PURPLE,
+                        }}
+                      >
+                        <FaSave /> Save Crop
+                      </button>
+                      <button
+                        type="button"
+                        style={style.cancelButton}
+                        onClick={closeAddCrop}
+                      >
+                        <FaTimes /> Cancel
+                      </button>
+                    </div>
+                    {cropStatusMsg && (
+                      <div style={style.successMsg}>
+                        <FaSun /> {cropStatusMsg}
+                      </div>
+                    )}
+                    {cropErrorMsg && (
+                      <div style={style.errorMsgBox}>⚠️ {cropErrorMsg}</div>
+                    )}
+                  </form>
+                )}
               </div>
-            )}
-          </div>
+            ))
+          )}
         </div>
-      )}
-
-      {/* Farm/Crop Form Modal */}
-      <CustomModal
-        title={
-          isEditing
-            ? `Edit ${formType === "farm" ? "Farm" : "Crop"}`
-            : `Add New ${formType === "farm" ? "Farm" : "Crop"}`
-        }
-        isOpen={isFarmFormOpen || isCropFormOpen}
-        onClose={handleCloseForm}
-        actions={
-          <>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleCloseForm}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              onClick={handleSave}
-            >
-              Save Changes
-            </button>
-          </>
-        }
-      >
-        {formType === "farm" && <FarmForm />}
-        {formType === "crop" && <CropForm />}
-      </CustomModal>
-
-      {/* Delete Confirmation Modal */}
-      <CustomModal
-        title={`Confirm Delete ${itemToDelete?.type}`}
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        actions={
-          <>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setIsDeleteModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-delete-confirm"
-              onClick={handleConfirmDelete}
-            >
-              <Trash2 size={16} /> Delete
-            </button>
-          </>
-        }
-      >
-        <div className="delete-modal-content">
-          <p className="modal-body">
-            Are you sure you want to permanently delete this{" "}
-            {itemToDelete?.type}? This action cannot be undone.
-          </p>
-        </div>
-      </CustomModal>
+      </div>
     </div>
   );
 };

@@ -31,19 +31,19 @@ const Subsidies = () => {
   // NOTE: stateMap and state fetching simulation are removed
   // as the state name is now included in the main subsidy data fetch.
 
-  const token = localStorage.getItem("token");
+  const access_token = localStorage.getItem("access_token");
 
   // Fetch all subsidies from the backend
   // The backend now returns state name under the 'name' field for each subsidy.
   const fetchSubs = useCallback(async () => {
     setErrorMsg("");
-    if (!token) {
-      setErrorMsg("Authentication token missing. Cannot fetch data.");
+    if (!access_token) {
+      setErrorMsg("Authentication access_token missing. Cannot fetch data.");
       return;
     }
     try {
       const res = await axios.get(apiBase + "/getSubsidy", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${access_token}` },
       });
       // The data structure here is assumed to be [{..., state_id: "X", name: "State Name"}, ...]
       setSubsidies(res.data || []);
@@ -53,7 +53,7 @@ const Subsidies = () => {
         "Could not load subsidies: " + (e.response?.data?.message || e.message)
       );
     }
-  }, [token]);
+  }, [access_token]);
 
   useEffect(() => {
     fetchSubs();
@@ -113,13 +113,13 @@ const Subsidies = () => {
       if (formEdit) {
         // Update existing subsidy
         await axios.put(apiBase + `/putSubsidy/${form.id}`, dataToSend, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${access_token}` },
         });
         setMsg("Subsidy updated successfully!");
       } else {
         // Add new subsidy
         await axios.post(apiBase + "/postSubsidy", dataToSend, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${access_token}` },
         });
         setMsg("Subsidy added successfully!");
       }
@@ -154,7 +154,7 @@ const Subsidies = () => {
 
     try {
       await axios.delete(apiBase + `/deleteSubsidy/${subsidyToDelete.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${access_token}` },
       });
       // Optimistically update the list
       setSubsidies((prevSubs) =>

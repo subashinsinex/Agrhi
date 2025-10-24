@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { login } from '../api/login';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from "react";
+import { login } from "../api/login";
+import { useNavigate } from "react-router-dom";
 
 const formStyles = `
 .login-form-wrapper {
@@ -66,20 +66,21 @@ const formStyles = `
 `;
 
 const LoginForm = () => {
-  const [phone_number, setUserId] = useState('');
-  const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
+  const [phone_number, setUserId] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const platform = 'web';
+    const platform = "web";
     const result = await login(phone_number, password, platform);
     if (result.success) {
-      localStorage.setItem('token', result.token);
-      setMessage('Login successful. Redirecting...');
+      localStorage.setItem("access_token", result.access_token);
+      localStorage.setItem("refresh_token", result.refresh_token);
+      setMessage("Login successful. Redirecting...");
       setTimeout(() => {
-        navigate('/dashboard');
+        navigate("/dashboard");
       }, 1000);
     } else {
       setMessage(result.message);
@@ -96,14 +97,14 @@ const LoginForm = () => {
           type="text"
           placeholder="Phone Number"
           value={phone_number}
-          onChange={e => setUserId(e.target.value)}
+          onChange={(e) => setUserId(e.target.value)}
           required
         />
         <input
           type="password"
           placeholder="Password"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           required
         />
         <button type="submit">Login</button>

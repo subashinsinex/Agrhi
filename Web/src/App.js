@@ -5,6 +5,7 @@ import Dashboard from "./components/dashboard";
 import UserManage from "./components/userManage";
 import Subsidies from "./components/subsidies";
 import FarmCrop from "./components/farmCrop";
+import Master from "./components/master";
 import { Header } from "./components/header";
 import { DESKTOP_BREAKPOINT } from "./constant";
 import ProtectedRoute from "./components/protectedRoute";
@@ -57,6 +58,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Subsidies />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/master"
+              element={
+                <ProtectedRoute>
+                  <Master />
                 </ProtectedRoute>
               }
             />

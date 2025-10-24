@@ -4,7 +4,7 @@ const farmCropService = require("../services/farmCropServices");
 const jwtChecker = require("../middleware/jwtChecker");
 const adminChecker = require("../middleware/adminChecker");
 
-// router.use(jwtChecker, adminChecker);
+router.use(jwtChecker, adminChecker);
 
 // Farms CRUD
 router.get("/farms", farmCropService.getAllFarms);

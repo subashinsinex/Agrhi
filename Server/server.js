@@ -10,12 +10,14 @@ const userRoutes = require("./routes/userManageRoutes");
 const subsidiesRoutes = require("./routes/subsidiesRoutes");
 const farmCropRoutes = require("./routes/farmCropRoutes");
 const diseaseRemediesRoutes = require("./routes/diseaseRemediesRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 
-app.use("/api/login", loginRoutes);
+app.use("/api", loginRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/subsidies", subsidiesRoutes);
 app.use("/api/farmcrop", farmCropRoutes);
 app.use("/api/diseaseRemedies", diseaseRemediesRoutes);
+app.use("/api/profile", profileRoutes);
 
 const PORT = process.env.PORT;
 

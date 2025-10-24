@@ -224,6 +224,7 @@ exports.getAllCrops = async (req, res) => {
     const sql = `
       SELECT 
         uc.user_crop_id, 
+        uc.farm_id,
         pl.plant_name, 
         ct.name AS crop_type,
         uc.planting_date, 
@@ -260,6 +261,7 @@ exports.getCropById = async (req, res) => {
     const sql = `
       SELECT
         uc.user_crop_id,
+        uc.farm_id,
         pl.plant_name, 
         ct.name AS crop_type,
         uc.planting_date, 

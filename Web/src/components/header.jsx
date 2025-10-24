@@ -10,7 +10,7 @@ const Header = () => {
     "/subsidies": "Subsidies Programs",
     "/farmcrop": "Farm Crop Management",
     "/userManage": "User Management",
-    "/crops": "Crops",
+    "/master": "Master Data",
     "/diseases": "Disease & Remedies",
     "/account": "Account",
     "/reports": "Reports",

@@ -5,7 +5,7 @@ const jwtChecker = require("../middleware/jwtChecker");
 const adminChecker = require("../middleware/adminChecker");
 
 // Get all subsidies
-router.get("/getSubsidy", async (req, res) => {
+router.get("/getSubsidy", jwtChecker, async (req, res) => {
   try {
     const subsidies = await subsidiesServices.getSubsidies();
     res.json(subsidies);
@@ -49,15 +49,20 @@ router.put(
 );
 
 // Delete subsidy
-router.delete("/deleteSubsidy/:subsidyid", async (req, res) => {
-  try {
-    const subsidy_id = req.params.subsidyid;
-    const result = await subsidiesServices.deleteSubsidy(subsidy_id);
-    res.json(result);
-  } catch (error) {
-    console.error("Route deleteSubsidy error:", error);
-    res.status(500).json({ message: "Error deleting subsidy" });
+router.delete(
+  "/deleteSubsidy/:subsidyid",
+  jwtChecker,
+  adminChecker,
+  async (req, res) => {
+    try {
+      const subsidy_id = req.params.subsidyid;
+      const result = await subsidiesServices.deleteSubsidy(subsidy_id);
+      res.json(result);
+    } catch (error) {
+      console.error("Route deleteSubsidy error:", error);
+      res.status(500).json({ message: "Error deleting subsidy" });
+    }
   }
-});
+);
 
 module.exports = router;

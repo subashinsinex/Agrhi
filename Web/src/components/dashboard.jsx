@@ -56,17 +56,17 @@ const Dashboard = ({ isSidebarOpen, toggleSidebar }) => {
   });
   const [isEdit, setIsEdit] = useState(false);
 
-  const token = localStorage.getItem("token");
+  const access_token = localStorage.getItem("access_token");
 
   const fetchUsers = useCallback(async () => {
     setErrorMsg("");
-    if (!token) {
+    if (!access_token) {
       setErrorMsg("Authentication token missing. Cannot fetch data.");
       return;
     }
     try {
       const res = await axios.get(`${apiBase}/getUser`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${access_token}` },
       });
       // Map user data to include the category label and ensure DOB is readable
       setUsers(
@@ -85,7 +85,7 @@ const Dashboard = ({ isSidebarOpen, toggleSidebar }) => {
         "Unable to fetch users: " + (err.response?.data?.message || err.message)
       );
     }
-  }, [token]);
+  }, [access_token]);
 
   useEffect(() => {
     fetchUsers();
@@ -125,14 +125,14 @@ const Dashboard = ({ isSidebarOpen, toggleSidebar }) => {
     e.preventDefault();
     setStatusMsg("");
     setErrorMsg("");
-    if (!token) {
+    if (!access_token) {
       setErrorMsg("Authentication required for this action.");
       return;
     }
     try {
       if (isEdit) {
         await axios.put(`${apiBase}/putUser/${form.user_id}`, form, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${access_token}` },
         });
         setStatusMsg("User updated successfully");
       } else {
@@ -141,7 +141,7 @@ const Dashboard = ({ isSidebarOpen, toggleSidebar }) => {
           return;
         }
         await axios.post(`${apiBase}/postUser`, form, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${access_token}` },
         });
         setStatusMsg("User added successfully");
       }
@@ -179,11 +179,11 @@ const Dashboard = ({ isSidebarOpen, toggleSidebar }) => {
   const confirmDelete = async () => {
     setIsConfirmOpen(false);
     setErrorMsg("");
-    if (!userToDelete || !token) return;
+    if (!userToDelete || !access_token) return;
 
     try {
       await axios.delete(`${apiBase}/deleteUser/${userToDelete.user_id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${access_token}` },
       });
       // Filter out deleted user and update status
       setUsers((prevUsers) =>
