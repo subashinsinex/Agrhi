@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'screens/auth/login_screen.dart';
+import 'screens/shared/splash_screen.dart';
 import 'utils/colors.dart';
 import 'utils/routes.dart';
 import 'src/services/language_service.dart';
@@ -114,8 +114,8 @@ class MyApp extends StatelessWidget {
               ),
             ),
 
-            // Initial route
-            initialRoute: Routes.login,
+            // Initial route - Changed to splash
+            initialRoute: Routes.splash,
 
             // App routes
             routes: Routes.routes,
@@ -123,7 +123,7 @@ class MyApp extends StatelessWidget {
             // Handle unknown routes
             onUnknownRoute: (settings) {
               return MaterialPageRoute(
-                builder: (context) => const LoginScreen(),
+                builder: (context) => const SplashScreen(),
               );
             },
           );

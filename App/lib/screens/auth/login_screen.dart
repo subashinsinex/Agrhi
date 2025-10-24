@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../shared/widgets/language_switcher.dart';
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
 import '../../../src/services/language_service.dart';
@@ -24,9 +28,19 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
-  bool _isLoadingTranslations = false;
 
-  Map<String, String> translatedTexts = {};
+  Map<String, String> translatedTexts = {
+    'signIn': 'Sign In',
+    'loginSuccessful': 'Login Successful',
+    'phoneNumber': 'Phone Number',
+    'password': 'Password',
+    'dontHaveAccount': "Don't have an account?",
+    'signUp': 'Sign Up',
+    'agrhi': 'Agrhi',
+    'smartFarmApp': 'Smart Farm App',
+    'skipForDemo': 'Skip for demo',
+  };
+
   String _currentLanguage = '';
 
   @override
@@ -50,13 +64,19 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _loadTranslations() async {
     if (!mounted) return;
 
-    setState(() => _isLoadingTranslations = true);
-
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
+    final languageCode = languageService.currentLocale.languageCode;
 
+    // Try to load from cache first
+    final cached = await _getCachedTranslations(languageCode);
+    if (cached != null) {
+      setState(() => translatedTexts = cached);
+    }
+
+    // Fetch fresh translations in background
     final keys = {
       'signIn': 'Sign In',
       'loginSuccessful': 'Login Successful',
@@ -74,13 +94,89 @@ class _LoginScreenState extends State<LoginScreen> {
       newTranslated[entry.key] = await languageService.translate(entry.value);
     }
 
+    // Cache and update
+    await _cacheTranslations(languageCode, newTranslated);
     if (mounted) {
-      setState(() {
-        translatedTexts = newTranslated;
-        _isLoadingTranslations = false;
-      });
+      setState(() => translatedTexts = newTranslated);
     }
   }
+
+  Future<Map<String, String>?> _getCachedTranslations(
+    String languageCode,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('translations_$languageCode');
+      if (cached != null) {
+        final Map<String, dynamic> decoded = jsonDecode(cached);
+        return decoded.map((key, value) => MapEntry(key, value.toString()));
+      }
+    } catch (e) {
+      debugPrint('Cache read error: $e');
+    }
+    return null;
+  }
+
+  Future<void> _cacheTranslations(
+    String languageCode,
+    Map<String, String> translations,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'translations_$languageCode',
+        jsonEncode(translations),
+      );
+    } catch (e) {
+      debugPrint('Cache write error: $e');
+    }
+  }
+
+  // Fetch user profile from server
+  Future<Map<String, dynamic>?> _fetchUserProfile(
+    String accessToken,
+    String userId,
+  ) async {
+    try {
+      final url = Uri.parse(
+        '${AppConstants.baseUrl}/profile/getUserDetails/$userId',
+      );
+
+      final response = await http
+          .get(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error fetching profile: $e');
+      return null;
+    }
+  }
+
+
+  // Store user profile in secure storage
+  Future<void> _storeUserProfile(Map<String, dynamic> profileData) async {
+    const storage = FlutterSecureStorage();
+
+    await storage.write(key: 'user_profile', value: jsonEncode(profileData));
+  }
+
+  Future<void> clearAllSecureStorage() async {
+  const storage = FlutterSecureStorage();
+  
+  await storage.deleteAll();
+  
+  print('✅ All secure storage data deleted');
+}
 
   @override
   void dispose() {
@@ -97,60 +193,102 @@ class _LoginScreenState extends State<LoginScreen> {
       final phone = _phoneController.text.trim();
       final password = _passwordController.text.trim();
 
-      final url = Uri.parse(
-        'http://10.21.69.186:5000/api/login',
-      ); 
+      final url = Uri.parse(AppConstants.loginEndpoint);
 
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phone_number': phone, 'password': password, 'platform': 'mobile'}),
-      );
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'phone_number': phone,
+              'password': password,
+              'platform': 'mobile',
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final accessToken = responseData['access_token'] as String;
+        final refreshToken = responseData['refresh_token'] as String;
+
+        // Store tokens with expiration check
+        final storage = const FlutterSecureStorage();
+        await storage.write(key: 'access_token', value: accessToken);
+        await storage.write(key: 'refresh_token', value: refreshToken);
+
+        String? userId;
+        try {
+          final decodedToken = JwtDecoder.decode(accessToken);
+          userId = decodedToken['user_id']?.toString();
+        } catch (e) {
+          debugPrint('Token decode error: $e');
+        }
+        // Fetch and store user profile if userId is available
+        if (userId != null) {
+          final profileData = await _fetchUserProfile(accessToken, userId);
+          if (profileData != null) {
+            await _storeUserProfile(profileData);
+          }
+        }
+
+        // Store expiration time
+        try {
+          final expiryDate = JwtDecoder.getExpirationDate(accessToken);
+          await storage.write(
+            key: 'token_expiry',
+            value: expiryDate.toIso8601String(),
+          );
+        } catch (e) {
+          debugPrint('Token decode error: $e');
+        }
+
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                Text(translatedTexts['loginSuccessful'] ?? 'Login Successful'),
-              ],
-            ),
-            backgroundColor: AppColors.successColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            duration: const Duration(seconds: 2),
-          ),
+        _showSnackBar(
+          translatedTexts['loginSuccessful'] ?? 'Login Successful',
+          AppColors.successColor,
+          Icons.check_circle,
         );
         Routes.navigateToDashboard(context);
+      } else if (response.statusCode == 401) {
+        throw 'Invalid phone number or password';
+      } else if (response.statusCode >= 500) {
+        throw 'Server error. Please try again later';
       } else {
-        throw Exception('Login failed: ${response.reasonPhrase}');
+        throw 'Login failed: ${response.reasonPhrase}';
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(child: Text(e.toString())),
-            ],
-          ),
-          backgroundColor: AppColors.errorColor,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+
+      String errorMessage = e.toString();
+      if (errorMessage.contains('SocketException')) {
+        errorMessage = 'No internet connection';
+      } else if (errorMessage.contains('TimeoutException')) {
+        errorMessage = 'Request timeout. Please try again';
+      }
+
+      _showSnackBar(errorMessage, AppColors.errorColor, Icons.error);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showSnackBar(String message, Color color, IconData icon) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: Duration(seconds: color == AppColors.errorColor ? 4 : 2),
+      ),
+    );
   }
 
   @override
@@ -228,6 +366,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   keyboardType: TextInputType.phone,
                                   validator: Validators.validatePhone,
+                                  enabled: !_isLoading,
                                 ),
                                 const SizedBox(height: 16),
                                 TextFormField(
@@ -258,6 +397,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   obscureText: _obscurePassword,
                                   validator: Validators.validatePassword,
+                                  enabled: !_isLoading,
                                 ),
                                 const SizedBox(height: 24),
                                 SizedBox(
@@ -291,7 +431,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               ],
                             ),
                             GestureDetector(
-                              onTap: () => Routes.navigateToSignup(context),
+                              onTap: _isLoading
+                                  ? null
+                                  : () => Routes.navigateToSignup(context),
                               child: RichText(
                                 text: TextSpan(
                                   text:
@@ -318,7 +460,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 20),
                             GestureDetector(
-                              onTap: () => Routes.navigateToDashboard(context),
+                              onTap: _isLoading
+                                  ? null
+                                  : () => Routes.navigateToDashboard(context),
                               child: Text(
                                 translatedTexts['skipForDemo'] ??
                                     'Skip for demo',
@@ -355,45 +499,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: const LanguageSwitcher(showAsIcon: true),
               ),
             ),
-            if (_isLoadingTranslations)
-              Container(
-                color: Colors.black.withOpacity(0.3),
-                child: Center(
-                  child: Card(
-                    elevation: 8,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 60,
-                            height: 60,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 4,
-                              valueColor: AlwaysStoppedAnimation(
-                                AppColors.primaryGreen,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          const Text(
-                            'Loading translations...',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
       ),

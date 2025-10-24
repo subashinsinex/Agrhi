@@ -8,3 +8,4 @@ analyzer:
     unused_element: ignore
     empty_catches: ignore
     use_build_context_synchronously: ignore
+    library_private_types_in_public_api: ignore

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/colors.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../src/services/language_service.dart';
 
 class Subsidy {
@@ -159,12 +160,27 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     _futureSubsidies = fetchSubsidies();
   }
 
-  Future<List<Subsidy>> fetchSubsidies() async {
+Future<List<Subsidy>> fetchSubsidies() async {
+    const storage = FlutterSecureStorage();
+    final accessToken = await storage.read(key: 'access_token');
+    print('Access Token: $accessToken');
+
+    // Prepare headers
+    final headers = <String, String>{'Content-Type': 'application/json'};
+
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    // API endpoint to fetch subsidies
     try {
       final url = Uri.parse(
         'http://10.21.69.186:5000/api/subsidies/getSubsidy',
       );
-      final response = await http.get(url);
+
+      // Pass headers to http.get(), not Uri.parse()
+      final response = await http.get(url, headers: headers);
+
       if (response.statusCode == 200) {
         _hasError = false;
         final List<dynamic> data = jsonDecode(response.body);
@@ -176,10 +192,11 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
         return subsidies;
       } else {
         _setError();
-        throw Exception('Failed to load subsidies');
+        throw Exception('Failed to load subsidies: ${response.statusCode}');
       }
-    } catch (_) {
+    } catch (e) {
       _setError();
+      print('Error fetching subsidies: $e');
       rethrow;
     }
   }

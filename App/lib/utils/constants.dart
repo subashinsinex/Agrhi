@@ -7,11 +7,11 @@ class AppConstants {
       'Revolutionizing agriculture with smart IoT solutions';
 
   // API Configuration
-  static const String baseUrl = 'http://10.21.79.141:5000/api';
-  static const String authEndpoint = '$baseUrl/auth';
-  static const String loginEndpoint = '$authEndpoint/login';
-  static const String signupEndpoint = '$authEndpoint/signup';
-  static const String logoutEndpoint = '$authEndpoint/logout';
+  static const String baseUrl = 'http://10.21.69.186:5000/api';
+  static const String loginEndpoint = '$baseUrl/login';
+  static const String signupEndpoint = '$baseUrl/profile/createUser';
+  static const String getProfileEndpoint = '$baseUrl/profile/getUserDetails/:user_id';
+  static const String logoutEndpoint = '$baseUrl/logout';
 
   // Storage Keys
   static const String authTokenKey = 'auth_token';

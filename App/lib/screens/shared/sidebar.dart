@@ -3,9 +3,55 @@ import 'package:provider/provider.dart';
 import '../auth/login_screen.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AppSidebar extends StatelessWidget {
   const AppSidebar({super.key});
+
+  // Add handleLogout function
+  Future<void> handleLogout(BuildContext context) async {
+    const storage = FlutterSecureStorage();
+
+    // Delete all secure storage data (tokens, user profile, etc.)
+    await storage.deleteAll();
+
+    if (context.mounted) {
+      final languageService = Provider.of<LanguageService>(
+        context,
+        listen: false,
+      );
+
+      final successMessage = await languageService.translate(
+        'Logged out successfully',
+      );
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(child: Text(successMessage)),
+            ],
+          ),
+          backgroundColor: AppColors.successColor,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+
+      // Navigate to login screen and clear navigation stack
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (Route<dynamic> route) => false,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,20 +88,18 @@ class AppSidebar extends StatelessWidget {
                 ),
                 const SizedBox(width: 15),
                 Expanded(
-                  child: // Inside the AppSidebar header Column
-                  Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Text(
-                        'Agrhi', // App name - no translation needed
+                        'Agrhi',
                         style: TextStyle(
                           color: AppColors.textWhite,
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      // Add translation to Smart Farming subtitle
                       FutureBuilder<String>(
                         future: Provider.of<LanguageService>(
                           context,
@@ -153,7 +197,6 @@ class AppSidebar extends StatelessWidget {
                   title: 'Settings',
                   onTap: () {
                     Navigator.pop(context);
-                    // Add navigation to Settings screen when available
                   },
                 ),
                 _buildMenuTile(
@@ -162,7 +205,6 @@ class AppSidebar extends StatelessWidget {
                   title: 'Help & Support',
                   onTap: () {
                     Navigator.pop(context);
-                    // Add navigation to Help & Support screen when available
                   },
                 ),
               ],
@@ -254,7 +296,6 @@ class AppSidebar extends StatelessWidget {
             languageService.translate('Are you sure you want to log out?'),
             languageService.translate('Cancel'),
             languageService.translate('Logout'),
-            languageService.translate('Logged out successfully'),
           ]),
           builder: (context, snapshot) {
             final translations =
@@ -264,7 +305,6 @@ class AppSidebar extends StatelessWidget {
                   'Are you sure you want to log out?',
                   'Cancel',
                   'Logout',
-                  'Logged out successfully',
                 ];
 
             return AlertDialog(
@@ -330,39 +370,8 @@ class AppSidebar extends StatelessWidget {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
-                          Navigator.pop(dialogContext);
-                          Navigator.pop(context);
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.check_circle,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text(translations[4])),
-                                ],
-                              ),
-                              backgroundColor: AppColors.successColor,
-                              duration: const Duration(seconds: 3),
-                              behavior: SnackBarBehavior.floating,
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.all(
-                                  Radius.circular(10),
-                                ),
-                              ),
-                            ),
-                          );
-
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LoginScreen(),
-                            ),
-                            (Route<dynamic> route) => false,
-                          );
+                          Navigator.pop(dialogContext); // Close dialog
+                          handleLogout(context); // Call handleLogout
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.errorColor,

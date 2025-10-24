@@ -110,7 +110,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'analysisFailed': 'Analysis failed',
       'dismiss': 'Dismiss',
       'progress': 'Progress',
-      'diseaseDetection': 'Disease Detection',
     };
 
     // Add crop and disease label keys with consistent lowercase and underscores replaced by spaces
