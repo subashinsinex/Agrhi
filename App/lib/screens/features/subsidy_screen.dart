@@ -1,10 +1,11 @@
+// lib/src/screens/features/subsidy_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/colors.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../utils/storage_helper.dart'; // Add this import
 import '../../src/services/language_service.dart';
 
 class Subsidy {
@@ -118,6 +119,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
   List<Subsidy> _filteredSubsidies = [];
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final StorageHelper _storage = StorageHelper(); // Add StorageHelper
   bool _hasError = false;
   bool _showScrollToTop = false;
 
@@ -160,16 +162,21 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     _futureSubsidies = fetchSubsidies();
   }
 
-Future<List<Subsidy>> fetchSubsidies() async {
-    const storage = FlutterSecureStorage();
-    final accessToken = await storage.read(key: 'access_token');
-    print('Access Token: $accessToken');
+  Future<List<Subsidy>> fetchSubsidies() async {
+    // Use centralized storage helper with retry logic
+    final accessToken = await _storage.getAccessToken();
+
+    print(
+      '🔍 Subsidy Screen - Access Token: ${accessToken != null ? "Found (${accessToken.length} chars)" : "NULL"}',
+    );
 
     // Prepare headers
     final headers = <String, String>{'Content-Type': 'application/json'};
 
     if (accessToken != null) {
       headers['Authorization'] = 'Bearer $accessToken';
+    } else {
+      print('⚠️ No access token found - API call will likely fail');
     }
 
     // API endpoint to fetch subsidies
@@ -178,7 +185,6 @@ Future<List<Subsidy>> fetchSubsidies() async {
         'http://10.21.69.186:5000/api/subsidies/getSubsidy',
       );
 
-      // Pass headers to http.get(), not Uri.parse()
       final response = await http.get(url, headers: headers);
 
       if (response.statusCode == 200) {
@@ -189,14 +195,19 @@ Future<List<Subsidy>> fetchSubsidies() async {
           _allSubsidies = subsidies;
           _filteredSubsidies = List.of(_allSubsidies);
         });
+        print('✅ Subsidies loaded successfully: ${subsidies.length} items');
         return subsidies;
+      } else if (response.statusCode == 401) {
+        _setError();
+        print('❌ Unauthorized - access token may be invalid or expired');
+        throw Exception('Session expired - please log in again');
       } else {
         _setError();
         throw Exception('Failed to load subsidies: ${response.statusCode}');
       }
     } catch (e) {
       _setError();
-      print('Error fetching subsidies: $e');
+      print('❌ Error fetching subsidies: $e');
       rethrow;
     }
   }
@@ -266,6 +277,7 @@ Future<List<Subsidy>> fetchSubsidies() async {
                     ),
                     onPressed: () {
                       setState(() {
+                        _hasError = false;
                         _fetchData();
                       });
                     },
@@ -338,9 +350,7 @@ Future<List<Subsidy>> fetchSubsidies() async {
                               vertical: 4,
                             ),
                             child: Card(
-                              key: ValueKey(
-                                subsidy.id,
-                              ), // Added key for proper updates
+                              key: ValueKey(subsidy.id),
                               color: Colors.white,
                               elevation: 3,
                               shadowColor: AppColors.primaryGreen.withOpacity(
