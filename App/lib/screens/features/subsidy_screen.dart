@@ -1,11 +1,14 @@
+// lib/src/screens/features/subsidy_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/colors.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../utils/storage_helper.dart';
 import '../../src/services/language_service.dart';
+import '../../src/services/auth_service.dart';
+import '../../src/services/connectivity_service.dart';
 
 class Subsidy {
   final int id;
@@ -52,7 +55,7 @@ class SmartReTranslator extends StatefulWidget {
 
 class _SmartReTranslatorState extends State<SmartReTranslator> {
   late LanguageService languageService;
-  String displayedText = ''; // Initialize with empty string instead of late
+  String displayedText = '';
   bool _cacheLoaded = false;
 
   @override
@@ -60,10 +63,8 @@ class _SmartReTranslatorState extends State<SmartReTranslator> {
     super.didChangeDependencies();
     languageService = Provider.of<LanguageService>(context);
 
-    // Load cached translation instantly
     _getInitialTranslation();
 
-    // Listen when cache is loaded to retranslate
     if (!languageService.isInitialized) {
       languageService.addListener(() {
         if (languageService.isInitialized && !_cacheLoaded) {
@@ -108,6 +109,7 @@ class _SmartReTranslatorState extends State<SmartReTranslator> {
 
 class SubsidyScreen extends StatefulWidget {
   const SubsidyScreen({super.key});
+
   @override
   State<SubsidyScreen> createState() => _SubsidyScreenState();
 }
@@ -118,8 +120,14 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
   List<Subsidy> _filteredSubsidies = [];
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final StorageHelper _storage = StorageHelper();
+  final AuthService _authService = AuthService();
+  final ConnectivityService _connectivityService = ConnectivityService();
+
   bool _hasError = false;
   bool _showScrollToTop = false;
+  bool _isRetrying = false;
+  String _errorMessage = 'Please connect to the internet and try again.';
 
   @override
   void initState() {
@@ -160,25 +168,90 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     _futureSubsidies = fetchSubsidies();
   }
 
-Future<List<Subsidy>> fetchSubsidies() async {
-    const storage = FlutterSecureStorage();
-    final accessToken = await storage.read(key: 'access_token');
-    print('Access Token: $accessToken');
+  /// Intelligent retry with connectivity check and token refresh
+  Future<void> _handleRetry() async {
+    if (_isRetrying) return; // Prevent multiple simultaneous retries
 
-    // Prepare headers
+    setState(() {
+      _isRetrying = true;
+      _errorMessage = 'Checking connection...';
+    });
+
+    print('🔄 Retry initiated - checking internet connectivity...');
+
+    // Step 1: Check internet connectivity
+    final hasInternet = await _connectivityService.hasInternetConnection();
+
+    if (!hasInternet) {
+      print('❌ No internet connection available');
+      setState(() {
+        _isRetrying = false;
+        _errorMessage =
+            'No internet connection. Please check your network and try again.';
+      });
+      return;
+    }
+
+    print('✅ Internet connection available');
+
+    setState(() {
+      _errorMessage = 'Refreshing access token...';
+    });
+
+    // Step 2: Try to refresh access token
+    try {
+      print('🔄 Attempting to refresh access token...');
+      await _authService.refreshAccessToken();
+      print('✅ Access token refreshed successfully');
+
+      // Step 3: Reload the page
+      setState(() {
+        _hasError = false;
+        _isRetrying = false;
+        _errorMessage = 'Please connect to the internet and try again.';
+      });
+
+      print('🔄 Reloading subsidies...');
+      _fetchData();
+    } catch (e) {
+      print('❌ Failed to refresh access token: $e');
+
+      // Check if it's an auth error or server error
+      final errorMsg = e.toString();
+      if (errorMsg.contains('expired') || errorMsg.contains('invalid')) {
+        setState(() {
+          _isRetrying = false;
+          _errorMessage = 'Session expired. Please log in again.';
+        });
+      } else {
+        setState(() {
+          _isRetrying = false;
+          _errorMessage = 'Server is unavailable. Please try again later.';
+        });
+      }
+    }
+  }
+
+  Future<List<Subsidy>> fetchSubsidies() async {
+    final accessToken = await _storage.getAccessToken();
+
+    print(
+      '🔍 Subsidy Screen - Access Token: ${accessToken != null ? "Found (${accessToken.length} chars)" : "NULL"}',
+    );
+
     final headers = <String, String>{'Content-Type': 'application/json'};
 
     if (accessToken != null) {
       headers['Authorization'] = 'Bearer $accessToken';
+    } else {
+      print('⚠️ No access token found - API call will likely fail');
     }
 
-    // API endpoint to fetch subsidies
     try {
       final url = Uri.parse(
         'http://10.21.69.186:5000/api/subsidies/getSubsidy',
       );
 
-      // Pass headers to http.get(), not Uri.parse()
       final response = await http.get(url, headers: headers);
 
       if (response.statusCode == 200) {
@@ -189,14 +262,19 @@ Future<List<Subsidy>> fetchSubsidies() async {
           _allSubsidies = subsidies;
           _filteredSubsidies = List.of(_allSubsidies);
         });
+        print('✅ Subsidies loaded successfully: ${subsidies.length} items');
         return subsidies;
+      } else if (response.statusCode == 401) {
+        _setError();
+        print('❌ Unauthorized - access token may be invalid or expired');
+        throw Exception('Session expired - please log in again');
       } else {
         _setError();
         throw Exception('Failed to load subsidies: ${response.statusCode}');
       }
     } catch (e) {
       _setError();
-      print('Error fetching subsidies: $e');
+      print('❌ Error fetching subsidies: $e');
       rethrow;
     }
   }
@@ -240,22 +318,44 @@ Future<List<Subsidy>> fetchSubsidies() async {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.wifi_off, size: 80, color: Colors.grey),
+                  Icon(
+                    _isRetrying ? Icons.refresh : Icons.wifi_off,
+                    size: 80,
+                    color: _isRetrying ? AppColors.primaryGreen : Colors.grey,
+                  ),
                   const SizedBox(height: 16),
-                  SmartReTranslator(
-                    text: 'Please connect to the internet and try again.',
-                    style: const TextStyle(color: Colors.grey, fontSize: 16),
-                    textAlign: TextAlign.center,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: SmartReTranslator(
+                      text: _errorMessage,
+                      style: TextStyle(
+                        color: _isRetrying
+                            ? AppColors.primaryGreen
+                            : Colors.grey,
+                        fontSize: 16,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.refresh),
+                    icon: _isRetrying
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.refresh),
                     label: SmartReTranslator(
-                      text: 'Reload',
+                      text: _isRetrying ? 'Retrying...' : 'Retry',
                       style: const TextStyle(),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryGreen,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
                         vertical: 12,
@@ -264,11 +364,7 @@ Future<List<Subsidy>> fetchSubsidies() async {
                         borderRadius: BorderRadius.circular(26),
                       ),
                     ),
-                    onPressed: () {
-                      setState(() {
-                        _fetchData();
-                      });
-                    },
+                    onPressed: _isRetrying ? null : _handleRetry,
                   ),
                 ],
               ),
@@ -338,9 +434,7 @@ Future<List<Subsidy>> fetchSubsidies() async {
                               vertical: 4,
                             ),
                             child: Card(
-                              key: ValueKey(
-                                subsidy.id,
-                              ), // Added key for proper updates
+                              key: ValueKey(subsidy.id),
                               color: Colors.white,
                               elevation: 3,
                               shadowColor: AppColors.primaryGreen.withOpacity(
@@ -404,6 +498,7 @@ Future<List<Subsidy>> fetchSubsidies() async {
   }
 }
 
+// SubsidyDetailScreen with improved dialog visibility
 class SubsidyDetailScreen extends StatelessWidget {
   final Subsidy subsidy;
   const SubsidyDetailScreen({super.key, required this.subsidy});
@@ -414,30 +509,98 @@ class SubsidyDetailScreen extends StatelessWidget {
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Open Link'),
-            content: const Text(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Row(
+              children: [
+                Icon(
+                  Icons.open_in_browser,
+                  color: AppColors.primaryGreen,
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Open Link',
+                  style: TextStyle(
+                    color: AppColors.primaryGreen,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
               'Do you want to open the link in your browser?',
+              style: TextStyle(
+                color: Colors.grey[800],
+                fontSize: 16,
+                height: 1.4,
+              ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.grey[600],
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
               ),
-              TextButton(
+              ElevatedButton.icon(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Open'),
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: const Text(
+                  'Open',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
               ),
             ],
-            backgroundColor: AppColors.appBarBackground,
+            actionsPadding: const EdgeInsets.only(
+              right: 16,
+              bottom: 16,
+              left: 16,
+            ),
           ),
         ) ??
         false;
 
     if (confirmed) {
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open the link')),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Could not open the link',
+                style: TextStyle(color: Colors.white),
+              ),
+              backgroundColor: Colors.red[700],
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
       }
     }
   }
@@ -523,6 +686,7 @@ class SubsidyDetailScreen extends StatelessWidget {
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primaryGreen,
+                              foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 32,
                                 vertical: 14,

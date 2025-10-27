@@ -1,4 +1,3 @@
-// lib/src/services/connectivity_service.dart
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 

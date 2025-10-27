@@ -11,6 +11,7 @@ class AppConstants {
   static const String loginEndpoint = '$baseUrl/login';
   static const String signupEndpoint = '$baseUrl/profile/createUser';
   static const String getProfileEndpoint = '$baseUrl/profile/getUserDetails/:user_id';
+  static const String cropHistoryEndpoint = '$baseUrl/crop/history/:user_id';
   static const String logoutEndpoint = '$baseUrl/logout';
 
   // Storage Keys
