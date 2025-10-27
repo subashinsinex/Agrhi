@@ -67,17 +67,13 @@ class AuthService {
           print('⚠️ Access token expired - attempting refresh...');
 
           // Access token is expired - MUST refresh
-          final tokens = await _refreshTokensFromServer(refreshToken);
+          final success = await _refreshToken(refreshToken);
 
-          if (tokens == null) {
+          if (!success) {
             print('❌ Failed to refresh expired access token');
             await clearTokens();
             return AuthStatus.unauthenticated;
           }
-
-          // Store refreshed tokens
-          await _storageHelper.write('access_token', tokens['access_token']!);
-          await _storageHelper.write('refresh_token', tokens['refresh_token']!);
 
           print('✅ Tokens refreshed - authenticated');
           return AuthStatus.authenticated;
@@ -129,16 +125,12 @@ class AuthService {
       }
 
       // Call server to refresh tokens
-      final tokens = await _refreshTokensFromServer(refreshToken);
+      final success = await _refreshToken(refreshToken);
 
-      if (tokens == null) {
+      if (!success) {
         await clearTokens();
         throw Exception('Failed to refresh tokens from server');
       }
-
-      // Store new tokens using StorageHelper
-      await _storageHelper.write('access_token', tokens['access_token']!);
-      await _storageHelper.write('refresh_token', tokens['refresh_token']!);
 
       print('✅ Access token refreshed successfully');
     } catch (e) {
@@ -165,18 +157,16 @@ class AuthService {
       if (shouldRefreshAccess || shouldRefreshRefreshToken) {
         print('🔄 Token refresh needed - attempting preemptive refresh...');
 
-        // Refresh both tokens
-        final tokens = await _refreshTokensFromServer(refreshToken);
+        // Refresh tokens
+        final success = await _refreshToken(refreshToken);
 
-        if (tokens == null) {
-          print('❌ Server returned null - possible network or server issue');
+        if (!success) {
+          print('❌ Server returned error - possible network or server issue');
           // DON'T clear tokens here - might just be temporary network issue
-          // If refresh token is still valid, allow the user to stay authenticated
 
           // Check if access token is completely expired
           if (JwtDecoder.isExpired(accessToken)) {
             print('⚠️ Access token expired and refresh failed');
-            // If online but refresh failed, it's a real auth problem
             return false;
           }
 
@@ -184,10 +174,6 @@ class AuthService {
           print('✅ Access token still valid - continuing with current token');
           return true;
         }
-
-        // Successfully refreshed - store new tokens
-        await _storageHelper.write('access_token', tokens['access_token']!);
-        await _storageHelper.write('refresh_token', tokens['refresh_token']!);
 
         print('✅ Tokens refreshed successfully');
       }
@@ -237,10 +223,8 @@ class AuthService {
     }
   }
 
-  /// Call server to refresh tokens
-  Future<Map<String, String>?> _refreshTokensFromServer(
-    String refreshToken,
-  ) async {
+  /// Call server to refresh access token (only returns access_token, no refresh_token)
+  Future<bool> _refreshToken(String refreshToken) async {
     try {
       print('🔄 Calling refresh token API...');
       print('🔄 Endpoint: $_baseUrl/refreshtoken');
@@ -250,8 +234,8 @@ class AuthService {
             Uri.parse('$_baseUrl/refreshtoken'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'refreshToken':
-                  refreshToken, // Send refresh token in request body
+              'refresh_token':
+                  refreshToken, // Send as camelCase or snake_case based on your API
             }),
           )
           .timeout(const Duration(seconds: 10));
@@ -262,33 +246,34 @@ class AuthService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
-        // Ensure both tokens are present in response
-        if (data['access_token'] == null || data['refresh_token'] == null) {
-          print(
-            '❌ Missing tokens in response - received: ${data.keys.join(", ")}',
-          );
-          return null;
+        // Server only sends access_token (snake_case), not refresh_token
+        final newAccessToken = data['access_token'];
+
+        if (newAccessToken == null) {
+          print('❌ Missing access_token in response');
+          return false;
         }
 
-        print('✅ Tokens received from server');
-        return {
-          'access_token': data['access_token'] as String,
-          'refresh_token': data['refresh_token'] as String,
-        };
+        // Store only the new access token (refresh token stays the same)
+        await _storageHelper.write('access_token', newAccessToken as String);
+        print('✅ New access token stored successfully');
+
+        // Note: refresh_token is NOT updated since server doesn't send a new one
+        return true;
       } else {
         print('❌ Refresh failed with status: ${response.statusCode}');
         print('❌ Response body: ${response.body}');
-        return null;
+        return false;
       }
     } on SocketException catch (e) {
       print('❌ Network error calling refresh API: $e');
-      return null;
+      return false;
     } on FormatException catch (e) {
       print('❌ Invalid JSON response from refresh API: $e');
-      return null;
+      return false;
     } catch (e) {
       print('❌ Error calling refresh API: $e');
-      return null;
+      return false;
     }
   }
 
@@ -418,116 +403,6 @@ class AuthService {
       await clearTokens();
       print('✅ Logout complete');
     }
-  }
-
-  /// Debug method to check token status (quick check)
-  Future<void> debugTokenStatus() async {
-    print('\n=== TOKEN DEBUG (Quick) ===');
-    final access = await _storageHelper.getAccessToken();
-    final refresh = await _storageHelper.getRefreshToken();
-
-    print('Access token exists: ${access != null}');
-    print('Refresh token exists: ${refresh != null}');
-
-    if (access != null) {
-      print('Access token length: ${access.length}');
-      try {
-        print('Access token expired: ${JwtDecoder.isExpired(access)}');
-        final exp = JwtDecoder.getExpirationDate(access);
-        final remaining = exp.difference(DateTime.now());
-        print('Access token expires in: ${remaining.inMinutes} minutes');
-      } catch (e) {
-        print('Error decoding access token: $e');
-      }
-    }
-
-    if (refresh != null) {
-      print('Refresh token length: ${refresh.length}');
-      try {
-        print('Refresh token expired: ${JwtDecoder.isExpired(refresh)}');
-        final exp = JwtDecoder.getExpirationDate(refresh);
-        final remaining = exp.difference(DateTime.now());
-        print('Refresh token expires in: ${remaining.inDays} days');
-      } catch (e) {
-        print('Error decoding refresh token: $e');
-      }
-    }
-    print('===========================\n');
-  }
-
-  /// Debug: Read and log all stored items (comprehensive)
-  Future<void> debugAllStorageItems() async {
-    print('\n' + '=' * 60);
-    print('🔍 FLUTTER SECURE STORAGE - ALL ITEMS');
-    print('=' * 60);
-
-    try {
-      // Read all items using StorageHelper
-      final allItems = await _storageHelper.readAll();
-
-      if (allItems.isEmpty) {
-        print('⚠️ Storage is EMPTY - no items found');
-      } else {
-        print('✅ Found ${allItems.length} items in storage:\n');
-
-        allItems.forEach((key, value) {
-          if (key == 'access_token' || key == 'refresh_token') {
-            // Show partial token for security
-            final preview = value.length > 50
-                ? '${value.substring(0, 30)}...${value.substring(value.length - 20)}'
-                : value;
-            print('📌 $key:');
-            print('   Length: ${value.length} chars');
-            print('   Preview: $preview');
-
-            // Try to decode JWT
-            try {
-              final isExpired = JwtDecoder.isExpired(value);
-              final expiryDate = JwtDecoder.getExpirationDate(value);
-              final remaining = expiryDate.difference(DateTime.now());
-              print('   Expired: $isExpired');
-              print(
-                '   Expires in: ${remaining.inMinutes} minutes (${remaining.inHours} hours)',
-              );
-            } catch (e) {
-              print('   ⚠️ Invalid JWT format: $e');
-            }
-          } else {
-            // For other items, show full content (limited)
-            final preview = value.length > 100
-                ? '${value.substring(0, 100)}...'
-                : value;
-            print('📌 $key:');
-            print('   Length: ${value.length} chars');
-            print('   Value: $preview');
-          }
-          print('');
-        });
-      }
-
-      // Test individual reads with retry
-      print('\n' + '-' * 60);
-      print('🔄 Testing individual reads with retry logic:');
-      print('-' * 60);
-
-      final accessToken = await _storageHelper.getAccessToken();
-      final refreshToken = await _storageHelper.getRefreshToken();
-      final userProfile = await _storageHelper.getUserProfile();
-
-      print(
-        'access_token: ${accessToken != null ? "✅ Found (${accessToken.length} chars)" : "❌ NULL"}',
-      );
-      print(
-        'refresh_token: ${refreshToken != null ? "✅ Found (${refreshToken.length} chars)" : "❌ NULL"}',
-      );
-      print(
-        'user_profile: ${userProfile != null ? "✅ Found (${userProfile.length} chars)" : "❌ NULL"}',
-      );
-    } catch (e) {
-      print('❌ Error reading storage: $e');
-    }
-
-    print('=' * 60 + '\n');
   }
 }
 
