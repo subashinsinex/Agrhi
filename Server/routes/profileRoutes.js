@@ -19,7 +19,7 @@ router.get("/getUserDetails/:user_id", jwtChecker, async (req, res) => {
   }
 });
 
-router.post("/createUser", async (req, res) => {
+router.post("/createUser", jwtChecker, async (req, res) => {
   try {
     const newUser = req.body; // ✅ user registration data
     const result = await profileServices.createUser(newUser); // ✅ call createUser

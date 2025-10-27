@@ -626,7 +626,9 @@ const Master = () => {
           cropTypes,
           (c) => (
             <li key={c.croptype_id} style={styles.li}>
-              <span>{c.name}</span>
+              <span>
+                {c.croptype_id} - {c.name}
+              </span>
               <button
                 className="delete-button"
                 onClick={() => openDelete("crop", c.croptype_id)}

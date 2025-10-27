@@ -18,6 +18,7 @@ app.use("/api/subsidies", subsidiesRoutes);
 app.use("/api/farmcrop", farmCropRoutes);
 app.use("/api/diseaseRemedies", diseaseRemediesRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/uploads", express.static("uploads"));
 
 const PORT = process.env.PORT;
 

@@ -3,11 +3,11 @@ const router = express.Router();
 const diseaseRemediesServices = require("../services/diseaseRemediesServices");
 const jwtChecker = require("../middleware/jwtChecker");
 const adminChecker = require("../middleware/adminChecker");
-
-router.use(jwtChecker, adminChecker);
+const upload = require("../middleware/uploadConfig");
+// router.use(jwtChecker, adminChecker);
 
 // --- Diseases CRUD ---
-router.get("/diseases", async (req, res) => {
+router.get("/diseases", jwtChecker, adminChecker, async (req, res) => {
   try {
     const data = await diseaseRemediesServices.getDiseases();
     res.json(data);
@@ -16,7 +16,7 @@ router.get("/diseases", async (req, res) => {
   }
 });
 
-router.post("/creatediseases", async (req, res) => {
+router.post("/creatediseases", jwtChecker, adminChecker, async (req, res) => {
   try {
     const data = await diseaseRemediesServices.createDisease(req.body);
     res.status(201).json(data);
@@ -25,32 +25,42 @@ router.post("/creatediseases", async (req, res) => {
   }
 });
 
-router.put("/updatediseases/:diseaseid", async (req, res) => {
-  try {
-    const data = await diseaseRemediesServices.updateDisease(
-      req.params.diseaseid,
-      req.body
-    );
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ message: "Error updating disease" });
+router.put(
+  "/updatediseases/:diseaseid",
+  jwtChecker,
+  adminChecker,
+  async (req, res) => {
+    try {
+      const data = await diseaseRemediesServices.updateDisease(
+        req.params.diseaseid,
+        req.body
+      );
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ message: "Error updating disease" });
+    }
   }
-});
+);
 
-router.delete("/deletediseases/:diseaseid", async (req, res) => {
-  try {
-    const data = await diseaseRemediesServices.deleteDisease(
-      req.params.diseaseid
-    );
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting disease" });
+router.delete(
+  "/deletediseases/:diseaseid",
+  jwtChecker,
+  adminChecker,
+  async (req, res) => {
+    try {
+      const data = await diseaseRemediesServices.deleteDisease(
+        req.params.diseaseid
+      );
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ message: "Error deleting disease" });
+    }
   }
-});
+);
 
 // --- Remedy CRUD ---
 // GET all remedies (with mapped diseases)
-router.get("/remedies", async (req, res) => {
+router.get("/remedies", jwtChecker, adminChecker, async (req, res) => {
   try {
     const remedies = await diseaseRemediesServices.getRemedies();
     res.json(remedies);
@@ -60,7 +70,7 @@ router.get("/remedies", async (req, res) => {
 });
 
 // POST create remedy
-router.post("/createremedies", async (req, res) => {
+router.post("/createremedies", jwtChecker, adminChecker, async (req, res) => {
   try {
     const newRemedy = req.body; // expects remedy and prevention
     const result = await diseaseRemediesServices.createRemedy(newRemedy);
@@ -71,34 +81,44 @@ router.post("/createremedies", async (req, res) => {
 });
 
 // PUT update remedy
-router.put("/updateremedies/:remedyid", async (req, res) => {
-  try {
-    const remedyid = req.params.remedyid;
-    const updated = req.body;
-    const result = await diseaseRemediesServices.updateRemedy(
-      remedyid,
-      updated
-    );
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ message: "Error updating remedy" });
+router.put(
+  "/updateremedies/:remedyid",
+  jwtChecker,
+  adminChecker,
+  async (req, res) => {
+    try {
+      const remedyid = req.params.remedyid;
+      const updated = req.body;
+      const result = await diseaseRemediesServices.updateRemedy(
+        remedyid,
+        updated
+      );
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Error updating remedy" });
+    }
   }
-});
+);
 
 // DELETE remedy
-router.delete("/deleteremedies/:remedyid", async (req, res) => {
-  try {
-    const remedyid = req.params.remedyid;
-    const result = await diseaseRemediesServices.deleteRemedy(remedyid);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting remedy" });
+router.delete(
+  "/deleteremedies/:remedyid",
+  jwtChecker,
+  adminChecker,
+  async (req, res) => {
+    try {
+      const remedyid = req.params.remedyid;
+      const result = await diseaseRemediesServices.deleteRemedy(remedyid);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Error deleting remedy" });
+    }
   }
-});
+);
 
 // --- Remedy/Disease Mapping ---
 // POST map a remedy to a disease
-router.post("/remedies/map", async (req, res) => {
+router.post("/remedies/map", jwtChecker, adminChecker, async (req, res) => {
   try {
     const { disease_id, remedy_id } = req.body;
     const result = await diseaseRemediesServices.mapRemedyToDisease(
@@ -112,7 +132,7 @@ router.post("/remedies/map", async (req, res) => {
 });
 
 // DELETE unmap remedy from disease
-router.delete("/remedies/unmap", async (req, res) => {
+router.delete("/remedies/unmap", jwtChecker, adminChecker, async (req, res) => {
   try {
     const { diseaseid, remedyid } = req.body;
     const result = await diseaseRemediesServices.unmapRemedyFromDisease(
@@ -126,20 +146,25 @@ router.delete("/remedies/unmap", async (req, res) => {
 });
 
 // GET remedies mapped to a specific disease
-router.get("/diseases/:diseaseid/remedies", async (req, res) => {
-  try {
-    const diseaseid = req.params.diseaseid;
-    const remedies = await diseaseRemediesServices.getRemediesByDisease(
-      diseaseid
-    );
-    res.json(remedies);
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching remedies for disease" });
+router.get(
+  "/diseases/:diseaseid/remedies",
+  jwtChecker,
+  adminChecker,
+  async (req, res) => {
+    try {
+      const diseaseid = req.params.diseaseid;
+      const remedies = await diseaseRemediesServices.getRemediesByDisease(
+        diseaseid
+      );
+      res.json(remedies);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching remedies for disease" });
+    }
   }
-});
+);
 
 // --- Images Read ---
-router.get("/images", async (req, res) => {
+router.get("/images", jwtChecker, async (req, res) => {
   try {
     const data = await diseaseRemediesServices.getImages();
     res.json(data);
@@ -148,17 +173,57 @@ router.get("/images", async (req, res) => {
   }
 });
 
-router.post("/addimages", async (req, res) => {
-  try {
-    const data = await diseaseRemediesServices.addImage(req.body);
-    res.status(201).json(data);
-  } catch (error) {
-    res.status(500).json({ message: "Error adding image" });
+router.post(
+  "/addimages",
+  jwtChecker,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      // Check if file was uploaded
+      if (!req.file) {
+        return res.status(400).json({ message: "No image file uploaded" });
+      }
+
+      // Get crop_id from request body
+      const { crop_id } = req.body;
+
+      if (!crop_id) {
+        return res.status(400).json({ message: "crop_id is required" });
+      }
+
+      // Construct image URL/path (store relative path)
+      const image_url = `/uploads/disease_images/${req.file.filename}`;
+
+      // Prepare data for database
+      const imageData = {
+        crop_id: parseInt(crop_id),
+        image_url: image_url,
+      };
+
+      // Save to database
+      const data = await diseaseRemediesServices.addImage(imageData);
+
+      res.status(201).json({
+        message: "Image uploaded successfully",
+        data: data,
+        file_info: {
+          filename: req.file.filename,
+          path: image_url,
+          size: req.file.size,
+        },
+      });
+    } catch (error) {
+      console.error("Error adding image:", error);
+      res.status(500).json({
+        message: "Error adding image",
+        error: error.message,
+      });
+    }
   }
-});
+);
 
 // --- Disease Analysis Read ---
-router.get("/disease-analysis-results", async (req, res) => {
+router.get("/disease-analysis-results", jwtChecker, async (req, res) => {
   try {
     const filters = req.query; // e.g. ?diseaseid=1&userid=2
     const data = await diseaseRemediesServices.getDiseaseAnalysisResults(
@@ -171,7 +236,7 @@ router.get("/disease-analysis-results", async (req, res) => {
 });
 
 // POST a new disease analysis result
-router.post("/createdisease-analysis-results", async (req, res) => {
+router.post("/createdisease-analysis-results", jwtChecker, async (req, res) => {
   try {
     const payload = req.body;
     const result = await diseaseRemediesServices.createDiseaseAnalysisResult(

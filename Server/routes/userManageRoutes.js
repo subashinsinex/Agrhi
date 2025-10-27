@@ -4,10 +4,10 @@ const userManageServices = require("../services/userManageServices");
 const jwtChecker = require("../middleware/jwtChecker");
 const adminChecker = require("../middleware/adminChecker");
 
-router.use(jwtChecker, adminChecker);
+// router.use(jwtChecker, adminChecker);
 
 // Get all users
-router.get("/getUser", async (req, res) => {
+router.get("/getUser", jwtChecker, adminChecker, async (req, res) => {
   try {
     const users = await userManageServices.getUsers();
     res.json(users);
@@ -17,7 +17,7 @@ router.get("/getUser", async (req, res) => {
 });
 
 // Create new user
-router.post("/postUser", async (req, res) => {
+router.post("/postUser", jwtChecker, async (req, res) => {
   try {
     const newUser = req.body;
     const result = await userManageServices.postUser(newUser);
@@ -29,7 +29,7 @@ router.post("/postUser", async (req, res) => {
 });
 
 // Update user
-router.put("/putUser/:userid", async (req, res) => {
+router.put("/putUser/:userid", jwtChecker, async (req, res) => {
   try {
     const user_id = req.params.userid;
     const updatedUser = req.body;
@@ -42,15 +42,20 @@ router.put("/putUser/:userid", async (req, res) => {
 });
 
 // Delete user
-router.delete("/deleteUser/:userid", async (req, res) => {
-  try {
-    const user_id = req.params.userid;
-    const result = await userManageServices.deleteUser(user_id);
-    res.json(result);
-  } catch (error) {
-    console.error("Route deleteUser error:", error);
-    res.status(500).json({ message: "Error deleting user" });
+router.delete(
+  "/deleteUser/:userid",
+  jwtChecker,
+  adminChecker,
+  async (req, res) => {
+    try {
+      const user_id = req.params.userid;
+      const result = await userManageServices.deleteUser(user_id);
+      res.json(result);
+    } catch (error) {
+      console.error("Route deleteUser error:", error);
+      res.status(500).json({ message: "Error deleting user" });
+    }
   }
-});
+);
 
 module.exports = router;

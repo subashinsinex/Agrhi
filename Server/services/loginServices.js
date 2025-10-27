@@ -63,13 +63,13 @@ async function login(phone_number, password, platform) {
 }
 
 async function refreshToken(req, res) {
-  const { refreshToken } = req.body;
-  if (!refreshToken)
+  const { refresh_token } = req.body;
+  if (!refresh_token)
     return res.status(401).json({ error: "No token provided" });
 
   try {
     // Verify the refresh token
-    const decoded = jwt.verify(refreshToken, REFRESH_KEY);
+    const decoded = jwt.verify(refresh_token, REFRESH_KEY);
     const user_id = decoded.user_id;
 
     // Check if the refresh token is valid for the user
@@ -85,7 +85,8 @@ async function refreshToken(req, res) {
     const access_token = jwt.sign({ user_id }, SECRET_KEY, {
       expiresIn: "15m",
     });
-    res.status(200).json({ accessToken: access_token });
+    res.status(200).json({ access_token: access_token });
+    return success;
   } catch (error) {
     console.error("Refresh token error:", error);
     return res.status(500).json({ error: "Internal server error" });

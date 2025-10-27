@@ -6,6 +6,8 @@ import UserManage from "./components/userManage";
 import Subsidies from "./components/subsidies";
 import FarmCrop from "./components/farmCrop";
 import Master from "./components/master";
+import Disease from "./components/disease";
+import Report from "./components/report";
 import { Header } from "./components/header";
 import { DESKTOP_BREAKPOINT } from "./constant";
 import ProtectedRoute from "./components/protectedRoute";
@@ -66,6 +68,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Master />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/diseases"
+              element={
+                <ProtectedRoute>
+                  <Disease />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute>
+                  <Report />
                 </ProtectedRoute>
               }
             />

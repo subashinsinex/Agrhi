@@ -269,8 +269,7 @@ exports.getCropById = async (req, res) => {
         uc.duration,
         uc.field_size,
         uc.water_requirement, 
-        uc.status, 
-        uc.isactive, 
+        uc.status,  
         f.survey_number, 
         f.farm_size, 
         ud.name AS farmer,
@@ -282,7 +281,43 @@ exports.getCropById = async (req, res) => {
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
       LEFT JOIN farms_soil_types fst ON f.farm_id = fst.farm_id
       LEFT JOIN soil_types st ON fst.soil_type_id = st.soil_type_id
-      WHERE uc.user_crop_id = $1;
+      WHERE uc.user_crop_id = $1 AND uc.isactive = true;
+    `;
+    const result = await pool.query(sql, [id]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("getCropById error:", error);
+    res.status(500).json({ message: "Error fetching crop", error });
+  }
+};
+
+exports.getCropHistoryById = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const sql = `
+      SELECT
+        uc.user_crop_id,
+        uc.farm_id,
+        pl.plant_name, 
+        ct.name AS crop_type,
+        uc.planting_date, 
+        uc.harvest_date,
+        uc.duration,
+        uc.field_size,
+        uc.water_requirement, 
+        uc.status,  
+        f.survey_number, 
+        f.farm_size, 
+        ud.name AS farmer,
+        st.name AS soil_type
+      FROM user_crops uc
+      LEFT JOIN plants pl ON uc.plant_id = pl.plant_id
+      LEFT JOIN crop_types ct ON pl.crop_type_id = ct.croptype_id
+      LEFT JOIN farms f ON uc.farm_id = f.farm_id
+      LEFT JOIN user_details ud ON f.user_id = ud.user_id
+      LEFT JOIN farms_soil_types fst ON f.farm_id = fst.farm_id
+      LEFT JOIN soil_types st ON fst.soil_type_id = st.soil_type_id
+      WHERE uc.user_crop_id = $1 AND uc.isactive = false;
     `;
     const result = await pool.query(sql, [id]);
     res.json(result.rows[0]);
