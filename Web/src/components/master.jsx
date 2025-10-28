@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import axios from "axios";
 import { SERVER_IP } from "../constant";
 
@@ -28,7 +28,10 @@ const Master = () => {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
   const access_token = localStorage.getItem("access_token");
-  const authConfig = { headers: { Authorization: `Bearer ${access_token}` } };
+  const authConfig = useMemo(
+    () => ({ headers: { Authorization: `Bearer ${access_token}` } }),
+    [access_token]
+  );
 
   // Fetch all master data
   const fetchAll = useCallback(async () => {
@@ -59,7 +62,7 @@ const Master = () => {
           (err.response?.data?.message || err.message)
       );
     }
-  }, [access_token]);
+  }, [access_token, authConfig]);
 
   useEffect(() => {
     fetchAll();

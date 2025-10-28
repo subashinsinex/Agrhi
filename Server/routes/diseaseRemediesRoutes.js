@@ -7,7 +7,7 @@ const upload = require("../middleware/uploadConfig");
 // router.use(jwtChecker, adminChecker);
 
 // --- Diseases CRUD ---
-router.get("/diseases", jwtChecker, adminChecker, async (req, res) => {
+router.get("/diseases", jwtChecker, async (req, res) => {
   try {
     const data = await diseaseRemediesServices.getDiseases();
     res.json(data);
@@ -60,7 +60,7 @@ router.delete(
 
 // --- Remedy CRUD ---
 // GET all remedies (with mapped diseases)
-router.get("/remedies", jwtChecker, adminChecker, async (req, res) => {
+router.get("/remedies", jwtChecker, async (req, res) => {
   try {
     const remedies = await diseaseRemediesServices.getRemedies();
     res.json(remedies);
@@ -149,7 +149,7 @@ router.delete("/remedies/unmap", jwtChecker, adminChecker, async (req, res) => {
 router.get(
   "/diseases/:diseaseid/remedies",
   jwtChecker,
-  adminChecker,
+
   async (req, res) => {
     try {
       const diseaseid = req.params.diseaseid;
@@ -162,6 +162,16 @@ router.get(
     }
   }
 );
+
+router.get("/diseaseswithremedies", jwtChecker, async (req, res) => {
+  try {
+    const diseasesWithRemedies =
+      await diseaseRemediesServices.getAllDiseasesWithRemedies();
+    res.json(diseasesWithRemedies);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching diseases with remedies" });
+  }
+});
 
 // --- Images Read ---
 router.get("/images", jwtChecker, async (req, res) => {

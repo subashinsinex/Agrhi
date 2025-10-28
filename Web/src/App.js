@@ -8,6 +8,7 @@ import FarmCrop from "./components/farmCrop";
 import Master from "./components/master";
 import Disease from "./components/disease";
 import Report from "./components/report";
+import Feedback from "./components/feedback";
 import { Header } from "./components/header";
 import { DESKTOP_BREAKPOINT } from "./constant";
 import ProtectedRoute from "./components/protectedRoute";
@@ -84,6 +85,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Report />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/feedback"
+              element={
+                <ProtectedRoute>
+                  <Feedback />
                 </ProtectedRoute>
               }
             />

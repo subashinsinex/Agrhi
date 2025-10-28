@@ -28,14 +28,14 @@ const modules = [
   { to: "/farmcrop", label: "Farm Crop", icon: <Wheat size={20} /> },
   { to: "/account", label: "Account", icon: <User size={20} /> },
   { to: "/reports", label: "Reports", icon: <BarChart2 size={20} /> },
-  { to: "/advisory", label: "Advisory", icon: <Lightbulb size={20} /> },
+  { to: "/feedback", label: "feedback", icon: <Lightbulb size={20} /> },
 ];
 
 // --- Sidebar Component ---
 export default function Sidebar() {
   const navigate = useNavigate();
   const logout = () => {
-    localStorage.removeItem("token");
+    localStorage.removeItem("access_token");
     navigate("/");
   };
 

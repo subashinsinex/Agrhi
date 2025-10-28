@@ -1,4 +1,5 @@
 const pool = require("../db/database");
+const { get } = require("../routes/feedbackRoutes");
 
 // Utility: Unique random 5-digit ID
 async function generateUniqueId(tableName, idField) {
@@ -135,6 +136,23 @@ async function getRemediesByDisease(diseaseid) {
   return result.rows;
 }
 
+async function getAllDiseasesWithRemedies() {
+  const sql = `
+    SELECT 
+      d.disease_id,
+      d.name AS disease_name,
+      r.remedy_id,
+      r.remedy,
+      r.prevention
+    FROM diseases d
+    LEFT JOIN disease_remedy dr ON d.disease_id = dr.disease_id
+    LEFT JOIN remedies r ON dr.remedy_id = r.remedy_id
+    ORDER BY d.disease_id, r.remedy_id;
+  `;
+  const result = await pool.query(sql);
+  return result.rows;
+}
+
 async function mapRemedyToDisease(disease_id, remedy_id) {
   // FK integrity checks are recommended but not required here
   const sql =
@@ -262,6 +280,7 @@ module.exports = {
   getImages,
   addImage,
   getRemediesByDisease,
+  getAllDiseasesWithRemedies,
   mapRemedyToDisease,
   unmapRemedyFromDisease,
   getDiseaseAnalysisResults,

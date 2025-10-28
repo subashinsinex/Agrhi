@@ -11,6 +11,7 @@ const subsidiesRoutes = require("./routes/subsidiesRoutes");
 const farmCropRoutes = require("./routes/farmCropRoutes");
 const diseaseRemediesRoutes = require("./routes/diseaseRemediesRoutes");
 const profileRoutes = require("./routes/profileRoutes");
+const feedbackRoutes = require("./routes/feedbackRoutes");
 
 app.use("/api", loginRoutes);
 app.use("/api/users", userRoutes);
@@ -19,6 +20,7 @@ app.use("/api/farmcrop", farmCropRoutes);
 app.use("/api/diseaseRemedies", diseaseRemediesRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/uploads", express.static("uploads"));
+app.use("/api/feedback", feedbackRoutes);
 
 const PORT = process.env.PORT;
 
