@@ -86,7 +86,7 @@ async function refreshToken(req, res) {
       expiresIn: "15m",
     });
     res.status(200).json({ access_token: access_token });
-    return { success: True };
+    // return { success: True };
   } catch (error) {
     console.error("Refresh token error:", error);
     return res.status(500).json({ error: "Internal server error" });

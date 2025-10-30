@@ -2,13 +2,13 @@ import React from "react";
 // Importing icons for the cards:
 import {
   Users,
-  FlaskConical, // For Master (or another relevant icon like Wrench/Settings)
+  LucideDatabase, // For Master (or another relevant icon like Wrench/Settings)
   Shield, // For Disease & Remedies
   IndianRupee, // For Subsidies
   Sprout, // For Farm Crop
   BarChart2, // For Reports
   MessageSquare, // For Advisory
-  Wallet, // For Account
+  PersonStanding, // For Account
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -24,7 +24,7 @@ const dashboardModules = [
   {
     title: "Master Data",
     description: "Manage core application settings and reference data.",
-    icon: FlaskConical,
+    icon: LucideDatabase,
     color: "#10b981",
     path: "/master",
   },
@@ -51,8 +51,8 @@ const dashboardModules = [
   },
   {
     title: "Account",
-    description: "Manage personal profile and billing information.",
-    icon: Wallet,
+    description: "Manage personal profile.",
+    icon: PersonStanding,
     color: "#6366f1",
     path: "/account",
   },
@@ -241,7 +241,7 @@ const Dashboard = () => {
 
       {/* Header */}
       <div className="dashboard-header">
-        <h1>AGRI Admin Dashboard</h1>
+        <h1>AGRHI Admin Dashboard</h1>
         <p>Welcome! Select a module to manage data and users.</p>
       </div>
 

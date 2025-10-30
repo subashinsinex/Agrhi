@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import axios from "axios";
+import { axiosInstance } from "../api/login";
 import { Search, Plus, Trash2, Edit, ExternalLink, MapPin } from "lucide-react";
 
 // NOTE: This constant is assumed to be defined externally, keeping it here for context.
@@ -42,7 +42,7 @@ const Subsidies = () => {
       return;
     }
     try {
-      const res = await axios.get(apiBase + "/getSubsidy", {
+      const res = await axiosInstance.get(apiBase + "/getSubsidy", {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       // The data structure here is assumed to be [{..., state_id: "X", name: "State Name"}, ...]
@@ -112,13 +112,17 @@ const Subsidies = () => {
 
       if (formEdit) {
         // Update existing subsidy
-        await axios.put(apiBase + `/putSubsidy/${form.id}`, dataToSend, {
-          headers: { Authorization: `Bearer ${access_token}` },
-        });
+        await axiosInstance.put(
+          apiBase + `/putSubsidy/${form.id}`,
+          dataToSend,
+          {
+            headers: { Authorization: `Bearer ${access_token}` },
+          }
+        );
         setMsg("Subsidy updated successfully!");
       } else {
         // Add new subsidy
-        await axios.post(apiBase + "/postSubsidy", dataToSend, {
+        await axiosInstance.post(apiBase + "/postSubsidy", dataToSend, {
           headers: { Authorization: `Bearer ${access_token}` },
         });
         setMsg("Subsidy added successfully!");
@@ -153,9 +157,12 @@ const Subsidies = () => {
     if (!subsidyToDelete) return;
 
     try {
-      await axios.delete(apiBase + `/deleteSubsidy/${subsidyToDelete.id}`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      });
+      await axiosInstance.delete(
+        apiBase + `/deleteSubsidy/${subsidyToDelete.id}`,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+        }
+      );
       // Optimistically update the list
       setSubsidies((prevSubs) =>
         prevSubs.filter((s) => s.id !== subsidyToDelete.id)

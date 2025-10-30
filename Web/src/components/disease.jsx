@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import axios from "axios";
+import { axiosInstance } from "../api/login";
 import {
   Search,
   Plus,
@@ -635,7 +635,7 @@ const Disease = () => {
   const fetchDiseases = useCallback(async () => {
     resetMessages();
     try {
-      const res = await axios.get(`${apiBase}/diseases`, {
+      const res = await axiosInstance.get(`${apiBase}/diseases`, {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       setDiseases(res.data || []);
@@ -648,7 +648,7 @@ const Disease = () => {
 
   const fetchPlants = useCallback(async () => {
     try {
-      const res = await axios.get(`${plantApiBase}/masters/plants`, {
+      const res = await axiosInstance.get(`${plantApiBase}/masters/plants`, {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       setPlants(res.data || []);
@@ -659,7 +659,7 @@ const Disease = () => {
 
   const fetchRemedies = useCallback(async () => {
     try {
-      const res = await axios.get(`${apiBase}/remedies`, {
+      const res = await axiosInstance.get(`${apiBase}/remedies`, {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       setRemedies(res.data || []);
@@ -705,7 +705,7 @@ const Disease = () => {
 
     // Fetch mapped remedies
     try {
-      const remedyRes = await axios.get(
+      const remedyRes = await axiosInstance.get(
         `${apiBase}/diseases/${d.disease_id}/remedies`,
         { headers: { Authorization: `Bearer ${access_token}` } }
       );
@@ -726,12 +726,16 @@ const Disease = () => {
     resetMessages();
     try {
       if (formEdit) {
-        await axios.put(`${apiBase}/updatediseases/${form.disease_id}`, form, {
-          headers: { Authorization: `Bearer ${access_token}` },
-        });
+        await axiosInstance.put(
+          `${apiBase}/updatediseases/${form.disease_id}`,
+          form,
+          {
+            headers: { Authorization: `Bearer ${access_token}` },
+          }
+        );
         setMsg("Disease updated successfully! 🎉");
       } else {
-        await axios.post(`${apiBase}/creatediseases`, form, {
+        await axiosInstance.post(`${apiBase}/creatediseases`, form, {
           headers: { Authorization: `Bearer ${access_token}` },
         });
         setMsg("Disease added successfully! 🚀");
@@ -766,7 +770,7 @@ const Disease = () => {
     if (!diseaseToDelete) return;
 
     try {
-      await axios.delete(
+      await axiosInstance.delete(
         `${apiBase}/deletediseases/${diseaseToDelete.disease_id}`,
         { headers: { Authorization: `Bearer ${access_token}` } }
       );
@@ -826,14 +830,14 @@ const Disease = () => {
     resetMessages();
     try {
       if (remedyEdit) {
-        await axios.put(
+        await axiosInstance.put(
           `${apiBase}/updateremedies/${remedyForm.remedy_id}`,
           remedyForm,
           { headers: { Authorization: `Bearer ${access_token}` } }
         );
         setMsg("Remedy updated successfully! 👍");
       } else {
-        await axios.post(`${apiBase}/createremedies`, remedyForm, {
+        await axiosInstance.post(`${apiBase}/createremedies`, remedyForm, {
           headers: { Authorization: `Bearer ${access_token}` },
         });
         setMsg("Remedy added successfully! ✨");
@@ -859,7 +863,7 @@ const Disease = () => {
     setIsConfirmOpen(false);
     if (!remedyToDelete) return;
     try {
-      await axios.delete(
+      await axiosInstance.delete(
         `${apiBase}/deleteremedies/${remedyToDelete.remedy_id}`,
         { headers: { Authorization: `Bearer ${access_token}` } }
       );
@@ -897,7 +901,7 @@ const Disease = () => {
     }
     resetMessages();
     try {
-      await axios.post(
+      await axiosInstance.post(
         `${apiBase}/remedies/map`,
         { disease_id: selectedDisease.disease_id, remedy_id: mappingRemedyId },
         { headers: { Authorization: `Bearer ${access_token}` } }
@@ -916,7 +920,7 @@ const Disease = () => {
   const handleUnmapRemedy = async (remedy_id) => {
     resetMessages();
     try {
-      await axios.delete(`${apiBase}/remedies/unmap`, {
+      await axiosInstance.delete(`${apiBase}/remedies/unmap`, {
         headers: { Authorization: `Bearer ${access_token}` },
         data: { disease_id: selectedDisease.disease_id, remedy_id },
       });

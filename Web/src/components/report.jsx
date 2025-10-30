@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import axios from "axios";
+import { axiosInstance } from "../api/login";
 import {
   Search,
   ExternalLink,
@@ -68,9 +68,12 @@ const Report = () => {
     setMsg("");
     setErrorMsg("");
     try {
-      const res = await axios.get(`${apiBase}/disease-analysis-results`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      });
+      const res = await axiosInstance.get(
+        `${apiBase}/disease-analysis-results`,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+        }
+      );
       setReports(res.data || []);
       setMsg("Reports loaded successfully.");
     } catch (err) {

@@ -134,10 +134,10 @@ router.post("/remedies/map", jwtChecker, adminChecker, async (req, res) => {
 // DELETE unmap remedy from disease
 router.delete("/remedies/unmap", jwtChecker, adminChecker, async (req, res) => {
   try {
-    const { diseaseid, remedyid } = req.body;
+    const { disease_id, remedy_id } = req.body;
     const result = await diseaseRemediesServices.unmapRemedyFromDisease(
-      diseaseid,
-      remedyid
+      disease_id,
+      remedy_id
     );
     res.json(result);
   } catch (error) {

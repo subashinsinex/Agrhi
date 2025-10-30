@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import axios from "axios";
+import { axiosInstance } from "../api/login";
 // Using Menu, X, Mail, Phone, MapPin, Calendar, User, Search from lucide-react
 import {
   Menu,
@@ -65,7 +65,7 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
       return;
     }
     try {
-      const res = await axios.get(`${apiBase}/getUser`, {
+      const res = await axiosInstance.get(`${apiBase}/getUser`, {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       // Map user data to include the category label and ensure DOB is readable
@@ -131,7 +131,7 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
     }
     try {
       if (isEdit) {
-        await axios.put(`${apiBase}/putUser/${form.user_id}`, form, {
+        await axiosInstance.put(`${apiBase}/putUser/${form.user_id}`, form, {
           headers: { Authorization: `Bearer ${access_token}` },
         });
         setStatusMsg("User updated successfully");
@@ -140,7 +140,7 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
           setErrorMsg("Password is required for adding a new user.");
           return;
         }
-        await axios.post(`${apiBase}/postUser`, form, {
+        await axiosInstance.post(`${apiBase}/postUser`, form, {
           headers: { Authorization: `Bearer ${access_token}` },
         });
         setStatusMsg("User added successfully");
@@ -182,9 +182,12 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
     if (!userToDelete || !access_token) return;
 
     try {
-      await axios.delete(`${apiBase}/deleteUser/${userToDelete.user_id}`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      });
+      await axiosInstance.delete(
+        `${apiBase}/deleteUser/${userToDelete.user_id}`,
+        {
+          headers: { Authorization: `Bearer ${access_token}` },
+        }
+      );
       // Filter out deleted user and update status
       setUsers((prevUsers) =>
         prevUsers.filter((u) => u.user_id !== userToDelete.user_id)

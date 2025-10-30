@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import axios from "axios";
+import { axiosInstance } from "../api/login";
 import { SERVER_IP } from "../constant";
 
 // API base
@@ -43,11 +43,11 @@ const Master = () => {
     try {
       // GET all master tables in parallel
       const [soilRes, irrRes, waterRes, cropRes, plantRes] = await Promise.all([
-        axios.get(`${apiBase}/masters/soiltypes`, authConfig),
-        axios.get(`${apiBase}/masters/irrigations`, authConfig),
-        axios.get(`${apiBase}/masters/watersources`, authConfig),
-        axios.get(`${apiBase}/masters/croptypes`, authConfig),
-        axios.get(`${apiBase}/masters/plants`, authConfig),
+        axiosInstance.get(`${apiBase}/masters/soiltypes`, authConfig),
+        axiosInstance.get(`${apiBase}/masters/irrigations`, authConfig),
+        axiosInstance.get(`${apiBase}/masters/watersources`, authConfig),
+        axiosInstance.get(`${apiBase}/masters/croptypes`, authConfig),
+        axiosInstance.get(`${apiBase}/masters/plants`, authConfig),
       ]);
       setSoilTypes(soilRes.data);
       setIrrigations(irrRes.data);
@@ -137,7 +137,11 @@ const Master = () => {
         default:
           return;
       }
-      await axios.post(`${apiBase}/masters/${endpoint}`, body, authConfig);
+      await axiosInstance.post(
+        `${apiBase}/masters/${endpoint}`,
+        body,
+        authConfig
+      );
       setMsg(
         `${type.charAt(0).toUpperCase() + type.slice(1)} added successfully.`
       );
@@ -186,7 +190,7 @@ const Master = () => {
         default:
           return;
       }
-      await axios.delete(`${apiBase}/masters/${endpoint}`, authConfig);
+      await axiosInstance.delete(`${apiBase}/masters/${endpoint}`, authConfig);
       setMsg(
         `${
           toDelete.type.charAt(0).toUpperCase() + toDelete.type.slice(1)

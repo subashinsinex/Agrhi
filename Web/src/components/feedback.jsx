@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import axios from "axios";
+import { axiosInstance } from "../api/login";
 import { Search, Trash2, Edit, MessageCircle, CheckCircle } from "lucide-react";
 import { SERVER_IP } from "../constant";
 
@@ -225,7 +225,7 @@ const Feedback = () => {
       return;
     }
     try {
-      const res = await axios.get(`${apiBase}/getfeedback`, {
+      const res = await axiosInstance.get(`${apiBase}/getfeedback`, {
         headers: { Authorization: `Bearer ${accesstoken}` },
       });
       setFeedbacks(res.data);
@@ -303,13 +303,13 @@ const Feedback = () => {
     }
     try {
       // API call to update reply
-      await axios.put(
+      await axiosInstance.put(
         `${apiBase}/reply/${form.id}`,
         { reply: form.reply },
         { headers: { Authorization: `Bearer ${accesstoken}` } }
       );
       // API call to update status
-      await axios.put(
+      await axiosInstance.put(
         `${apiBase}/status/${form.id}`,
         { status: form.status },
         { headers: { Authorization: `Bearer ${accesstoken}` } }
@@ -344,7 +344,7 @@ const Feedback = () => {
     if (!feedbackToDelete) return;
     try {
       // You must implement a backend delete endpoint for feedbacks
-      await axios.delete(`${apiBase}/delete/${feedbackToDelete.id}`, {
+      await axiosInstance.delete(`${apiBase}/delete/${feedbackToDelete.id}`, {
         headers: { Authorization: `Bearer ${accesstoken}` },
       });
       setFeedbacks((prev) => prev.filter((f) => f.id !== feedbackToDelete.id));

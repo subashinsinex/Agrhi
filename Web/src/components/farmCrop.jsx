@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { axiosInstance } from "../api/login";
 import { SERVER_IP } from "../constant";
 // Icons for better visual appeal
 import {
@@ -300,10 +300,10 @@ const FarmCrop = () => {
     }
     setLoading(true);
     Promise.all([
-      axios.get(`${apiBase}/farms`, {
+      axiosInstance.get(`${apiBase}/farms`, {
         headers: { Authorization: `Bearer ${access_token}` },
       }),
-      axios.get(`${apiBase}/crops`, {
+      axiosInstance.get(`${apiBase}/crops`, {
         headers: { Authorization: `Bearer ${access_token}` },
       }),
     ])
@@ -331,7 +331,7 @@ const FarmCrop = () => {
       const headers = { Authorization: `Bearer ${access_token}` };
       // Helper to fetch masters and handle errors silently
       const fetchMaster = (endpoint, setter) => {
-        axios
+        axiosInstance
           .get(`${apiBase}/masters/${endpoint}`, { headers })
           .then((res) => setter(res.data))
           .catch(() => setter([]));
@@ -363,7 +363,7 @@ const FarmCrop = () => {
     setFarmErrorMsg("");
     try {
       const access_token = localStorage.getItem("access_token");
-      await axios.post(`${apiBase}/addfarms`, farmForm, {
+      await axiosInstance.post(`${apiBase}/addfarms`, farmForm, {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       setFarmStatusMsg("Farm added successfully!");
@@ -396,7 +396,7 @@ const FarmCrop = () => {
         soilTypes.find(
           (type) => String(type.soil_type_id) === String(cropForm.soil_type_id)
         )?.name || "";
-      await axios.post(
+      await axiosInstance.post(
         `${apiBase}/addcrops`,
         { ...cropForm, soil_type_name: soilTypeName },
         {
@@ -437,7 +437,7 @@ const FarmCrop = () => {
     setFarmErrorMsg("");
     try {
       const access_token = localStorage.getItem("access_token");
-      await axios.put(
+      await axiosInstance.put(
         `${apiBase}/updatefarms/${editFarmForm.farm_id}`,
         editFarmForm,
         {
@@ -501,7 +501,7 @@ const FarmCrop = () => {
             String(type.soil_type_id) === String(editCropForm.soil_type_id)
         )?.name || "";
       const payload = { ...editCropForm, soil_type_name: soilTypeName };
-      await axios.put(
+      await axiosInstance.put(
         `${apiBase}/updatecrops/${editCropForm.user_crop_id}`,
         payload,
         { headers: { Authorization: `Bearer ${access_token}` } }
