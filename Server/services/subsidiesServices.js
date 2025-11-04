@@ -1,4 +1,18 @@
 const pool = require("../db/database");
+const { v4: uuidv4 } = require("uuid");
+
+async function generateUniqueId(client, tableName, idColumn) {
+  let id, exists;
+  do {
+    id = uuidv4();
+    const check = await client.query(
+      `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
+      [id]
+    );
+    exists = check.rowCount > 0;
+  } while (exists);
+  return id;
+}
 
 // Get all subsidies
 async function getSubsidies() {
@@ -17,19 +31,24 @@ async function postSubsidy(newSubsidy) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // Generate a unique ID for the subsidy
+    const id = await generateUniqueId(client, "subsidies", "id");
+
     await client.query(
       `INSERT INTO subsidies (id, title, description, state_id, link, created_at)
        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
       [
-        newSubsidy.id,
+        id, // use generated unique id here
         newSubsidy.title,
         newSubsidy.description,
         newSubsidy.state_id,
         newSubsidy.link,
       ]
     );
+
     await client.query("COMMIT");
-    return { message: "Subsidy created successfully" };
+    return { message: "Subsidy created successfully", id: id };
   } catch (error) {
     console.error("Error creating subsidy:", error);
     await client.query("ROLLBACK");

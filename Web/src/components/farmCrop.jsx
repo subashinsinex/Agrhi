@@ -254,7 +254,6 @@ const initialCropForm = {
   planting_date: "",
   harvest_date: "",
   field_size: "",
-  water_requirement: "",
   status: "",
   isactive: true,
   // soil_type_id is not in initialCropForm but is used in the form/logic.
@@ -1003,14 +1002,6 @@ const FarmCrop = () => {
                                 required
                               />
                               <input
-                                name="water_requirement"
-                                style={style.formField}
-                                value={editCropForm.water_requirement}
-                                placeholder="Water Requirement"
-                                onChange={handleEditCropInput}
-                                required
-                              />
-                              <input
                                 name="status"
                                 style={style.formField}
                                 value={editCropForm.status}
@@ -1115,14 +1106,6 @@ const FarmCrop = () => {
                       style={style.formField}
                       value={cropForm.field_size}
                       placeholder="📏 Field Size (e.g., Acres)"
-                      onChange={handleCropInput}
-                      required
-                    />
-                    <input
-                      name="water_requirement"
-                      style={style.formField}
-                      value={cropForm.water_requirement}
-                      placeholder="💧 Water Requirement"
                       onChange={handleCropInput}
                       required
                     />

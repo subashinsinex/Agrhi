@@ -1,10 +1,11 @@
 const pool = require("../db/database");
 const bcrypt = require("bcrypt");
+const { v4: uuidv4 } = require("uuid");
 
 async function generateUniqueUserId(client) {
   let user_id, exists;
   do {
-    user_id = Math.floor(100000 + Math.random() * 900000);
+    user_id = uuidv4();
     const check = await client.query(
       "SELECT 1 FROM users_auth WHERE user_id = $1",
       [user_id]
@@ -31,6 +32,8 @@ async function postUser(newUser) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // Generate unique user_id UUID
     const user_id = await generateUniqueUserId(client);
 
     // Hash password
@@ -44,7 +47,20 @@ async function postUser(newUser) {
       [user_id, hashedPassword, newUser.phone_number, newUser.email]
     );
 
-    // Insert into userdetails including category_id
+    // Fetch the UUID for the category_id to use in user_details
+    // Assuming newUser.category_id currently holds something like an integer or string representing the category
+    const categoryResult = await client.query(
+      `SELECT category_id FROM user_category WHERE category_id = $1`, // Assuming category is the name, adjust as per your input
+      [newUser.category_id]
+    );
+
+    if (categoryResult.rowCount === 0) {
+      throw new Error("Invalid category_id: category does not exist");
+    }
+
+    // const category_uuid = categoryResult.rows[0].category_id;
+
+    // Insert into user_details with the valid UUID for category
     await client.query(
       `INSERT INTO user_details (user_id, name, dob, address, pincode, category_id, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,

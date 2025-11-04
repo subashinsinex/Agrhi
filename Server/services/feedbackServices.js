@@ -1,14 +1,17 @@
 const db = require("../db/database"); // adjust this path if needed
+const { v4: uuidv4 } = require("uuid");
 
-async function generateUniqueId(tableName, idField) {
-  let newId, exists, sql;
+async function generateUniqueId(client, tableName, idColumn) {
+  let id, exists;
   do {
-    newId = Math.floor(10000 + Math.random() * 90000); // 5-digit random integer
-    sql = `SELECT 1 FROM ${tableName} WHERE ${idField} = $1`;
-    const check = await db.query(sql, [newId]);
+    id = uuidv4();
+    const check = await client.query(
+      `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
+      [id]
+    );
     exists = check.rowCount > 0;
   } while (exists);
-  return newId;
+  return id;
 }
 
 // Get all feedbacks, latest first
@@ -21,13 +24,17 @@ const getAllFeedbacks = async () => {
 
 // Add new feedback (from user/mobile)
 const addFeedback = async ({ user_id, message, isproblem }) => {
-  const id = await generateUniqueId("feedback", "id");
-  const result = await db.query(
-    `INSERT INTO feedback (id, user_id, message, isproblem, created_at, status)
-     VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'not_viewed') RETURNING *`,
-    [id, user_id, message, isproblem]
-  );
-  return result.rows[0];
+  try {
+    const id = await generateUniqueId(db, "feedback", "id");
+    const result = await db.query(
+      `INSERT INTO feedback (id, user_id, message, isproblem, created_at, status)
+     VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'not viewed') RETURNING *`,
+      [id, user_id, message, isproblem]
+    );
+    return result.rows[0];
+  } catch (error) {
+    throw new Error("Error adding feedback: " + error.message);
+  }
 };
 
 // Get feedback by ID

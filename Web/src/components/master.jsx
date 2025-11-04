@@ -632,13 +632,13 @@ const Master = () => {
           />,
           cropTypes,
           (c) => (
-            <li key={c.croptype_id} style={styles.li}>
+            <li key={c.crop_type_id} style={styles.li}>
               <span>
-                {c.croptype_id} - {c.name}
+                {c.crop_type_id} - {c.name}
               </span>
               <button
                 className="delete-button"
-                onClick={() => openDelete("crop", c.croptype_id)}
+                onClick={() => openDelete("crop", c.crop_type_id)}
                 style={styles.deleteButton}
               >
                 Delete
@@ -666,7 +666,7 @@ const Master = () => {
             >
               <option value="">Select Crop Type</option>
               {cropTypes.map((ct) => (
-                <option key={ct.croptype_id} value={ct.croptype_id}>
+                <option key={ct.crop_type_id} value={ct.crop_type_id}>
                   {ct.name}
                 </option>
               ))}

@@ -18,9 +18,9 @@ import { SERVER_IP } from "../constant";
 // props: { isSidebarOpen, toggleSidebar }
 
 const categoryOptions = [
-  { id: 1, label: "Farmer" },
-  { id: 2, label: "Expert" },
-  { id: 3, label: "Admin" },
+  { id: "582d0c0c-8bf2-4753-8c6c-1a398930b0e7", label: "Farmer" },
+  { id: "c944ecb8-524d-483f-9610-ed9e2e985e49", label: "Expert" },
+  { id: "4bf987aa-5067-4f07-a827-9c685e1fd1c1", label: "Admin" },
 ];
 
 // Helper to map category ID to a readable label

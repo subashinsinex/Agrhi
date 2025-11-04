@@ -39,7 +39,10 @@ async function login(phone_number, password, platform) {
     //   return { success: false, message: 'Access denied, admins only' };
     // }
 
-    if (platform === "web" && category_id !== 3) {
+    if (
+      platform === "web" &&
+      category_id !== "4bf987aa-5067-4f07-a827-9c685e1fd1c1"
+    ) {
       return {
         success: false,
         message: "Access denied: Admins can only login through web",

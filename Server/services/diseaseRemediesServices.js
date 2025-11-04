@@ -1,16 +1,18 @@
 const pool = require("../db/database");
 const { get } = require("../routes/feedbackRoutes");
+const { v4: uuidv4 } = require("uuid");
 
-// Utility: Unique random 5-digit ID
-async function generateUniqueId(tableName, idField) {
-  let newId, exists, sql;
+async function generateUniqueId(client, tableName, idColumn) {
+  let id, exists;
   do {
-    newId = Math.floor(10000 + Math.random() * 90000);
-    sql = `SELECT 1 FROM ${tableName} WHERE ${idField} = $1`;
-    const check = await pool.query(sql, [newId]);
+    id = uuidv4();
+    const check = await client.query(
+      `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
+      [id]
+    );
     exists = check.rowCount > 0;
   } while (exists);
-  return newId;
+  return id;
 }
 
 // --- DISEASES ---
@@ -18,7 +20,8 @@ async function getDiseases() {
   const sql = `
     SELECT d.*, p.plant_name
     FROM diseases d
-    JOIN plants p ON d.plant_id = p.plant_id
+    JOIN diseases_plants dp ON d.disease_id = dp.disease_id
+    JOIN plants p ON dp.plant_id = p.plant_id
     ORDER BY d.disease_id
   `;
   const result = await pool.query(sql);
@@ -26,60 +29,132 @@ async function getDiseases() {
 }
 
 async function createDisease(disease) {
-  // FK validation: Check plant exists
-  const checkPlantSql = "SELECT * FROM plants WHERE plant_id = $1";
-  const plantRes = await pool.query(checkPlantSql, [disease.plant_id]);
-  if (plantRes.rowCount === 0) throw new Error("Invalid plantid");
-  // Generate unique diseaseid
-  const disease_id = await generateUniqueId("diseases", "disease_id");
-  // Insert
-  const insertSql =
-    "INSERT INTO diseases (disease_id, name, severity, plant_id) VALUES ($1, $2, $3, $4) RETURNING *";
-  const insertVals = [
-    disease_id,
-    disease.name,
-    disease.severity,
-    disease.plant_id,
-  ];
-  await pool.query(insertSql, insertVals);
-  // Return joined row
-  const joinSql = `
-    SELECT d.*, p.plant_name
-    FROM diseases d
-    JOIN plants p ON d.plant_id = p.plant_id
-    WHERE d.disease_id = $1
-  `;
-  const joinRes = await pool.query(joinSql, [disease_id]);
-  return joinRes.rows[0];
+  try {
+    // Accept plant_id as array for flexibility, fallback to single value if not array
+    const plantIds = Array.isArray(disease.plant_id)
+      ? disease.plant_id
+      : [disease.plant_id];
+
+    // FK validation: Check all supplied plant_id(s) exist
+    const plantCheckSql = `SELECT plant_id FROM plants WHERE plant_id = ANY($1::uuid[])`;
+    const plantRes = await pool.query(plantCheckSql, [plantIds]);
+    if (plantRes.rowCount !== plantIds.length) {
+      throw new Error("Invalid plant_id(s)");
+    }
+
+    // Generate unique disease_id
+    const disease_id = await generateUniqueId(pool, "diseases", "disease_id");
+
+    // Insert into diseases table (no plant_id here)
+    const insertSql =
+      "INSERT INTO diseases (disease_id, name, severity) VALUES ($1, $2, $3) RETURNING *";
+    const insertVals = [disease_id, disease.name, disease.severity];
+    await pool.query(insertSql, insertVals);
+
+    // Link disease to plant(s) using diseases_plants join table
+    for (const pid of plantIds) {
+      await pool.query(
+        "INSERT INTO diseases_plants (disease_id, plant_id) VALUES ($1, $2)",
+        [disease_id, pid]
+      );
+    }
+
+    // Update reference_table_versions timestamp for diseases
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'diseases'"
+    );
+
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'diseases_plants'"
+    );
+
+    // Return joined result: one row per plant, with plant_name
+    const joinSql = `
+      SELECT d.*, p.plant_id, p.plant_name
+      FROM diseases d
+      JOIN diseases_plants dp ON d.disease_id = dp.disease_id
+      JOIN plants p ON dp.plant_id = p.plant_id
+      WHERE d.disease_id = $1
+    `;
+    const joinRes = await pool.query(joinSql, [disease_id]);
+    return joinRes.rows; // array of disease+plant combos
+  } catch (error) {
+    console.error("createDisease error:", error.message || error);
+    throw error; // propagate if higher level wants to handle, otherwise respond with 500
+  }
 }
 
 async function updateDisease(disease_id, updated) {
-  // FK validation: Check plant exists (if updating plantid)
-  if (updated.plant_id) {
-    const checkPlantSql = "SELECT * FROM plants WHERE plant_id = $1";
-    const plantRes = await pool.query(checkPlantSql, [updated.plant_id]);
-    if (plantRes.rowCount === 0) throw new Error("Invalid plantid");
+  try {
+    // Validate: if plant_id is provided, ensure it exists (supports array for multi-plant relation)
+    if (updated.plant_id) {
+      const plantIds = Array.isArray(updated.plant_id)
+        ? updated.plant_id
+        : [updated.plant_id];
+      const plantCheckSql = `SELECT plant_id FROM plants WHERE plant_id = ANY($1::uuid[])`;
+      const plantRes = await pool.query(plantCheckSql, [plantIds]);
+      if (plantRes.rowCount !== plantIds.length)
+        throw new Error("Invalid plant_id(s)");
+    }
+
+    // Update disease main fields (name, severity)
+    const sql =
+      "UPDATE diseases SET name=$1, severity=$2 WHERE disease_id=$3 RETURNING *";
+    const values = [updated.name, updated.severity, disease_id];
+    const result = await pool.query(sql, values);
+
+    // If plant_id provided: replace links in diseasesplants join table
+    if (updated.plant_id) {
+      // Remove existing links for this disease
+      await pool.query("DELETE FROM diseases_plants WHERE disease_id = $1", [
+        disease_id,
+      ]);
+      // Re-insert new links
+      const plantIds = Array.isArray(updated.plant_id)
+        ? updated.plant_id
+        : [updated.plant_id];
+      for (const pid of plantIds) {
+        await pool.query(
+          "INSERT INTO diseases_plants (disease_id, plant_id) VALUES ($1, $2)",
+          [disease_id, pid]
+        );
+      }
+    }
+
+    // Return joined result (one row per linked plant)
+    const joinSql = `
+      SELECT d.*, p.plant_id, p.plant_name
+      FROM diseases d
+      JOIN diseases_plants dp ON d.disease_id = dp.disease_id
+      JOIN plants p ON dp.plant_id = p.plant_id
+      WHERE d.disease_id = $1
+    `;
+    const joinRes = await pool.query(joinSql, [disease_id]);
+    return joinRes.rows; // array of disease-plant combos
+  } catch (error) {
+    console.error("updateDisease error:", error.message || error);
+    throw error;
   }
-  // Update
-  const sql =
-    "UPDATE diseases SET name=$1, severity=$2, plant_id=$3 WHERE disease_id=$4 RETURNING *";
-  const values = [updated.name, updated.severity, updated.plant_id, disease_id];
-  await pool.query(sql, values);
-  // Return joined row
-  const joinSql = `
-    SELECT d.*, p.plant_name
-    FROM diseases d
-    JOIN plants p ON d.plant_id = p.plant_id
-    WHERE d.disease_id = $1
-  `;
-  const joinRes = await pool.query(joinSql, [disease_id]);
-  return joinRes.rows[0];
 }
 
 async function deleteDisease(disease_id) {
-  const sql = "DELETE FROM diseases WHERE disease_id=$1 RETURNING *";
-  const result = await pool.query(sql, [disease_id]);
-  return result.rows[0];
+  try {
+    // Delete links from diseaseremedy table first
+    await pool.query("DELETE FROM disease_remedy WHERE disease_id = $1", [
+      disease_id,
+    ]);
+    // Delete links from diseasesplants join table
+    await pool.query("DELETE FROM diseases_plants WHERE disease_id = $1", [
+      disease_id,
+    ]);
+    // Delete from diseases table
+    const sql = "DELETE FROM diseases WHERE disease_id = $1 RETURNING *";
+    const result = await pool.query(sql, [disease_id]);
+    return result.rows[0];
+  } catch (error) {
+    console.error("deleteDisease error:", error.message || error);
+    throw error;
+  }
 }
 
 // --- REMEDIES ---
@@ -96,14 +171,51 @@ async function getRemedies() {
   return result.rows;
 }
 
-// Create a new remedy (with unique 5-digit random remedyid)
-async function createRemedy(remedy) {
-  const remedy_id = await generateUniqueId("remedies", "remedy_id");
-  const sql =
-    "INSERT INTO remedies (remedy_id, remedy, prevention) VALUES ($1, $2, $3) RETURNING *";
-  const values = [remedy_id, remedy.remedy, remedy.prevention];
-  const result = await pool.query(sql, values);
-  return result.rows[0];
+async function createRemedy(remedy, diseaseIds) {
+  try {
+    // Validate all supplied disease_id(s)
+    if (diseaseIds && diseaseIds.length) {
+      const checkSql = `SELECT disease_id FROM diseases WHERE disease_id = ANY($1::uuid[])`;
+      const res = await pool.query(checkSql, [diseaseIds]);
+      if (res.rowCount !== diseaseIds.length)
+        throw new Error("Invalid disease_id(s)");
+    }
+
+    // Generate unique remedy_id
+    const remedy_id = await generateUniqueId(pool, "remedies", "remedy_id");
+
+    // Insert into remedies table
+    const insertSql = `
+      INSERT INTO remedies (remedy_id, remedy, prevention)
+      VALUES ($1, $2, $3) RETURNING *
+    `;
+    const insertVals = [remedy_id, remedy.remedy, remedy.prevention];
+    const remedyRes = await pool.query(insertSql, insertVals);
+
+    // Link to disease(s) in disease_remedy table
+    if (diseaseIds && diseaseIds.length) {
+      for (const did of diseaseIds) {
+        await pool.query(
+          "INSERT INTO disease_remedy (disease_id, remedy_id) VALUES ($1, $2)",
+          [did, remedy_id]
+        );
+      }
+    }
+
+    // Update reference_table_versions timestamp for remedies
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'remedies'"
+    );
+
+    // Return the inserted remedy and disease links
+    return {
+      remedy: remedyRes.rows[0],
+      linkedDiseases: diseaseIds,
+    };
+  } catch (error) {
+    console.error("createRemedy error:", error.message || error);
+    throw error;
+  }
 }
 
 // Update an existing remedy
@@ -158,6 +270,11 @@ async function mapRemedyToDisease(disease_id, remedy_id) {
   const sql =
     "INSERT INTO disease_remedy (disease_id, remedy_id) VALUES ($1, $2) RETURNING *";
   const result = await pool.query(sql, [disease_id, remedy_id]);
+
+  // Update reference_table_versions timestamp for disease_remedy
+  await pool.query(
+    "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'disease_remedy'"
+  );
   return result.rows[0];
 }
 

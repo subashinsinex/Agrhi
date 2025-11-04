@@ -10,7 +10,9 @@ const adminChecker = async (req, res, next) => {
     if (adminCheck.rows.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
-    if (adminCheck.rows[0].category_id !== 3) {
+    if (
+      adminCheck.rows[0].category_id !== "4bf987aa-5067-4f07-a827-9c685e1fd1c1"
+    ) {
       return res.status(403).json({ message: "Access denied, Admins only" });
     }
     next();

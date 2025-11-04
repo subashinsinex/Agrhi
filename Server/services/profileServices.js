@@ -1,17 +1,18 @@
 const pool = require("../db/database");
 const bcrypt = require("bcrypt");
+const { v4: uuidv4 } = require("uuid");
 
-async function generateUniqueUserId(client) {
-  let user_id, exists;
+async function generateUniqueId(client, tableName, idColumn) {
+  let id, exists;
   do {
-    user_id = Math.floor(100000 + Math.random() * 900000);
+    id = uuidv4();
     const check = await client.query(
-      "SELECT 1 FROM users_auth WHERE user_id = $1",
-      [user_id]
+      `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
+      [id]
     );
     exists = check.rowCount > 0;
   } while (exists);
-  return user_id;
+  return id;
 }
 
 async function getUserById(userId) {
@@ -40,7 +41,7 @@ async function createUser(newUser) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const user_id = await generateUniqueUserId(client);
+    const user_id = await generateUniqueId(client, "users_auth", "user_id");
 
     // Hash password
     const hashedPassword = await bcrypt.hash(newUser.password, 10);
