@@ -19,7 +19,7 @@ const Subsidies = () => {
     id: "",
     title: "",
     description: "",
-    state_id: "",
+    state_name: "",
     link: "",
   });
   const [formEdit, setFormEdit] = useState(false);
@@ -27,6 +27,7 @@ const Subsidies = () => {
   const [errorMsg, setErrorMsg] = useState("");
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [subsidyToDelete, setSubsidyToDelete] = useState(null);
+  const [stateNames, setStateNames] = useState([]);
 
   // NOTE: stateMap and state fetching simulation are removed
   // as the state name is now included in the main subsidy data fetch.
@@ -59,10 +60,21 @@ const Subsidies = () => {
     fetchSubs();
   }, [fetchSubs]);
 
+  useEffect(() => {
+    if (showForm) {
+      axiosInstance
+        .get("/api/subsidies/states")
+        .then((response) => {
+          setStateNames(response.data.map((row) => row.state_name)); // ['Tamil Nadu', ...]
+        })
+        .catch(() => setStateNames([]));
+    }
+  }, [showForm]);
+
   const handleSearch = (e) => setQ(e.target.value);
 
   const resetForm = (show = false) => {
-    setForm({ id: "", title: "", description: "", state_id: "", link: "" });
+    setForm({ id: "", title: "", description: "", state_name: "", link: "" });
     setFormEdit(false);
     setShowForm(show);
     setMsg("");
@@ -103,10 +115,9 @@ const Subsidies = () => {
 
     try {
       const dataToSend = {
-        id: form.id,
         title: form.title,
         description: form.description,
-        state_id: form.state_id,
+        state_name: form.state_name,
         link: form.link,
       };
 
@@ -684,29 +695,22 @@ const Subsidies = () => {
             </div>
             <form onSubmit={handleSubmit} autoComplete="off">
               {/* ID Input Field - Required, Read-Only if editing */}
-              <div className="form-group">
-                <label>ID</label>
-                <input
-                  name="id"
-                  value={form.id}
-                  onChange={handleChange}
-                  required
-                  readOnly={formEdit} // Read-only if editing
-                  placeholder={formEdit ? "Read-Only ID" : "Enter Unique ID"}
-                  className={formEdit ? "read-only-input" : ""}
-                />
-                {formEdit && (
+              {formEdit && (
+                <div className="form-group">
+                  <label>ID</label>
+                  <input
+                    name="id"
+                    value={form.id}
+                    readOnly
+                    className="read-only-input"
+                  />
                   <small
-                    style={{
-                      color: "#6b7280",
-                      display: "block",
-                      marginTop: "5px",
-                    }}
+                    style={{ color: "#6b7280", display: "block", marginTop: 5 }}
                   >
-                    ID is read-only when editing.
+                    ID is read-only.
                   </small>
-                )}
-              </div>
+                </div>
+              )}
 
               <div className="form-group">
                 <label>Title</label>
@@ -727,24 +731,25 @@ const Subsidies = () => {
                 />
               </div>
               <div className="form-group">
-                <label>State ID</label>
-                <input
-                  name="state_id"
-                  value={form.state_id}
+                <label>State</label>
+                <select
+                  name="state_name"
+                  value={form.state_name}
                   onChange={handleChange}
                   required
-                  placeholder="Enter State ID (e.g., 1)"
-                />
-                {/* When editing, show the current state name for reference */}
-                {formEdit && form.name && (
+                >
+                  <option value="">Select State</option>
+                  {stateNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                {formEdit && (
                   <small
-                    style={{
-                      color: "#6b7280",
-                      display: "block",
-                      marginTop: "5px",
-                    }}
+                    style={{ color: "#6b7280", display: "block", marginTop: 5 }}
                   >
-                    Current State: {form.name}
+                    Current State: {form.state_name}
                   </small>
                 )}
               </div>

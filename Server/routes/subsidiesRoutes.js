@@ -65,4 +65,15 @@ router.delete(
   }
 );
 
+// Route to get all state names
+router.get("/states", async (req, res) => {
+  try {
+    const states = await subsidiesServices.getStateNames();
+    res.json(states); // [{ statename: "Tamil Nadu" }, ...]
+  } catch (error) {
+    console.error("Route /states error:", error);
+    res.status(500).json({ message: "Error fetching states" });
+  }
+});
+
 module.exports = router;

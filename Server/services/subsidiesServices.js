@@ -32,19 +32,26 @@ async function postSubsidy(newSubsidy) {
   try {
     await client.query("BEGIN");
 
+    // Lookup state_id from statename
+    const stateRes = await client.query(
+      "SELECT state_id FROM state WHERE state_name = $1",
+      [newSubsidy.state_name]
+    );
+    console.log("Statename received for subsidy:", newSubsidy.statename);
+
+    if (stateRes.rowCount === 0) {
+      throw new Error("Invalid state name");
+    }
+    const state_id = stateRes.rows[0].state_id;
+
     // Generate a unique ID for the subsidy
     const id = await generateUniqueId(client, "subsidies", "id");
 
+    // Insert subsidy with state_id
     await client.query(
       `INSERT INTO subsidies (id, title, description, state_id, link, created_at)
        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
-      [
-        id, // use generated unique id here
-        newSubsidy.title,
-        newSubsidy.description,
-        newSubsidy.state_id,
-        newSubsidy.link,
-      ]
+      [id, newSubsidy.title, newSubsidy.description, state_id, newSubsidy.link]
     );
 
     await client.query("COMMIT");
@@ -63,14 +70,25 @@ async function putSubsidy(subsidy_id, updatedSubsidy) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // Lookup state_id from statename
+    const stateRes = await client.query(
+      "SELECT state_id FROM state WHERE state_name = $1",
+      [updatedSubsidy.state_name]
+    );
+    if (stateRes.rowCount === 0) {
+      throw new Error("Invalid state name");
+    }
+    const state_id = stateRes.rows[0].state_id;
+
     await client.query(
       `UPDATE subsidies
-       SET title = $1, description = $2, state_id = $3, link = $4
-       WHERE id = $5`,
+         SET title = $1, description = $2, state_id = $3, link = $4
+         WHERE id = $5`,
       [
         updatedSubsidy.title,
         updatedSubsidy.description,
-        updatedSubsidy.state_id,
+        state_id, // use the looked-up state_id
         updatedSubsidy.link,
         subsidy_id,
       ]
@@ -103,4 +121,23 @@ async function deleteSubsidy(subsidy_id) {
   }
 }
 
-module.exports = { getSubsidies, postSubsidy, putSubsidy, deleteSubsidy };
+async function getStateNames() {
+  try {
+    const result = await pool.query(
+      "SELECT state_name FROM state ORDER BY state_name"
+    );
+    // Returns an array of rows: [{ statename: "Tamil Nadu" }, ...]
+    return result.rows;
+  } catch (error) {
+    console.error("Error fetching state names:", error);
+    throw error;
+  }
+}
+
+module.exports = {
+  getSubsidies,
+  postSubsidy,
+  putSubsidy,
+  deleteSubsidy,
+  getStateNames,
+};
