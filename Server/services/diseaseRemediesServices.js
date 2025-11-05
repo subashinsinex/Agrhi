@@ -385,6 +385,22 @@ async function createDiseaseAnalysisResult(entry) {
   return result.rows[0];
 }
 
+async function diseaseRemedy() {
+  const sql = `
+    SELECT * FROM disease_remedy ORDER BY disease_id, remedy_id
+  `;
+  const result = await pool.query(sql);
+  return result.rows;
+}
+
+async function diseasePlants() {
+  const sql = `
+    SELECT * FROM diseases_plants ORDER BY disease_id, plant_id
+  `;
+  const result = await pool.query(sql);
+  return result.rows;
+}
+
 module.exports = {
   getDiseases,
   createDisease,
@@ -402,4 +418,6 @@ module.exports = {
   unmapRemedyFromDisease,
   getDiseaseAnalysisResults,
   createDiseaseAnalysisResult,
+  diseaseRemedy,
+  diseasePlants,
 };
