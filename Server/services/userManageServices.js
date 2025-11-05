@@ -149,4 +149,17 @@ async function deleteUser(user_id) {
   }
 }
 
-module.exports = { getUsers, postUser, putUser, deleteUser };
+async function getReferenceTableVersions() {
+  const sql =
+    "SELECT ref_table_name, updated_at FROM reference_table_versions ORDER BY ref_table_name;";
+  const result = await pool.query(sql);
+  return result.rows;
+}
+
+module.exports = {
+  getUsers,
+  postUser,
+  putUser,
+  deleteUser,
+  getReferenceTableVersions,
+};
