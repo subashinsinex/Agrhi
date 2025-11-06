@@ -258,4 +258,22 @@ router.post("/createdisease-analysis-results", jwtChecker, async (req, res) => {
   }
 });
 
+router.get("/disease-remedies", jwtChecker, async (req, res) => {
+  try {
+    const data = await diseaseRemediesServices.diseaseRemedy();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching disease remedies" });
+  }
+});
+
+router.get("/disease-plants", jwtChecker, async (req, res) => {
+  try {
+    const data = await diseaseRemediesServices.diseasePlants();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching disease plants" });
+  }
+});
+
 module.exports = router;

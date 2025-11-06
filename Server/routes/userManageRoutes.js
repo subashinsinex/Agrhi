@@ -58,4 +58,15 @@ router.delete(
   }
 );
 
+router.get("/rtv", jwtChecker, async (req, res) => {
+  try {
+    const versions = await userManageServices.getReferenceTableVersions();
+    res.json(versions);
+  } catch (error) {
+    console.error("Error fetching reference_table_versions:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching reference table versions" });
+  }
+});
 module.exports = router;
