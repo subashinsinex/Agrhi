@@ -5,6 +5,7 @@ import 'screens/shared/splash_screen.dart';
 import 'utils/colors.dart';
 import 'utils/routes.dart';
 import 'src/services/language_service.dart';
+import 'src/database/database_helper.dart';
 
 void main() async {
   // Ensure Flutter widgets are initialized
@@ -15,6 +16,9 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  await DatabaseHelper.instance.database;
+  print('✅ Database initialized successfully.');
 
   runApp(const MyApp());
 }

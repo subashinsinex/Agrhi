@@ -9,9 +9,10 @@ import '../../utils/storage_helper.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/connectivity_service.dart';
+import '../../utils/constants.dart';
 
 class Subsidy {
-  final int id;
+  final String id;
   final String title;
   final String description;
   final String link;
@@ -248,9 +249,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     }
 
     try {
-      final url = Uri.parse(
-        'http://10.21.69.186:5000/api/subsidies/getSubsidy',
-      );
+      final url = Uri.parse('${AppConstants.baseUrl}/subsidies/getSubsidy');
 
       final response = await http.get(url, headers: headers);
 

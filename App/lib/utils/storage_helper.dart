@@ -1,4 +1,5 @@
 // lib/src/utils/storage_helper.dart
+import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class StorageHelper {
@@ -69,5 +70,21 @@ class StorageHelper {
   /// Get user profile
   Future<String?> getUserProfile() async {
     return await read('user_profile');
+  }
+
+  /// Get user id from profile
+  Future<String?> getUserId() async {
+    final profileJson = await getUserProfile();
+    if (profileJson != null) {
+      try {
+        final profileMap = Map<String, dynamic>.from(
+          jsonDecode(profileJson) as Map<String, dynamic>,
+        );
+        return profileMap['id'] as String?;
+      } catch (e) {
+        print('❌ Failed to parse user profile JSON: $e');
+      }
+    }
+    return null;
   }
 }

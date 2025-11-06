@@ -5,7 +5,8 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   static const String appDescription =
       'Revolutionizing agriculture with smart IoT solutions';
-
+  // development url = http://10.21.69.186:5000/api
+  // production url = http://10.1.4.66:5000/api
   // API Configuration
   static const String baseUrl = 'http://10.21.69.186:5000/api';
   static const String loginEndpoint = '$baseUrl/login';

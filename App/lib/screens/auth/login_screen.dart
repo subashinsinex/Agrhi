@@ -11,6 +11,7 @@ import '../../utils/constants.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
 import '../../../src/services/language_service.dart';
+import '../../src/database/database_helper.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -162,21 +163,19 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-
   // Store user profile in secure storage
   Future<void> _storeUserProfile(Map<String, dynamic> profileData) async {
     const storage = FlutterSecureStorage();
-
     await storage.write(key: 'user_profile', value: jsonEncode(profileData));
   }
 
   Future<void> clearAllSecureStorage() async {
-  const storage = FlutterSecureStorage();
-  
-  await storage.deleteAll();
-  
-  print('✅ All secure storage data deleted');
-}
+    const storage = FlutterSecureStorage();
+
+    await storage.deleteAll();
+
+    print('✅ All secure storage data deleted');
+  }
 
   @override
   void dispose() {
@@ -221,6 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
         try {
           final decodedToken = JwtDecoder.decode(accessToken);
           userId = decodedToken['user_id']?.toString();
+          await storage.write(key: 'user_id', value: userId);
         } catch (e) {
           debugPrint('Token decode error: $e');
         }
@@ -241,6 +241,15 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         } catch (e) {
           debugPrint('Token decode error: $e');
+        }
+
+        final syncResult = await DatabaseHelper.instance.smartSyncCatalogs(
+          accessToken);
+          
+        if (syncResult['success']) {
+          print('✅ Synced ${syncResult['updated']} tables');
+        } else {
+          print('⚠️ ${syncResult['message']}');
         }
 
         if (!mounted) return;
@@ -455,21 +464,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ),
                                   ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            GestureDetector(
-                              onTap: _isLoading
-                                  ? null
-                                  : () => Routes.navigateToDashboard(context),
-                              child: Text(
-                                translatedTexts['skipForDemo'] ??
-                                    'Skip for demo',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 14,
-                                  decoration: TextDecoration.underline,
                                 ),
                               ),
                             ),
