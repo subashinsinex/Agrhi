@@ -15,7 +15,6 @@ class DatabaseHelper {
 
   static const String baseUrl = AppConstants.baseUrl;
 
-  // API endpoints for each reference table
   static const Map<String, String> tableEndpointMap = {
     'diseases': '$baseUrl/diseaseRemedies/diseases',
     'remedies': '$baseUrl/diseaseRemedies/remedies',
@@ -37,11 +36,21 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    print('DB path: $path');
+    final db = await openDatabase(
+      path,
+      version: 1,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+        final res = await db.rawQuery('PRAGMA foreign_keys');
+        print('FK enforcement: ${res.first.values.first}');
+      },
+      onCreate: _createDB,
+    );
+    return db;
   }
 
   Future _createDB(Database db, int version) async {
-    // Track reference-table versions
     await db.execute('''
       CREATE TABLE reference_table_versions (
         ref_table_name TEXT PRIMARY KEY,
@@ -49,7 +58,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Reference tables
     await db.execute('''
       CREATE TABLE crop_types (
         crop_type_id TEXT PRIMARY KEY,
@@ -88,7 +96,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Core user data tables
     await db.execute('''
       CREATE TABLE farms (
         farm_id TEXT PRIMARY KEY,
@@ -117,7 +124,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Disease-related reference tables
     await db.execute('''
       CREATE TABLE diseases (
         disease_id TEXT PRIMARY KEY,
@@ -154,16 +160,13 @@ class DatabaseHelper {
       )
     ''');
 
-    // Images and analysis
     await db.execute('''
       CREATE TABLE images (
         image_id TEXT PRIMARY KEY,
-        crop_id TEXT NOT NULL,
         local_path TEXT NOT NULL,
         server_image_url TEXT,
         is_uploaded INTEGER DEFAULT 0,
-        created_at TEXT,
-        FOREIGN KEY (crop_id) REFERENCES user_crops(user_crop_id)
+        created_at TEXT
       )
     ''');
 
@@ -186,7 +189,16 @@ class DatabaseHelper {
       )
     ''');
 
-    // Initialize reference table version rows
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dar_pending ON disease_analysis_results(is_dirty, is_uploaded)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dar_user ON disease_analysis_results(user_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_dar_crop ON disease_analysis_results(crop_id)',
+    );
+
     final tables = [
       'diseases',
       'remedies',
@@ -204,34 +216,89 @@ class DatabaseHelper {
         'updated_at': '2000-01-01T00:00:00Z',
       });
     }
-
-    print('✅ All database tables created successfully');
+    print('✅ DB created');
   }
 
-  // ============= IMAGE OPS =============
+  // ---------- helpers ----------
+  String _s(dynamic v) => (v ?? '').toString().trim();
+  String _firstNonEmpty(Map rec, List<String> keys) {
+    for (final k in keys) {
+      final val = rec[k];
+      if (val != null && _s(val).isNotEmpty) return _s(val);
+    }
+    return '';
+  }
 
+  // ---------- generic UPSERT ----------
+  Future<void> _upsert(
+    DatabaseExecutor db,
+    String table,
+    Map<String, Object?> row,
+    String pk,
+  ) async {
+    final cols = row.keys.toList();
+    final placeholders = List.filled(cols.length, '?').join(', ');
+    final assignments = cols
+        .where((c) => c != pk)
+        .map((c) => '$c = excluded.$c')
+        .join(', ');
+    final sql =
+        '''
+      INSERT INTO $table (${cols.join(', ')})
+      VALUES ($placeholders)
+      ON CONFLICT($pk) DO UPDATE SET $assignments
+    ''';
+    await db.rawInsert(sql, cols.map((c) => row[c]).toList());
+  }
+
+  // ---------- snapshot reconcile for parents ----------
+  Future<void> _reconcileSnapshot({
+    required String table,
+    required String pk,
+    required List<Map<String, Object?>> rows,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final serverIds = <String>{};
+      for (final row in rows) {
+        final id = (row[pk] ?? '').toString();
+        if (id.isEmpty) continue;
+        await _upsert(txn, table, row, pk);
+        serverIds.add(id);
+      }
+      if (serverIds.isEmpty) {
+        final n = await txn.delete(table);
+        print('🗑️ snapshot cleared $table: $n rows');
+      } else {
+        final qs = List.filled(serverIds.length, '?').join(', ');
+        final n = await txn.delete(
+          table,
+          where: '$pk NOT IN ($qs)',
+          whereArgs: serverIds.toList(),
+        );
+        if (n > 0) print('🧹 snapshot pruned $table: $n stale rows');
+      }
+    });
+  }
+
+  // ================= IMAGE OPS =================
   Future<String> insertImage({
-    required String cropId,
+    String? cropId,
     required String localPath,
   }) async {
     final db = await database;
     final imageId = const Uuid().v4();
-
     await db.insert('images', {
       'image_id': imageId,
-      'crop_id': cropId,
       'local_path': localPath,
       'server_image_url': null,
       'is_uploaded': 0,
       'created_at': DateTime.now().toIso8601String(),
     });
-
-    print('✅ Image inserted: $imageId');
     return imageId;
   }
 
-  // ============= ANALYSIS OPS =============
-
+  // ================= ANALYSIS OPS =================
   Future<String> insertDiseaseAnalysis({
     required String userId,
     required String cropId,
@@ -242,7 +309,6 @@ class DatabaseHelper {
   }) async {
     final db = await database;
     final analysisId = const Uuid().v4();
-
     await db.insert('disease_analysis_results', {
       'id': analysisId,
       'user_id': userId,
@@ -255,11 +321,81 @@ class DatabaseHelper {
       'is_uploaded': 0,
       'is_dirty': 1,
     });
-
-    print('✅ Analysis inserted: $analysisId');
     return analysisId;
   }
 
+  String _normalizeLabel(String label) => label.replaceAll('_', ' ').trim();
+
+  Future<String?> findDiseaseIdByLabel(String label) async {
+    final db = await database;
+    final norm = _normalizeLabel(label);
+    final rows = await db.query(
+      'diseases',
+      columns: ['disease_id'],
+      where: 'LOWER(name) = LOWER(?)',
+      whereArgs: [norm],
+      limit: 1,
+    );
+    return rows.isNotEmpty ? rows.first['disease_id'] as String : null;
+  }
+
+  Future<String?> findRemedyIdForDisease(String diseaseId) async {
+    final db = await database;
+    final rows = await db.query(
+      'disease_remedy',
+      columns: ['remedy_id'],
+      where: 'disease_id = ?',
+      whereArgs: [diseaseId],
+      limit: 1,
+    );
+    return rows.isNotEmpty ? rows.first['remedy_id'] as String : null;
+  }
+
+  Future<String> saveDetectionUsingCatalog({
+    required String userId,
+    required String cropId,
+    required String detectedLabel,
+    required double confidence,
+    required String localImagePath,
+  }) async {
+    final db = await database;
+
+    final diseaseId = await findDiseaseIdByLabel(detectedLabel);
+    if (diseaseId == null)
+      {throw StateError('Unknown disease label: $detectedLabel');}
+
+    final remedyId = await findRemedyIdForDisease(diseaseId);
+    if (remedyId == null)
+      {throw StateError('No remedy mapping for disease: $diseaseId');}
+
+    return await db.transaction((txn) async {
+      final imageId = const Uuid().v4();
+      await txn.insert('images', {
+        'image_id': imageId,
+        'local_path': localImagePath,
+        'server_image_url': null,
+        'is_uploaded': 0,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      final analysisId = const Uuid().v4();
+      await txn.insert('disease_analysis_results', {
+        'id': analysisId,
+        'user_id': userId,
+        'crop_id': cropId,
+        'image_id': imageId,
+        'disease_id': diseaseId,
+        'remedy_id': remedyId,
+        'confidence': confidence,
+        'created_at': DateTime.now().toIso8601String(),
+        'is_uploaded': 0,
+        'is_dirty': 1,
+      });
+      return analysisId;
+    });
+  }
+
+  // ================= QUERIES =================
   Future<List<Map<String, dynamic>>> getPendingAnalyses() async {
     final db = await database;
     return await db.rawQuery('''
@@ -310,7 +446,7 @@ class DatabaseHelper {
 
   Future<Map<String, dynamic>?> getAnalysisById(String analysisId) async {
     final db = await database;
-    final result = await db.rawQuery(
+    final r = await db.rawQuery(
       '''
       SELECT 
         dar.*,
@@ -330,7 +466,7 @@ class DatabaseHelper {
     ''',
       [analysisId],
     );
-    return result.isNotEmpty ? result.first : null;
+    return r.isNotEmpty ? r.first : null;
   }
 
   Future<void> markAsUploaded(String analysisId, String? serverImageUrl) async {
@@ -341,7 +477,6 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [analysisId],
     );
-
     if (serverImageUrl != null) {
       await db.update(
         'images',
@@ -351,33 +486,9 @@ class DatabaseHelper {
         whereArgs: [analysisId],
       );
     }
-
-    print('✅ Analysis marked as uploaded: $analysisId');
   }
 
-  // ============= CROPS OPS =============
-
-  Future<List<Map<String, dynamic>>> getCropsByFarm(String farmId) async {
-    final db = await database;
-    return await db.query(
-      'user_crops',
-      where: 'farm_id = ? AND is_active = 1',
-      whereArgs: [farmId],
-    );
-  }
-
-  Future<Map<String, dynamic>?> getUserCrop(String cropId) async {
-    final db = await database;
-    final result = await db.query(
-      'user_crops',
-      where: 'user_crop_id = ?',
-      whereArgs: [cropId],
-    );
-    return result.isNotEmpty ? result.first : null;
-  }
-
-  // ============= VERSION OPS =============
-
+  // ================= VERSION OPS =================
   Future<List<Map<String, dynamic>>> getReferenceTableVersions() async {
     final db = await database;
     return await db.query('reference_table_versions');
@@ -401,37 +512,32 @@ class DatabaseHelper {
       where: 'ref_table_name = ?',
       whereArgs: [tableName],
     );
-    print('✅ Updated version for $tableName: $updatedAt');
   }
 
-  // ============= SMART SYNC (CLIENT-SIDE) =============
-
+  // ================= SMART SYNC (CLIENT) =================
   Future<Map<String, String>> fetchServerTableVersions(
     String accessToken,
   ) async {
     try {
-      print('🔄 Fetching server table versions...');
       final response = await http
           .get(
             Uri.parse('$baseUrl/users/rtv'),
             headers: {'Authorization': 'Bearer $accessToken'},
           )
           .timeout(const Duration(seconds: 10));
-
+      print('📡 rtv: ${response.statusCode}');
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         final serverVersions = <String, String>{};
         for (var item in data) {
           serverVersions[item['ref_table_name']] = item['updated_at'];
         }
-        print('✅ Got server versions: ${serverVersions.length} tables');
+        print('🧾 rtv tables: ${serverVersions.length}');
         return serverVersions;
-      } else {
-        print('❌ Failed to fetch versions: ${response.statusCode}');
-        return {};
       }
+      return {};
     } catch (e) {
-      print('❌ Error fetching server versions: $e');
+      print('❌ rtv error: $e');
       return {};
     }
   }
@@ -440,113 +546,82 @@ class DatabaseHelper {
     Map<String, String> serverVersions,
   ) async {
     try {
-      print('🔍 Comparing versions locally...');
       final localVersions = await getReferenceTableVersions();
       final needsUpdate = <String, bool>{};
-
       for (var local in localVersions) {
         final tableName = local['ref_table_name'] as String;
         final localTime = DateTime.parse(local['updated_at'] as String);
         final serverTimeStr =
             serverVersions[tableName] ?? '2000-01-01T00:00:00Z';
         final serverTime = DateTime.parse(serverTimeStr);
-
-        needsUpdate[tableName] = serverTime.isAfter(localTime);
-
-        if (needsUpdate[tableName]!) {
-          print(
-            '📥 $tableName needs update (local: ${localTime.toIso8601String().substring(0, 10)}, server: ${serverTime.toIso8601String().substring(0, 10)})',
-          );
-        } else {
-          print('✅ $tableName is current');
-        }
+        final need = serverTime.isAfter(localTime);
+        needsUpdate[tableName] = need;
+        print(
+          '${need ? '⬇️' : '✅'} $tableName (local: $localTime, server: $serverTime)',
+        );
       }
-
       return needsUpdate;
     } catch (e) {
-      print('❌ Version comparison error: $e');
+      print('❌ version compare error: $e');
       return {};
     }
   }
 
-  // Extract records from either list payloads or wrapped maps
   List<dynamic> _extractRecords(dynamic data) {
     try {
-      print('📋 Response data type: ${data.runtimeType}');
-      if (data is List) {
-        print('✅ Direct array response: ${data.length} items');
-        return data;
-      }
+      if (data is List) return data;
       if (data is Map<String, dynamic>) {
-        // Common wrappers
-        if (data.containsKey('data') && data['data'] is List) {
-          print(
-            '✅ Found in "data" key: ${(data['data'] as List).length} items',
-          );
-          return data['data'];
-        }
-        if (data.containsKey('records') && data['records'] is List) {
-          print(
-            '✅ Found in "records" key: ${(data['records'] as List).length} items',
-          );
-          return data['records'];
-        }
-        // Fallback: treat map values as records
-        final vals = data.values.toList();
-        print('✅ Map values used as records: ${vals.length} items');
-        return vals;
+        if (data.containsKey('data') && data['data'] is List)
+          {return data['data'];}
+        if (data.containsKey('records') && data['records'] is List)
+          {return data['records'];}
+        return data.values.toList();
       }
       return [];
-    } catch (e) {
-      print('❌ Extract error: $e');
+    } catch (_) {
       return [];
     }
   }
 
-  // Fetch one table and update local DB
   Future<bool> _fetchAndUpdateTable(
     String tableName,
     String accessToken,
   ) async {
     try {
-      print('📥 Fetching $tableName from server...');
-
       final endpoint = tableEndpointMap[tableName];
       if (endpoint == null) {
-        print('❌ No endpoint found for $tableName');
+        print('❌ No endpoint for $tableName');
         return false;
       }
-
-      print('🔗 Endpoint: $endpoint');
-
+      print('🔗 [$tableName] GET $endpoint');
+      final t0 = DateTime.now();
       final response = await http
           .get(
             Uri.parse(endpoint),
             headers: {'Authorization': 'Bearer $accessToken'},
           )
           .timeout(const Duration(seconds: 15));
-
-      print('📊 Status: ${response.statusCode}');
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      print(
+        '📡 [$tableName] ${response.statusCode} in ${ms}ms, ${response.bodyBytes.length} bytes',
+      );
 
       if (response.statusCode == 200) {
-        print('📄 Response length: ${response.body.length} chars');
-
         final data = jsonDecode(response.body);
         final List<dynamic> records = _extractRecords(data);
+        final preview = records.isNotEmpty && records.first is Map
+            ? (records.first as Map).keys.take(6).join(', ')
+            : 'n/a';
+        print(
+          '🧾 [$tableName] records=${records.length}, firstKeys=[$preview]',
+        );
 
-        if (records.isEmpty) {
-          print('⚠️ No records found in response for $tableName');
-          return true;
-        }
-
-        // IMPORTANT: Only read updatedAt from map payloads
         String updatedAt = DateTime.now().toIso8601String();
         if (data is Map) {
           updatedAt = (data['updated_at'] ?? data['lastUpdated'] ?? updatedAt)
               .toString();
         }
 
-        // Pass records directly; sync methods accept List<dynamic>
         switch (tableName) {
           case 'diseases':
             await syncDiseases(records);
@@ -576,36 +651,32 @@ class DatabaseHelper {
             await syncDiseaseRemedy(records);
             break;
         }
-
         await updateTableVersion(tableName, updatedAt);
-        print('✅ Updated $tableName: ${records.length} records synced');
+        print('✅ [$tableName] applied, version=$updatedAt');
         return true;
       } else if (response.statusCode == 404) {
-        print('ℹ️ Endpoint not found: ${response.statusCode}');
+        print('ℹ️ [$tableName] 404 not found; skipping');
         return true;
-      } else {
-        print('⚠️ Failed to fetch $tableName: ${response.statusCode}');
-        return false;
       }
+      print('⚠️ [$tableName] HTTP ${response.statusCode}');
+      return false;
     } catch (e) {
-      print('❌ Error fetching $tableName: $e');
+      print('❌ [$tableName] fetch/apply error: $e');
       return false;
     }
   }
 
   Future<Map<String, dynamic>> smartSyncCatalogs(String accessToken) async {
     try {
-      print('\n🔄 ========== SMART SYNC STARTING ==========');
-
+      print('🔄 smartSyncCatalogs starting...');
       final serverVersions = await fetchServerTableVersions(accessToken);
       if (serverVersions.isEmpty) {
-        print('⚠️ Could not fetch server versions');
+        print('⚠️ table versions empty');
         return {'success': false, 'message': 'Failed to get server versions'};
       }
-
       final needsUpdate = await compareVersionsClientSide(serverVersions);
       if (needsUpdate.isEmpty) {
-        print('✅ All catalogs up-to-date');
+        print('✅ no table needs update');
         return {
           'success': true,
           'message': 'All catalogs up-to-date',
@@ -614,21 +685,33 @@ class DatabaseHelper {
       }
 
       int updatedCount = 0;
-      List<String> failedTables = [];
-
-      for (var entry in needsUpdate.entries) {
-        if (entry.value) {
-          final success = await _fetchAndUpdateTable(entry.key, accessToken);
-          if (success) {
+      final failedTables = <String>[];
+      final order = [
+        'crop_types',
+        'soil_types',
+        'remedies',
+        'diseases',
+        'plants',
+        'diseases_plants',
+        'disease_remedy',
+        'water_src',
+        'irrigation_method',
+      ];
+      for (final table in order) {
+        if (needsUpdate[table] == true) {
+          final ok = await _fetchAndUpdateTable(table, accessToken);
+          if (ok) {
             updatedCount++;
           } else {
-            failedTables.add(entry.key);
+            failedTables.add(table);
           }
         }
       }
 
-      print('\n✅ ========== SMART SYNC COMPLETE ==========');
-      print('Updated: $updatedCount, Failed: ${failedTables.length}\n');
+      print(
+        '✅ smartSync done: updated=$updatedCount, failed=${failedTables.length}',
+      );
+      if (failedTables.isNotEmpty) print('❌ failed: $failedTables');
 
       return {
         'success': failedTables.isEmpty,
@@ -637,227 +720,369 @@ class DatabaseHelper {
         'failed': failedTables,
       };
     } catch (e) {
-      print('❌ Smart sync error: $e');
+      print('❌ smartSync error: $e');
       return {'success': false, 'message': 'Sync failed: $e'};
     }
   }
 
-  // ============= CATALOG SYNC (defensive, dynamic) =============
-
-  Future<void> syncDiseases(List<dynamic> diseases) async {
-    final db = await database;
-    await db.delete('diseases');
-    for (var item in diseases) {
-      try {
-        if (item is! Map) continue;
-        final rec = item;
-        await db.insert('diseases', {
-          'disease_id': (rec['disease_id'] ?? '').toString(),
-          'name': (rec['name'] ?? '').toString(),
-          'severity': (rec['severity'] ?? 'Unknown').toString(),
-        });
-      } catch (e) {
-        print('⚠️ Error inserting disease: $e');
+  // ================= CATALOG SYNC (parents via reconcile, mappings via rebuild) =================
+  Future<void> syncDiseases(List<dynamic> rows) async {
+    final mapped = <Map<String, Object?>>[];
+    int skip = 0;
+    for (final item in rows) {
+      if (item is! Map) {
+        skip++;
+        continue;
       }
+      final rec = item;
+      final id = _s(rec['disease_id']);
+      final name = _s(rec['name']);
+      if (id.isEmpty || name.isEmpty) {
+        skip++;
+        continue;
+      }
+      mapped.add({
+        'disease_id': id,
+        'name': name,
+        'severity': _s(rec['severity']).isEmpty
+            ? 'Unknown'
+            : _s(rec['severity']),
+      });
     }
-    print('✅ ${diseases.length} diseases synced');
+    await _reconcileSnapshot(table: 'diseases', pk: 'disease_id', rows: mapped);
+    print('✅ diseases reconcile: kept=${mapped.length}, skipped=$skip');
   }
 
-  Future<void> syncRemedies(List<dynamic> remedies) async {
-    final db = await database;
-    await db.delete('remedies');
-    for (var item in remedies) {
-      try {
-        if (item is! Map) continue;
-        final rec = item;
-        await db.insert('remedies', {
-          'remedy_id': (rec['remedy_id'] ?? '').toString(),
-          'remedy': (rec['remedy'] ?? '').toString(),
-          'prevention': (rec['prevention'] ?? '').toString(),
-        });
-      } catch (e) {
-        print('⚠️ Error inserting remedy: $e');
+  Future<void> syncRemedies(List<dynamic> rows) async {
+    final mapped = <Map<String, Object?>>[];
+    int skip = 0;
+    for (final item in rows) {
+      if (item is! Map) {
+        skip++;
+        continue;
       }
+      final rec = item;
+      final id = _s(rec['remedy_id']);
+      final remedy = _s(rec['remedy']);
+      if (id.isEmpty || remedy.isEmpty) {
+        skip++;
+        continue;
+      }
+      mapped.add({
+        'remedy_id': id,
+        'remedy': remedy,
+        'prevention': _s(rec['prevention']),
+      });
     }
-    print('✅ ${remedies.length} remedies synced');
+    await _reconcileSnapshot(table: 'remedies', pk: 'remedy_id', rows: mapped);
+    print('✅ remedies reconcile: kept=${mapped.length}, skipped=$skip');
   }
 
-  Future<void> syncPlants(List<dynamic> plants) async {
-    final db = await database;
-    await db.delete('plants');
-    for (var item in plants) {
-      try {
-        if (item is! Map) continue;
-        final rec = item;
-        await db.insert('plants', {
-          'plant_id': (rec['plant_id'] ?? '').toString(),
-          'plant_name': (rec['plant_name'] ?? '').toString(),
-          'crop_type_id': (rec['crop_type_id'] ?? '').toString(),
-          'water_requirement': (rec['water_requirement'] ?? 'Medium')
-              .toString(),
-        });
-      } catch (e) {
-        print('⚠️ Error inserting plant: $e');
+  Future<void> syncPlants(List<dynamic> rows) async {
+    final mapped = <Map<String, Object?>>[];
+    int skip = 0;
+    for (final item in rows) {
+      if (item is! Map) {
+        skip++;
+        continue;
       }
+      final rec = item;
+      final plantId = _firstNonEmpty(rec, [
+        'plant_id',
+        'id',
+        'uuid',
+        'plantId',
+      ]);
+      final plantName = _firstNonEmpty(rec, [
+        'plant_name',
+        'name',
+        'title',
+        'label',
+      ]);
+      final cropType = _firstNonEmpty(rec, [
+        'crop_type_id',
+        'cropTypeId',
+        'crop_type',
+        'cropType',
+      ]);
+      final waterReq = _firstNonEmpty(rec, [
+        'water_requirement',
+        'waterRequirement',
+        'water',
+        'water_req',
+      ]);
+      if (plantId.isEmpty || plantName.isEmpty || cropType.isEmpty) {
+        print(
+          '⏭️ plants skip: id="$plantId" name="$plantName" cropType="$cropType" keys=${rec.keys}',
+        );
+        skip++;
+        continue;
+      }
+      mapped.add({
+        'plant_id': plantId,
+        'plant_name': plantName,
+        'crop_type_id': cropType,
+        'water_requirement': waterReq.isEmpty ? 'Medium' : waterReq,
+      });
     }
-    print('✅ ${plants.length} plants synced');
+    await _reconcileSnapshot(table: 'plants', pk: 'plant_id', rows: mapped);
+    print('✅ plants reconcile: kept=${mapped.length}, skipped=$skip');
   }
 
-  Future<void> syncSoilTypes(List<dynamic> soilTypes) async {
-    final db = await database;
-    await db.delete('soil_types');
-    for (var item in soilTypes) {
-      try {
-        if (item is! Map) continue;
-        final rec = item;
-        await db.insert('soil_types', {
-          'soil_type_id': (rec['soil_type_id'] ?? '').toString(),
-          'name': (rec['name'] ?? '').toString(),
-        });
-      } catch (e) {
-        print('⚠️ Error inserting soil type: $e');
+  Future<void> syncSoilTypes(List<dynamic> rows) async {
+    final mapped = <Map<String, Object?>>[];
+    int skip = 0;
+    for (final item in rows) {
+      if (item is! Map) {
+        skip++;
+        continue;
       }
+      final rec = item;
+      final id = _s(rec['soil_type_id']);
+      final name = _s(rec['name']);
+      if (id.isEmpty || name.isEmpty) {
+        skip++;
+        continue;
+      }
+      mapped.add({'soil_type_id': id, 'name': name});
     }
-    print('✅ ${soilTypes.length} soil types synced');
+    await _reconcileSnapshot(
+      table: 'soil_types',
+      pk: 'soil_type_id',
+      rows: mapped,
+    );
+    print('✅ soil_types reconcile: kept=${mapped.length}, skipped=$skip');
   }
 
-  Future<void> syncCropTypes(List<dynamic> cropTypes) async {
-    final db = await database;
-    await db.delete('crop_types');
-    for (var item in cropTypes) {
-      try {
-        if (item is! Map) continue;
-        final rec = item;
-        await db.insert('crop_types', {
-          'crop_type_id': (rec['crop_type_id'] ?? '').toString(),
-          'name': (rec['name'] ?? '').toString(),
-        });
-      } catch (e) {
-        print('⚠️ Error inserting crop type: $e');
+  Future<void> syncCropTypes(List<dynamic> rows) async {
+    final mapped = <Map<String, Object?>>[];
+    int skip = 0;
+    for (final item in rows) {
+      if (item is! Map) {
+        skip++;
+        continue;
       }
+      final rec = item;
+      final id = _s(rec['crop_type_id']);
+      final name = _s(rec['name']);
+      if (id.isEmpty || name.isEmpty) {
+        skip++;
+        continue;
+      }
+      mapped.add({'crop_type_id': id, 'name': name});
     }
-    print('✅ ${cropTypes.length} crop types synced');
+    await _reconcileSnapshot(
+      table: 'crop_types',
+      pk: 'crop_type_id',
+      rows: mapped,
+    );
+    print('✅ crop_types reconcile: kept=${mapped.length}, skipped=$skip');
   }
 
-  Future<void> syncWaterSources(List<dynamic> waterSources) async {
-    final db = await database;
-    await db.delete('water_src');
-    for (var item in waterSources) {
-      try {
-        if (item is! Map) continue;
-        final rec = item;
-        await db.insert('water_src', {
-          'water_src_id': (rec['water_src_id'] ?? '').toString(),
-          'source': (rec['source'] ?? '').toString(),
-        });
-      } catch (e) {
-        print('⚠️ Error inserting water source: $e');
+  Future<void> syncWaterSources(List<dynamic> rows) async {
+    final mapped = <Map<String, Object?>>[];
+    int skip = 0;
+    for (final item in rows) {
+      if (item is! Map) {
+        skip++;
+        continue;
       }
+      final rec = item;
+      final id = _s(rec['water_src_id']);
+      final src = _s(rec['source']);
+      if (id.isEmpty || src.isEmpty) {
+        skip++;
+        continue;
+      }
+      mapped.add({'water_src_id': id, 'source': src});
     }
-    print('✅ ${waterSources.length} water sources synced');
+    await _reconcileSnapshot(
+      table: 'water_src',
+      pk: 'water_src_id',
+      rows: mapped,
+    );
+    print('✅ water_src reconcile: kept=${mapped.length}, skipped=$skip');
   }
 
-  Future<void> syncIrrigationMethods(List<dynamic> methods) async {
-    final db = await database;
-    await db.delete('irrigation_method');
-    for (var item in methods) {
-      try {
-        if (item is! Map) continue;
-        final rec = item;
-        await db.insert('irrigation_method', {
-          'irrigation_id': (rec['irrigation_id'] ?? '').toString(),
-          'method_name': (rec['method_name'] ?? '').toString(),
-        });
-      } catch (e) {
-        print('⚠️ Error inserting irrigation method: $e');
+  Future<void> syncIrrigationMethods(List<dynamic> rows) async {
+    final mapped = <Map<String, Object?>>[];
+    int skip = 0;
+    for (final item in rows) {
+      if (item is! Map) {
+        skip++;
+        continue;
       }
+      final rec = item;
+      final id = _s(rec['irrigation_id']);
+      final name = _s(rec['method_name']);
+      if (id.isEmpty || name.isEmpty) {
+        skip++;
+        continue;
+      }
+      mapped.add({'irrigation_id': id, 'method_name': name});
     }
-    print('✅ ${methods.length} irrigation methods synced');
+    await _reconcileSnapshot(
+      table: 'irrigation_method',
+      pk: 'irrigation_id',
+      rows: mapped,
+    );
+    print(
+      '✅ irrigation_method reconcile: kept=${mapped.length}, skipped=$skip',
+    );
   }
 
-  Future<void> syncDiseasesPlants(List<dynamic> diseasesPlantsData) async {
+  Future<void> syncDiseasesPlants(List<dynamic> rows) async {
     final db = await database;
-    await db.delete('diseases_plants');
-    for (var item in diseasesPlantsData) {
-      try {
-        if (item is! Map) continue;
+    int ok = 0, skip = 0, fkMiss = 0;
+    await db.transaction((txn) async {
+      await txn.delete('diseases_plants');
+      for (final item in rows) {
+        if (item is! Map) {
+          skip++;
+          continue;
+        }
         final rec = item;
-        await db.insert('diseases_plants', {
-          'disease_id': (rec['disease_id'] ?? '').toString(),
-          'plant_id': (rec['plant_id'] ?? '').toString(),
+        final diseaseId = _firstNonEmpty(rec, [
+          'disease_id',
+          'diseaseId',
+          'disease_uuid',
+          'disease',
+        ]);
+        final plantId = _firstNonEmpty(rec, [
+          'plant_id',
+          'plantId',
+          'plant_uuid',
+          'plant',
+        ]);
+        if (diseaseId.isEmpty || plantId.isEmpty) {
+          print(
+            '⏭️ diseases_plants skip: disease="$diseaseId" plant="$plantId" keys=${rec.keys}',
+          );
+          skip++;
+          continue;
+        }
+        final d = await txn.query(
+          'diseases',
+          where: 'disease_id=?',
+          whereArgs: [diseaseId],
+          limit: 1,
+        );
+        final p = await txn.query(
+          'plants',
+          where: 'plant_id=?',
+          whereArgs: [plantId],
+          limit: 1,
+        );
+        if (d.isEmpty || p.isEmpty) {
+          print(
+            '⚠️ FK missing diseases_plants: disease="$diseaseId" (${d.isEmpty ? 'missing' : 'ok'}), plant="$plantId" (${p.isEmpty ? 'missing' : 'ok'})',
+          );
+          fkMiss++;
+          continue;
+        }
+        await txn.insert('diseases_plants', {
+          'disease_id': diseaseId,
+          'plant_id': plantId,
         });
-      } catch (e) {
-        print('⚠️ Error inserting disease-plant: $e');
+        ok++;
       }
-    }
-    print('✅ ${diseasesPlantsData.length} disease-plant mappings synced');
+    });
+    print('✅ diseases_plants inserted=$ok, skipped=$skip, fkMissing=$fkMiss');
   }
 
-  Future<void> syncDiseaseRemedy(List<dynamic> diseaseRemedyData) async {
+  Future<void> syncDiseaseRemedy(List<dynamic> rows) async {
     final db = await database;
-    await db.delete('disease_remedy');
-    for (var item in diseaseRemedyData) {
-      try {
-        if (item is! Map) continue;
+    int ok = 0, skip = 0, fkMiss = 0;
+    await db.transaction((txn) async {
+      await txn.delete('disease_remedy');
+      for (final item in rows) {
+        if (item is! Map) {
+          skip++;
+          continue;
+        }
         final rec = item;
-        await db.insert('disease_remedy', {
-          'disease_id': (rec['disease_id'] ?? '').toString(),
-          'remedy_id': (rec['remedy_id'] ?? '').toString(),
+        final diseaseId = _firstNonEmpty(rec, [
+          'disease_id',
+          'diseaseId',
+          'disease_uuid',
+          'disease',
+        ]);
+        final remedyId = _firstNonEmpty(rec, [
+          'remedy_id',
+          'remedyId',
+          'remedy_uuid',
+          'remedy',
+        ]);
+        if (diseaseId.isEmpty || remedyId.isEmpty) {
+          print(
+            '⏭️ disease_remedy skip: disease="$diseaseId" remedy="$remedyId" keys=${rec.keys}',
+          );
+          skip++;
+          continue;
+        }
+        final d = await txn.query(
+          'diseases',
+          where: 'disease_id=?',
+          whereArgs: [diseaseId],
+          limit: 1,
+        );
+        final r = await txn.query(
+          'remedies',
+          where: 'remedy_id=?',
+          whereArgs: [remedyId],
+          limit: 1,
+        );
+        if (d.isEmpty || r.isEmpty) {
+          print(
+            '⚠️ FK missing disease_remedy: disease="$diseaseId" (${d.isEmpty ? 'missing' : 'ok'}), remedy="$remedyId" (${r.isEmpty ? 'missing' : 'ok'})',
+          );
+          fkMiss++;
+          continue;
+        }
+        await txn.insert('disease_remedy', {
+          'disease_id': diseaseId,
+          'remedy_id': remedyId,
         });
-      } catch (e) {
-        print('⚠️ Error inserting disease-remedy: $e');
+        ok++;
       }
-    }
-    print('✅ ${diseaseRemedyData.length} disease-remedy mappings synced');
+    });
+    print('✅ disease_remedy inserted=$ok, skipped=$skip, fkMissing=$fkMiss');
   }
 
-  // ============= USER DATA SYNC =============
-
+  // ================= USER DATA SYNC (upload) =================
   Future<Map<String, dynamic>> syncPendingToServer(String accessToken) async {
-    print('🔄 Starting user data sync to server...');
     try {
       final pending = await getPendingAnalyses();
-
-      if (pending.isEmpty) {
-        print('ℹ️ No pending analyses to sync');
-        return {
+      print('🚚 upload pending: ${pending.length}');
+      if (pending.isEmpty)
+        {return {
           'success': true,
           'message': 'No pending',
           'synced': 0,
           'failed': 0,
-        };
-      }
-
-      int successCount = 0;
-      int failedCount = 0;
-      List<String> failedIds = [];
-
-      for (var analysis in pending) {
-        try {
-          final uploaded = await _uploadAnalysisToServer(analysis, accessToken);
-          if (uploaded) {
-            await markAsUploaded(analysis['id'], analysis['server_image_url']);
-            successCount++;
-            print('✅ Synced analysis: ${analysis['id']}');
-          } else {
-            failedCount++;
-            failedIds.add(analysis['id']);
-          }
-        } catch (e) {
-          failedCount++;
-          failedIds.add(analysis['id']);
-          print('❌ Error syncing ${analysis['id']}: $e');
+        };}
+      int ok = 0, fail = 0;
+      final failed = <String>[];
+      for (final a in pending) {
+        final res = await _uploadAnalysisToServer(a, accessToken);
+        if (res['success'] == true) {
+          await markAsUploaded(a['id'], res['serverImageUrl'] as String?);
+          print('✅ uploaded analysis ${a['id']}');
+          ok++;
+        } else {
+          print('❌ upload failed ${a['id']}');
+          fail++;
+          failed.add(a['id']);
         }
       }
-
       return {
-        'success': failedCount == 0,
-        'synced': successCount,
-        'failed': failedCount,
-        'failedIds': failedIds,
+        'success': fail == 0,
+        'synced': ok,
+        'failed': fail,
+        'failedIds': failed,
       };
     } catch (e) {
-      print('❌ Sync error: $e');
+      print('❌ upload sync error: $e');
       return {
         'success': false,
         'message': 'Sync failed: $e',
@@ -867,54 +1092,163 @@ class DatabaseHelper {
     }
   }
 
-  Future<bool> _uploadAnalysisToServer(
+  Future<Map<String, dynamic>> _uploadAnalysisToServer(
     Map<String, dynamic> analysis,
     String accessToken,
   ) async {
     try {
-      final imagePath = analysis['local_path'] as String?;
-      if (imagePath == null || !File(imagePath).existsSync()) {
-        print('⚠️ Image file not found: $imagePath');
-        return false;
-      }
+      final path = analysis['local_path'] as String?;
+      if (path == null || !File(path).existsSync()) return {'success': false};
 
-      final request = http.MultipartRequest(
+      final req = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/disease/analysis/sync'),
       );
-
-      request.headers['Authorization'] = 'Bearer $accessToken';
-      request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-
-      request.fields.addAll({
+      req.headers['Authorization'] = 'Bearer $accessToken';
+      req.files.add(await http.MultipartFile.fromPath('image', path));
+      req.fields.addAll({
         'analysisId': analysis['id'].toString(),
         'userId': analysis['user_id'].toString(),
         'cropId': analysis['crop_id'].toString(),
+        'imageId': analysis['image_id'].toString(),
         'diseaseId': analysis['disease_id'].toString(),
         'remedyId': analysis['remedy_id'].toString(),
         'confidence': analysis['confidence'].toString(),
         'createdAt': analysis['created_at'].toString(),
       });
 
-      final response = await request.send().timeout(
-        const Duration(seconds: 30),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ Upload successful: ${analysis['id']}');
-        return true;
-      } else {
-        print('❌ Upload failed: ${response.statusCode}');
-        return false;
+      final streamed = await req.send().timeout(const Duration(seconds: 30));
+      final resp = await http.Response.fromStream(streamed);
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
+        String? serverUrl;
+        try {
+          final body = jsonDecode(resp.body);
+          serverUrl =
+              (body['server_image_url'] ?? body['imageUrl'] ?? body['url'])
+                  ?.toString();
+        } catch (_) {}
+        return {'success': true, 'serverImageUrl': serverUrl};
       }
-    } catch (e) {
-      print('❌ Upload error: $e');
-      return false;
+      return {'success': false};
+    } catch (_) {
+      return {'success': false};
     }
   }
 
-  // ============= UTILS =============
+  // ================= USER DATA SYNC (down) =================
+  Future<Map<String, dynamic>> syncAnalysesFromServer(
+    String accessToken, {
+    String? since,
+  }) async {
+    try {
+      final uri = since == null
+          ? Uri.parse('$baseUrl/disease/analysis/changes')
+          : Uri.parse('$baseUrl/disease/analysis/changes?since=$since');
+      print('🔽 down-sync analyses: $uri');
+      final r = await http
+          .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
+          .timeout(const Duration(seconds: 15));
+      print('📡 analyses ${r.statusCode}, ${r.bodyBytes.length} bytes');
+      if (r.statusCode != 200)
+        {return {'success': false, 'upserts': 0, 'deleted': 0};}
 
+      final payload = jsonDecode(r.body);
+      final List<dynamic> rows = payload is List
+          ? payload
+          : (payload['data'] is List ? payload['data'] : <dynamic>[]);
+      final List<dynamic> deletedIds =
+          payload is Map && payload['deletedIds'] is List
+          ? payload['deletedIds']
+          : <dynamic>[];
+      print('🧾 analyses rows=${rows.length}, deletedIds=${deletedIds.length}');
+
+      final db = await database;
+      int upserts = 0, deletes = 0;
+      await db.transaction((txn) async {
+        for (final item in rows) {
+          if (item is! Map) continue;
+
+          if (item['image_id'] != null) {
+            final imgId = item['image_id'].toString();
+            final exists = await txn.query(
+              'images',
+              where: 'image_id=?',
+              whereArgs: [imgId],
+              limit: 1,
+            );
+            if (exists.isEmpty) {
+              await txn.insert('images', {
+                'image_id': imgId,
+                'local_path': item['local_path']?.toString() ?? '',
+                'server_image_url': item['server_image_url']?.toString(),
+                'is_uploaded': 1,
+                'created_at': item['created_at']?.toString(),
+              });
+              print('🖼️ created image $imgId');
+            } else {
+              await txn.update(
+                'images',
+                {
+                  'server_image_url': item['server_image_url']?.toString(),
+                  'is_uploaded': 1,
+                },
+                where: 'image_id=?',
+                whereArgs: [imgId],
+              );
+            }
+          }
+
+          final row = {
+            'id': item['id'].toString(),
+            'user_id': item['user_id'].toString(),
+            'crop_id': item['crop_id'].toString(),
+            'image_id': item['image_id'].toString(),
+            'disease_id': item['disease_id'].toString(),
+            'remedy_id': item['remedy_id'].toString(),
+            'confidence': (item['confidence'] as num?)?.toDouble(),
+            'created_at': item['created_at']?.toString(),
+            'is_uploaded': 1,
+            'is_dirty': 0,
+          };
+          await _upsert(txn, 'disease_analysis_results', row, 'id');
+          upserts++;
+        }
+
+        for (final did in deletedIds) {
+          final id = did.toString();
+          final n = await txn.delete(
+            'disease_analysis_results',
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+          if (n > 0) {
+            deletes++;
+            print('🗑️ deleted analysis $id');
+          }
+        }
+
+        final removed = await txn.delete(
+          'images',
+          where:
+              'image_id NOT IN (SELECT image_id FROM disease_analysis_results)',
+        );
+        if (removed > 0) print('🧹 removed orphan images: $removed');
+      });
+
+      print('✅ down-sync done: upserts=$upserts, deletes=$deletes');
+      return {'success': true, 'upserts': upserts, 'deleted': deletes};
+    } catch (e) {
+      print('❌ analyses down-sync error: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'upserts': 0,
+        'deleted': 0,
+      };
+    }
+  }
+
+  // ================= UTILS =================
   Future<Map<String, dynamic>> getSyncStatus() async {
     final pending = await getPendingAnalyses();
     final stats = await getDatabaseStats();
@@ -927,7 +1261,6 @@ class DatabaseHelper {
 
   Future<Map<String, int>> getDatabaseStats() async {
     final db = await database;
-
     final analysisCount =
         Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM disease_analysis_results'),
@@ -950,7 +1283,6 @@ class DatabaseHelper {
           await db.rawQuery('SELECT COUNT(*) FROM diseases'),
         ) ??
         0;
-
     return {
       'analyses': analysisCount,
       'images': imagesCount,
@@ -963,7 +1295,6 @@ class DatabaseHelper {
     final db = await database;
     await db.delete('disease_analysis_results');
     await db.delete('images');
-    print('⚠️ All user data cleared');
   }
 
   Future<void> close() async {
