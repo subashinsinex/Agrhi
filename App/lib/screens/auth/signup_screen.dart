@@ -37,12 +37,12 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   DateTime? _selectedDate;
-  int? _selectedCategoryId;
+  String? _selectedCategoryId;
 
   // Updated categories: Only Farmer and Expert
   final List<Map<String, dynamic>> _categories = [
-    {'id': 1, 'name': 'Farmer', 'key': 'farmer'},
-    {'id': 2, 'name': 'Expert', 'key': 'expert'},
+    {'id': '582d0c0c-8bf2-4753-8c6c-1a398930b0e7', 'name': 'Farmer', 'key': 'farmer'},
+    {'id': 'c944ecb8-524d-483f-9610-ed9e2e985e49', 'name': 'Expert', 'key': 'expert'},
   ];
 
   Map<String, String> translatedTexts = {};
@@ -518,7 +518,7 @@ class _SignupScreenState extends State<SignupScreen> {
                                 ),
                                 const SizedBox(height: 16),
                                 // Category Dropdown - FIXED TRANSLATION
-                                DropdownButtonFormField<int>(
+                                DropdownButtonFormField<String>(
                                   value: _selectedCategoryId,
                                   decoration: InputDecoration(
                                     hintText:
@@ -561,8 +561,8 @@ class _SignupScreenState extends State<SignupScreen> {
                                         translatedTexts[categoryKey] ??
                                         category['name'] as String;
 
-                                    return DropdownMenuItem<int>(
-                                      value: category['id'] as int,
+                                    return DropdownMenuItem<String>(
+                                      value: category['id'] as String,
                                       child: Text(
                                         translatedName,
                                         style: TextStyle(
