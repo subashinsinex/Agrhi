@@ -173,6 +173,16 @@ router.get("/diseaseswithremedies", jwtChecker, async (req, res) => {
   }
 });
 
+router.get("/diseases/:disease_id/plants", jwtChecker, async (req, res) => {
+  try {
+    const { disease_id } = req.params;
+    const rows = await diseaseRemediesServices.getPlantsForDisease(disease_id);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching disease plants" });
+  }
+});
+
 // --- Images Read ---
 router.get("/images", jwtChecker, async (req, res) => {
   try {

@@ -18,10 +18,16 @@ async function generateUniqueId(client, tableName, idColumn) {
 // --- DISEASES ---
 async function getDiseases() {
   const sql = `
-    SELECT d.*, p.plant_name
+    SELECT 
+      d.disease_id,
+      d.name,
+      d.severity,
+      ARRAY_AGG(p.plant_id) AS plant_ids,
+      ARRAY_AGG(p.plant_name) AS plant_names
     FROM diseases d
     JOIN diseases_plants dp ON d.disease_id = dp.disease_id
     JOIN plants p ON dp.plant_id = p.plant_id
+    GROUP BY d.disease_id, d.name, d.severity
     ORDER BY d.disease_id
   `;
   const result = await pool.query(sql);
@@ -329,11 +335,10 @@ async function getDiseaseAnalysisResults(filters) {
            dar.confidence
     FROM disease_analysis_results dar
     JOIN user_details ud ON dar.user_id = ud.user_id
-    JOIN user_crops uc ON dar.crop_id = uc.user_crop_id
-    JOIN plants p ON uc.plant_id = p.plant_id
+    JOIN plants p ON dar.plant_id = p.plant_id
     JOIN images i ON dar.image_id = i.image_id
     JOIN diseases d ON dar.disease_id = d.disease_id
-    JOIN disease_remedy dr ON dar.disease_id = dr.disease_id AND dar.remedy_id = dr.remedy_id
+    JOIN disease_remedy dr ON dar.disease_id = dr.disease_id
     JOIN remedies r ON dr.remedy_id = r.remedy_id
   `;
 
@@ -372,15 +377,14 @@ async function createDiseaseAnalysisResult(entry) {
   const id = await generateUniqueId("disease_analysis_results", "id");
   const sql = `
     INSERT INTO disease_analysis_results
-      (id, user_id, crop_id, image_id, disease_id, remedy_id, confidence, created_at)
+      (id, user_id, plant_id, image_id, disease_id, confidence, created_at)
     VALUES
-      ($1, $2, $3, $4, $5, $6, $7, NOW())
+      ($1, $2, $3, $4, $5, $6, NOW())
     RETURNING *
   `;
   const values = [
     id,
     entry.user_id, // maps to userdetails/userauth
-    entry.crop_id, // links to user_crops
     entry.image_id, // links to images
     entry.disease_id, // links to diseases
     entry.remedy_id, // links to remedies (and validated by disease_remedy mapping)
@@ -398,11 +402,11 @@ async function diseaseRemedy() {
   return result.rows;
 }
 
-async function diseasePlants() {
-  const sql = `
-    SELECT * FROM diseases_plants ORDER BY disease_id, plant_id
-  `;
-  const result = await pool.query(sql);
+async function diseasePlants(disease_id) {
+  const result = await pool.query(
+    "SELECT plant_id FROM diseases_plants WHERE disease_id = $1",
+    [disease_id]
+  );
   return result.rows;
 }
 

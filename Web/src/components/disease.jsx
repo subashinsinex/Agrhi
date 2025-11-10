@@ -599,7 +599,7 @@ const Disease = () => {
     disease_id: "",
     name: "",
     severity: "",
-    plant_id: "",
+    plant_id: [],
   });
   const [formEdit, setFormEdit] = useState(false);
   const [selectedDisease, setSelectedDisease] = useState(null);
@@ -677,7 +677,7 @@ const Disease = () => {
   const handleSearch = (e) => setQ(e.target.value);
 
   const resetDiseaseForm = (show = false) => {
-    setForm({ disease_id: "", name: "", severity: "", plant_id: "" });
+    setForm({ disease_id: "", name: "", severity: "", plant_id: [] });
     setFormEdit(false);
     setShowDiseaseForm(show);
     resetMessages();
@@ -717,8 +717,18 @@ const Disease = () => {
 
   const closeDetailModal = () => setSelectedDisease(null);
 
-  const handleDiseaseChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const handleDiseaseChange = (e) => {
+    const { name, value, type, selectedOptions } = e.target;
+
+    if (name === "plant_id" && type === "select-multiple") {
+      const selectedValues = Array.from(selectedOptions).map(
+        (opt) => opt.value
+      );
+      setForm({ ...form, plant_id: selectedValues });
+    } else {
+      setForm({ ...form, [name]: value });
+    }
+  };
 
   const handleDiseaseSubmit = async (e) => {
     e.preventDefault();
@@ -794,7 +804,7 @@ const Disease = () => {
       (d) =>
         (d.name ?? "").toLowerCase().includes(lowerQ) ||
         (d.severity ?? "").toLowerCase().includes(lowerQ) ||
-        (d.plant_name ?? "").toLowerCase().includes(lowerQ)
+        (d.plant_names ?? []).join(", ").toLowerCase().includes(lowerQ) // use plant_names here
     );
   }, [diseases, q]);
 
@@ -938,7 +948,6 @@ const Disease = () => {
     <div className="app-container-new">
       {/* Inject CSS Styles */}
       <style>{newComponentStyles}</style>
-
       {/* Header and Controls */}
       <div className="header-container-new">
         <h1 className="main-title-new">Disease Management</h1>
@@ -967,11 +976,9 @@ const Disease = () => {
           </button>
         </div>
       </div>
-
       {/* Status Messages */}
       <StatusMessage msg={msg} type="success" />
       <StatusMessage msg={errorMsg} type="error" />
-
       {/* Disease Card Grid */}
       <div className="card-grid-new">
         {filteredDiseases.length === 0 ? (
@@ -995,9 +1002,14 @@ const Disease = () => {
                 </span>
               </p>
               <div className="card-info-row-new">
-                <MapPin size={16} />{" "}
-                <span className="plant-name-new">{disease.plant_name}</span>
+                <MapPin size={16} />
+                <span className="plant-name-new">
+                  {disease.plant_names && disease.plant_names.length > 0
+                    ? disease.plant_names.join(", ")
+                    : "—"}
+                </span>
               </div>
+
               <div className="card-actions-new">
                 <button
                   className="btn-new btn-icon-new edit-new"
@@ -1026,7 +1038,6 @@ const Disease = () => {
       </div>
 
       {/* --- MODALS --- */}
-
       {/* Disease Detail Modal */}
       {selectedDisease && (
         <div className="modal-overlay-new">
@@ -1053,7 +1064,11 @@ const Disease = () => {
                   </span>
                 </div>
                 <div className="info-block-new">
-                  <strong>Plant:</strong> {selectedDisease.plant_name}
+                  <strong>Plant:</strong>{" "}
+                  {Array.isArray(selectedDisease.plant_names) &&
+                  selectedDisease.plant_names.length > 0
+                    ? selectedDisease.plant_names.join(", ")
+                    : "—"}
                 </div>
               </div>
               <div className="remedies-section-new">
@@ -1122,7 +1137,6 @@ const Disease = () => {
           </div>
         </div>
       )}
-
       {/* Disease Add/Edit Form Modal */}
       {showDiseaseForm && (
         <div className="modal-overlay-new">
@@ -1175,7 +1189,10 @@ const Disease = () => {
                   value={form.plant_id}
                   onChange={handleDiseaseChange}
                   required
+                  multiple
+                  size="5"
                   className="form-select-new"
+                  style={{ height: "auto" }}
                 >
                   <option value="">Select Plant</option>
                   {plants.map((plant) => (
@@ -1184,6 +1201,9 @@ const Disease = () => {
                     </option>
                   ))}
                 </select>
+                <small style={{ color: "#666", fontSize: "0.85em" }}>
+                  Hold Ctrl (Cmd on Mac) to select multiple plants.
+                </small>
               </div>
               <div className="modal-footer-new">
                 <button className="btn-new btn-primary-new" type="submit">
@@ -1201,7 +1221,6 @@ const Disease = () => {
           </div>
         </div>
       )}
-
       {/* Remedy Management Modal (Add/Edit and List) */}
       {showRemedyForm && (
         <div className="modal-overlay-new">
@@ -1312,7 +1331,6 @@ const Disease = () => {
           </div>
         </div>
       )}
-
       {/* Mapping Dialog */}
       {isMappingDialogOpen && selectedDisease && (
         <div className="modal-overlay-new">
@@ -1372,7 +1390,6 @@ const Disease = () => {
           </div>
         </div>
       )}
-
       {/* Confirm Delete Modal (disease or remedy) */}
       {isConfirmOpen && (
         <div className="modal-overlay-new">

@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { axiosInstance } from "../api/login";
 // Using Menu, X, Mail, Phone, MapPin, Calendar, User, Search from lucide-react
 import {
@@ -55,7 +61,7 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
     category_id: "",
   });
   const [isEdit, setIsEdit] = useState(false);
-
+  const formSectionRef = useRef(null);
   const access_token = localStorage.getItem("access_token");
 
   const fetchUsers = useCallback(async () => {
@@ -169,6 +175,15 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
     setIsFormVisible(true); // Show form when editing
     setStatusMsg("");
     setErrorMsg("");
+    // Scroll to form section
+    setTimeout(() => {
+      if (formSectionRef.current) {
+        formSectionRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+    }, 50);
   };
 
   const handleDeleteClick = (user) => {
@@ -691,7 +706,10 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
       {/* ... (rest of the component logic for form and cards remains the same) ... */}
 
       {/* Form Section (Toggled) */}
-      <div className={`form-section ${isFormVisible ? "visible" : ""}`}>
+      <div
+        className={`form-section ${isFormVisible ? "visible" : ""}`}
+        ref={formSectionRef}
+      >
         <div className="form-title">
           {isEdit ? "Edit User Details" : "Add New User"}
         </div>

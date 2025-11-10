@@ -318,6 +318,12 @@ const Master = ({ isSidebarOpen, toggleSidebar }) => {
 
   /* Single Card */
   .master-card {
+    height: 820px;      /* Example: choose a size that fits your UI */
+    min-height: 820px;
+    max-height: 820px;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
     background: #fff;
     border-radius: 16px;
     padding: 25px;
@@ -402,9 +408,11 @@ const Master = ({ isSidebarOpen, toggleSidebar }) => {
   
   /* List Styles */
   .data-list {
-    list-style-type: none;
+    flex: 1;
+    overflow-y: auto;
+    max-height: 500px;   /* Adjust as needed so input/buttons always visible */
+    margin: 0;
     padding: 0;
-    margin-top: 15px;
   }
   .data-list li {
     padding: 10px 0;

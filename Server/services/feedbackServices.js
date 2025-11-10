@@ -63,10 +63,16 @@ const updateFeedbackStatus = async ({ id, status }) => {
   return result.rows[0];
 };
 
+const deleteFeedback = async (id) => {
+  const result = await db.query(`DELETE FROM feedback WHERE id = $1`, [id]);
+  return result.rowCount > 0;
+};
+
 module.exports = {
   getAllFeedbacks,
   addFeedback,
   getFeedbackById,
   replyToFeedback,
   updateFeedbackStatus,
+  deleteFeedback,
 };
