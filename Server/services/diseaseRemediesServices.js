@@ -150,6 +150,13 @@ async function deleteDisease(disease_id) {
     // Delete from diseases table
     const sql = "DELETE FROM diseases WHERE disease_id = $1 RETURNING *";
     const result = await pool.query(sql, [disease_id]);
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'diseases'"
+    );
+
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'diseases_plants'"
+    );
     return result.rows[0];
   } catch (error) {
     console.error("deleteDisease error:", error.message || error);
@@ -232,6 +239,9 @@ async function deleteRemedy(remedy_id) {
   // Optionally, check and delete from mapping first if you want cascade
   const sql = "DELETE FROM remedies WHERE remedy_id=$1 RETURNING *";
   const result = await pool.query(sql, [remedy_id]);
+  await pool.query(
+    "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'remedies'"
+  );
   return result.rows[0];
 }
 
@@ -282,31 +292,26 @@ async function unmapRemedyFromDisease(disease_id, remedy_id) {
   const sql =
     "DELETE FROM disease_remedy WHERE disease_id=$1 AND remedy_id=$2 RETURNING *";
   const result = await pool.query(sql, [disease_id, remedy_id]);
+  await pool.query(
+    "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'disease_remedy'"
+  );
   return result.rows[0];
 }
 
 // --- IMAGES (Read Only) ---
 async function getImages() {
-  const sql =
-    "SELECT image_id, crop_id, image_url FROM images ORDER BY image_id";
+  const sql = "SELECT image_id, image_url FROM images ORDER BY image_id";
   const result = await pool.query(sql);
   return result.rows;
 }
 
-// Add a new image (with unique 5-digit imageid)
 async function addImage(image) {
-  // Validate cropid exists (FK from images to crops)
-  const cropCheck = await pool.query(
-    "SELECT user_crop_id FROM user_crops WHERE user_crop_id = $1",
-    [image.crop_id]
-  );
-  if (cropCheck.rowCount === 0) throw new Error("Invalid cropid");
   // Generate unique imageid
   const image_id = await generateUniqueId("images", "image_id");
-  // Insert image
+  // Insert image (without crop_id)
   const sql =
-    "INSERT INTO images (image_id, crop_id, image_url) VALUES ($1, $2, $3) RETURNING *";
-  const values = [image_id, image.crop_id, image.image_url];
+    "INSERT INTO images (image_id, image_url) VALUES ($1, $2) RETURNING *";
+  const values = [image_id, image.image_url];
   const result = await pool.query(sql, values);
   return result.rows[0];
 }

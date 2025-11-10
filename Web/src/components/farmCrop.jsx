@@ -15,9 +15,10 @@ import {
   FaTint,
   FaSun,
   FaFlask,
+  FaSearch,
 } from "react-icons/fa";
 
-// --- STYLE DEFINITIONS (Refined for professional look and animations) ---
+// --- COLOR DEFINITIONS ---
 const PRIMARY_PURPLE = "#6c5ce7";
 const PRIMARY_DARK = "#130f40";
 const ACCENT_GREEN = "#2ecc71";
@@ -25,6 +26,19 @@ const BG_LIGHT = "#f5f7fa";
 const TEXT_MUTED = "#666";
 const BORDER_COLOR = "#e0e0e0";
 
+// --- BASE STYLE FOR INPUT FIELDS (FIX for no-use-before-define) ---
+// Extracted base properties to prevent circular reference within 'style' object.
+const BASE_FIELD_STYLE = {
+  padding: 14,
+  borderRadius: 10,
+  border: `1px solid ${BORDER_COLOR}`,
+  fontSize: "1rem",
+  width: "100%",
+  boxSizing: "border-box",
+  transition: "border-color 0.3s, box-shadow 0.3s",
+};
+
+// --- STYLE DEFINITIONS ---
 const style = {
   pageContainer: {
     padding: "40px 20px",
@@ -82,13 +96,7 @@ const style = {
     gap: "20px",
   },
   formField: {
-    padding: 14,
-    borderRadius: 10,
-    border: `1px solid ${BORDER_COLOR}`,
-    fontSize: "1rem",
-    width: "100%",
-    boxSizing: "border-box",
-    transition: "border-color 0.3s, box-shadow 0.3s", // Animation
+    ...BASE_FIELD_STYLE, // Use the base style
     "&:focus": {
       borderColor: PRIMARY_PURPLE,
       boxShadow: "0 0 0 3px rgba(108, 92, 231, 0.1)",
@@ -230,10 +238,30 @@ const style = {
     fontWeight: 500,
     gridColumn: "1 / -1",
   },
-  // New: Icon style for details
+  // Icon style for details
   detailIcon: {
     color: PRIMARY_PURPLE,
     minWidth: "20px",
+  },
+  // Style for the search bar
+  searchContainer: {
+    marginBottom: "20px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    width: "100%",
+    maxWidth: "500px",
+  },
+  searchInput: {
+    ...BASE_FIELD_STYLE, // FIX: Use BASE_FIELD_STYLE instead of style.formField
+    flexGrow: 1,
+    paddingLeft: "40px", // Make space for the icon
+    position: "relative",
+  },
+  searchIcon: {
+    position: "absolute",
+    left: "15px",
+    color: TEXT_MUTED,
   },
 };
 
@@ -256,8 +284,6 @@ const initialCropForm = {
   field_size: "",
   status: "",
   isactive: true,
-  // soil_type_id is not in initialCropForm but is used in the form/logic.
-  // We'll rely on its use in the openAddCrop/submitAddCrop logic.
 };
 
 const apiBase = `http://${SERVER_IP}:5000/api/farmcrop`;
@@ -270,6 +296,8 @@ const FarmCrop = () => {
   const [waterSources, setWaterSources] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+  // ADDED: Search state
+  const [searchTerm, setSearchTerm] = useState("");
   // ADD AND EDIT STATE
   const [farmForm, setFarmForm] = useState(initialFarmForm);
   const [cropForm, setCropForm] = useState(initialCropForm);
@@ -345,6 +373,13 @@ const FarmCrop = () => {
   // --- FARMS AND CROPS (unchanged logic) ---
   const cropsForFarm = (farm_id) =>
     crops.filter((crop) => String(crop.farm_id) === String(farm_id));
+
+  // --- FARM FILTERING LOGIC (unchanged) ---
+  const filteredFarms = farms.filter((farm) => {
+    if (!searchTerm) return true; // Show all if no search term
+    const ownerName = farm.owner_name ? farm.owner_name.toLowerCase() : "";
+    return ownerName.includes(searchTerm.toLowerCase());
+  });
 
   // --- ADD (unchanged logic) ---
   const openAddFarm = () => {
@@ -521,9 +556,32 @@ const FarmCrop = () => {
           <FaSeedling size={40} color={PRIMARY_PURPLE} /> Farm Management
           Dashboard
         </div>
-        <button style={style.primaryButton} onClick={openAddFarm}>
-          <FaPlus /> Add New Farm
-        </button>
+        {/* Farm Actions and Search */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "15px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <button style={style.primaryButton} onClick={openAddFarm}>
+            <FaPlus /> Add New Farm
+          </button>
+          <div style={{ ...style.searchContainer, marginBottom: 0 }}>
+            <FaSearch style={style.searchIcon} />
+            <input
+              type="text"
+              placeholder="Search by Farmer Name..."
+              style={style.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+        {/* END Farm Actions and Search */}
 
         {/* Add Farm Form */}
         {showAddFarm && (
@@ -768,8 +826,24 @@ const FarmCrop = () => {
                 No farms found. Add one to begin!
               </p>
             </div>
+          ) : filteredFarms.length === 0 ? (
+            <div
+              style={{
+                padding: "3rem",
+                textAlign: "center",
+                color: TEXT_MUTED,
+                border: "2px dashed #ccc",
+                borderRadius: 12,
+                marginTop: "2rem",
+              }}
+            >
+              <FaSearch size={40} color={TEXT_MUTED} />
+              <p style={{ marginTop: "10px" }}>
+                No farms found matching **"{searchTerm}"**.
+              </p>
+            </div>
           ) : (
-            farms.map((farm) => (
+            filteredFarms.map((farm) => (
               <div key={farm.farm_id} style={style.farmCard}>
                 <div style={style.farmHeader}>
                   <div>

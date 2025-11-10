@@ -535,9 +535,15 @@ exports.addSoilType = async (req, res) => {
 
 exports.deleteSoilType = async (req, res) => {
   try {
-    await pool.query("DELETE FROM soil_types WHERE soil_type_id=$1", [
-      req.params.id,
-    ]);
+    const result = await pool.query(
+      "DELETE FROM soil_types WHERE soil_type_id=$1",
+      [req.params.id]
+    );
+    if (result.rowCount !== 0) {
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'soil_types'"
+      );
+    }
     res.json({ message: "Soil type deleted" });
   } catch (error) {
     console.error("deleteSoilType error:", error);
@@ -587,9 +593,15 @@ exports.addIrrigation = async (req, res) => {
 
 exports.deleteIrrigation = async (req, res) => {
   try {
-    await pool.query("DELETE FROM irrigation_method WHERE irrigation_id=$1", [
-      req.params.id,
-    ]);
+    const result = await pool.query(
+      "DELETE FROM irrigation_method WHERE irrigation_id=$1",
+      [req.params.id]
+    );
+    if (result.rowCount !== 0) {
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'irrigation_method'"
+      );
+    }
     res.json({ message: "Irrigation method deleted" });
   } catch (error) {
     console.error("deleteIrrigation error:", error);
@@ -635,9 +647,15 @@ exports.addWaterSource = async (req, res) => {
 
 exports.deleteWaterSource = async (req, res) => {
   try {
-    await pool.query("DELETE FROM water_src WHERE water_src_id=$1", [
-      req.params.id,
-    ]);
+    const result = await pool.query(
+      "DELETE FROM water_src WHERE water_src_id=$1",
+      [req.params.id]
+    );
+    if (result.rowCount !== 0) {
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'water_src'"
+      );
+    }
     res.json({ message: "Water source deleted" });
   } catch (error) {
     console.error("deleteWaterSource error:", error);
@@ -683,9 +701,15 @@ exports.addCropType = async (req, res) => {
 
 exports.deleteCropType = async (req, res) => {
   try {
-    await pool.query("DELETE FROM crop_types WHERE crop_type_id=$1", [
-      req.params.id,
-    ]);
+    const result = await pool.query(
+      "DELETE FROM crop_types WHERE crop_type_id=$1",
+      [req.params.id]
+    );
+    if (result.rowCount !== 0) {
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'crop_types'"
+      );
+    }
     res.json({ message: "Crop type deleted" });
   } catch (error) {
     console.error("deleteCropType error:", error);
@@ -732,7 +756,14 @@ exports.addPlant = async (req, res) => {
 
 exports.deletePlant = async (req, res) => {
   try {
-    await pool.query("DELETE FROM plants WHERE plant_id=$1", [req.params.id]);
+    const result = await pool.query("DELETE FROM plants WHERE plant_id=$1", [
+      req.params.id,
+    ]);
+    if (result.rowCount !== 0) {
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'plants'"
+      );
+    }
     res.json({ message: "Plant deleted" });
   } catch (error) {
     console.error("deletePlant error:", error);
