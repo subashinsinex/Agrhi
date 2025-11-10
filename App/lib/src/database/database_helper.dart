@@ -361,12 +361,14 @@ class DatabaseHelper {
     final db = await database;
 
     final diseaseId = await findDiseaseIdByLabel(detectedLabel);
-    if (diseaseId == null)
-      {throw StateError('Unknown disease label: $detectedLabel');}
+    if (diseaseId == null) {
+      throw StateError('Unknown disease label: $detectedLabel');
+    }
 
     final remedyId = await findRemedyIdForDisease(diseaseId);
-    if (remedyId == null)
-      {throw StateError('No remedy mapping for disease: $diseaseId');}
+    if (remedyId == null) {
+      throw StateError('No remedy mapping for disease: $diseaseId');
+    }
 
     return await db.transaction((txn) async {
       final imageId = const Uuid().v4();
@@ -571,10 +573,12 @@ class DatabaseHelper {
     try {
       if (data is List) return data;
       if (data is Map<String, dynamic>) {
-        if (data.containsKey('data') && data['data'] is List)
-          {return data['data'];}
-        if (data.containsKey('records') && data['records'] is List)
-          {return data['records'];}
+        if (data.containsKey('data') && data['data'] is List) {
+          return data['data'];
+        }
+        if (data.containsKey('records') && data['records'] is List) {
+          return data['records'];
+        }
         return data.values.toList();
       }
       return [];
@@ -1054,13 +1058,14 @@ class DatabaseHelper {
     try {
       final pending = await getPendingAnalyses();
       print('🚚 upload pending: ${pending.length}');
-      if (pending.isEmpty)
-        {return {
+      if (pending.isEmpty) {
+        return {
           'success': true,
           'message': 'No pending',
           'synced': 0,
           'failed': 0,
-        };}
+        };
+      }
       int ok = 0, fail = 0;
       final failed = <String>[];
       for (final a in pending) {
@@ -1149,8 +1154,9 @@ class DatabaseHelper {
           .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
           .timeout(const Duration(seconds: 15));
       print('📡 analyses ${r.statusCode}, ${r.bodyBytes.length} bytes');
-      if (r.statusCode != 200)
-        {return {'success': false, 'upserts': 0, 'deleted': 0};}
+      if (r.statusCode != 200) {
+        return {'success': false, 'upserts': 0, 'deleted': 0};
+      }
 
       final payload = jsonDecode(r.body);
       final List<dynamic> rows = payload is List
@@ -1300,5 +1306,64 @@ class DatabaseHelper {
   Future<void> close() async {
     final db = await database;
     await db.close();
+  }
+  // At the bottom of lib/src/db/database_helper.dart (inside class DatabaseHelper)
+
+  Future<String?> findPlantIdByName(String plantName) async {
+    final db = await database;
+    final rows = await db.query(
+      'plants',
+      columns: ['plant_id'], // snake_case to match CREATE TABLE
+      where: 'LOWER(plant_name) = LOWER(?)', // snake_case
+      whereArgs: [plantName.trim()],
+      limit: 1,
+    );
+    return rows.isNotEmpty
+        ? rows.first['plant_id'] as String
+        : null; // snake_case
+  }
+
+  Future<String?> findActiveUserCropIdByPlantId({
+    required String userId,
+    required String plantId,
+  }) async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      '''
+    SELECT uc.user_crop_id
+    FROM user_crops uc
+    JOIN farms f ON uc.farm_id = f.farm_id
+    WHERE f.user_id = ? AND uc.plant_id = ? AND uc.is_active = 1
+    ORDER BY uc.planting_date DESC
+    LIMIT 1
+  ''',
+      [userId, plantId],
+    );
+    return rows.isNotEmpty ? rows.first['user_crop_id'] as String : null;
+  }
+
+  Future<String> saveDetectionUsingCatalogByPlantName({
+    required String userId,
+    required String plantName,
+    required String detectedLabel,
+    required double confidence,
+    required String localImagePath,
+  }) async {
+    final plantId = await findPlantIdByName(plantName);
+    if (plantId == null) throw StateError('Unknown plant name: $plantName');
+
+    final cropId = await findActiveUserCropIdByPlantId(
+      userId: userId,
+      plantId: plantId,
+    );
+    if (cropId == null) throw StateError('No active crop found for $plantName');
+
+    return await saveDetectionUsingCatalog(
+      userId: userId,
+      cropId: cropId,
+      detectedLabel: detectedLabel,
+      confidence: confidence,
+      localImagePath: localImagePath,
+    );
   }
 }

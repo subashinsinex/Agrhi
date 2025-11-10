@@ -15,6 +15,18 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../src/database/database_helper.dart';
 import '../../src/services/auth_service.dart';
 
+Future<void> printAllSecureStorage() async {
+  const storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+      synchronizable: false,
+    ),
+  );
+  final all = await storage.readAll();
+  all.forEach((k, v) => print('$k = $v'));
+}
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -58,6 +70,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_currentLanguage != languageService.currentLocale.languageCode) {
       _currentLanguage = languageService.currentLocale.languageCode;
       _loadTranslations();
+      printAllSecureStorage();
     }
   }
 
@@ -356,141 +369,145 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       key: _scaffoldKey,
       appBar: DashboardAppBar.withMenu(
-  onMenuPressed: _openSidebar,
-  additionalActions: [
-    Padding(
-      padding: const EdgeInsetsDirectional.only(end: 12), // was margin: end: 4
-      child: IconButton(
-        tooltip: translatedTexts['sync'] ?? 'Sync',
-        onPressed: _isSyncing
-            ? null
-            : () async {
-                setState(() => _isSyncing = true);
+        onMenuPressed: _openSidebar,
+        additionalActions: [
+          Padding(
+            padding: const EdgeInsetsDirectional.only(
+              end: 12,
+            ), // was margin: end: 4
+            child: IconButton(
+              tooltip: translatedTexts['sync'] ?? 'Sync',
+              onPressed: _isSyncing
+                  ? null
+                  : () async {
+                      setState(() => _isSyncing = true);
 
-                final messenger = ScaffoldMessenger.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
 
-                // Ensure token is valid (JWT check + refresh if needed)
-                final validToken = await _getValidAccessTokenForSync();
-                if (validToken == null || validToken.isEmpty) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        translatedTexts['sessionExpired'] ??
-                            'Session expired. Please log in again.',
-                      ),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor: AppColors.errorColor,
-                      duration: const Duration(seconds: 3),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  );
-                  if (mounted) setState(() => _isSyncing = false);
-                  return;
-                }
+                      // Ensure token is valid (JWT check + refresh if needed)
+                      final validToken = await _getValidAccessTokenForSync();
+                      if (validToken == null || validToken.isEmpty) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              translatedTexts['sessionExpired'] ??
+                                  'Session expired. Please log in again.',
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                            backgroundColor: AppColors.errorColor,
+                            duration: const Duration(seconds: 3),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        );
+                        if (mounted) setState(() => _isSyncing = false);
+                        return;
+                      }
 
-                // Feedback: sync starting
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Row(
-                      children: [
-                        const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                      // Feedback: sync starting
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: [
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  translatedTexts['syncing'] ??
+                                      'Sync in progress...',
+                                ),
+                              ),
+                            ],
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                          backgroundColor: AppColors.infoColor,
+                          duration: const Duration(seconds: 2),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            translatedTexts['syncing'] ??
-                                'Sync in progress...',
+                      );
+
+                      try {
+                        // Reuse your existing smart sync
+                        final syncResult = await DatabaseHelper.instance
+                            .smartSyncCatalogs(validToken);
+
+                        final bool ok =
+                            (syncResult['success'] as bool?) ?? false;
+                        final int updated =
+                            (syncResult['updated'] as int?) ?? 0;
+                        final int failedCount =
+                            (syncResult['failed'] as List?)?.length ?? 0;
+
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              ok
+                                  ? (translatedTexts['syncComplete'] ??
+                                        'Sync complete: $updated table(s) updated.')
+                                  : (translatedTexts['syncPartial'] ??
+                                        'Sync finished: $updated updated, $failedCount failed.'),
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                            backgroundColor: ok
+                                ? AppColors.successColor
+                                : AppColors.warningColor,
+                            duration: const Duration(seconds: 3),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                    backgroundColor: AppColors.infoColor,
-                    duration: const Duration(seconds: 2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
+                        );
 
-                try {
-                  // Reuse your existing smart sync
-                  final syncResult = await DatabaseHelper.instance
-                      .smartSyncCatalogs(validToken);
-
-                  final bool ok = (syncResult['success'] as bool?) ?? false;
-                  final int updated = (syncResult['updated'] as int?) ?? 0;
-                  final int failedCount =
-                      (syncResult['failed'] as List?)?.length ?? 0;
-
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        ok
-                            ? (translatedTexts['syncComplete'] ??
-                                'Sync complete: $updated table(s) updated.')
-                            : (translatedTexts['syncPartial'] ??
-                                'Sync finished: $updated updated, $failedCount failed.'),
+                        if (ok) {
+                          // ignore: avoid_print
+                          print('✅ Synced $updated tables');
+                        } else {
+                          // ignore: avoid_print
+                          print('⚠️ ${syncResult['message']}');
+                        }
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              translatedTexts['syncFailed'] ??
+                                  'Sync failed. Please try again.',
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                            backgroundColor: AppColors.errorColor,
+                            duration: const Duration(seconds: 3),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        );
+                      } finally {
+                        if (mounted) setState(() => _isSyncing = false);
+                      }
+                    },
+              icon: _isSyncing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor:
-                          ok ? AppColors.successColor : AppColors.warningColor,
-                      duration: const Duration(seconds: 3),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  );
-
-                  if (ok) {
-                    // ignore: avoid_print
-                    print('✅ Synced $updated tables');
-                  } else {
-                    // ignore: avoid_print
-                    print('⚠️ ${syncResult['message']}');
-                  }
-                } catch (e) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        translatedTexts['syncFailed'] ??
-                            'Sync failed. Please try again.',
-                      ),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor: AppColors.errorColor,
-                      duration: const Duration(seconds: 3),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  );
-                } finally {
-                  if (mounted) setState(() => _isSyncing = false);
-                }
-              },
-        icon: _isSyncing
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : Icon(Icons.sync_outlined, color: AppColors.textWhite),
+                    )
+                  : Icon(Icons.sync_outlined, color: AppColors.textWhite),
+            ),
+          ),
+        ],
       ),
-    ),
-  ],
-),
-
 
       drawer: const AppSidebar(),
       drawerEnableOpenDragGesture: true,

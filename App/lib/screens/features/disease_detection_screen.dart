@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:convert'; // for JWT fallback
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../src/models/model_service.dart';
 import '../../src/models/crop_preprocessors.dart';
@@ -11,6 +13,7 @@ import '../../src/models/disease_labels.dart';
 import '../../src/services/language_service.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
+import '../../src/database/database_helper.dart';
 
 class DetectDiseaseScreen extends StatefulWidget {
   const DetectDiseaseScreen({super.key});
@@ -49,6 +52,15 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   Map<String, String> translatedTexts = {};
   String _currentLanguage = '';
 
+  // Same secure storage options as Dashboard
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+      synchronizable: false,
+    ),
+  );
+
   @override
   void initState() {
     super.initState();
@@ -66,9 +78,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       _loadModelForCrop(selectedCrop!);
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadTranslations();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTranslations());
   }
 
   @override
@@ -81,13 +91,75 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
+  // Retry helper (mirrors Dashboard)
+  Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
+    for (int i = 0; i < maxRetries; i++) {
+      try {
+        final value = await _storage.read(key: key);
+        if (value != null && value.isNotEmpty) return value;
+        if (i < maxRetries - 1) {
+          await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
+        }
+      } catch (_) {
+        if (i == maxRetries - 1) rethrow;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _decodeJwtPayload(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      var payload = parts[1];
+      final mod4 = payload.length % 4;
+      if (mod4 > 0) payload += '=' * (4 - mod4);
+      final decoded = utf8.decode(base64Url.decode(payload));
+      final map = jsonDecode(decoded);
+      if (map is Map<String, dynamic>) return map;
+      if (map is Map) return Map<String, dynamic>.from(map);
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Unified user id read: user_id -> user_profile -> access_token JWT
+  Future<String?> _readUserId() async {
+    final direct = await _readWithRetry('user_id');
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    final profileJson = await _readWithRetry('user_profile');
+    if (profileJson != null && profileJson.isNotEmpty) {
+      try {
+        final map = jsonDecode(profileJson);
+        if (map is Map) {
+          final m = Map<String, dynamic>.from(map);
+          final fromProfile = m['user_id']?.toString() ?? m['id']?.toString();
+          if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
+        }
+      } catch (_) {}
+    }
+
+    final token = await _readWithRetry('access_token');
+    if (token != null && token.isNotEmpty) {
+      final payload = _decodeJwtPayload(token);
+      final fromJwt =
+          payload?['sub']?.toString() ??
+          payload?['user_id']?.toString() ??
+          payload?['uid']?.toString();
+      if (fromJwt != null && fromJwt.isNotEmpty) return fromJwt;
+    }
+
+    return null;
+  }
+
   Future<void> _loadTranslations() async {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
 
-    // Basic UI keys
     final Map<String, String> keys = {
       'selectCrop': 'Select Crop',
       'selectACrop': 'Select a crop',
@@ -112,17 +184,15 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'progress': 'Progress',
     };
 
-    // Add crop and disease label keys with consistent lowercase and underscores replaced by spaces
     for (final crop in diseaseLabels.keys) {
       keys[crop.toLowerCase()] = crop;
       for (final label in diseaseLabels[crop] ?? []) {
         final key = label.replaceAll('_', ' ').toLowerCase();
-        final display = label.replaceAll('_', ' ');
-        keys[key] = display;
+        keys[key] = label.replaceAll('_', ' ');
       }
     }
 
-    final Map<String, String> translated = {};
+    final translated = <String, String>{};
     final futures = <Future>[];
     for (final entry in keys.entries) {
       futures.add(
@@ -134,9 +204,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     await Future.wait(futures);
 
     if (!mounted) return;
-    setState(() {
-      translatedTexts = translated;
-    });
+    setState(() => translatedTexts = translated);
   }
 
   @override
@@ -152,7 +220,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       if (modelMap.containsKey(cropName)) {
         await ModelService.loadModel(modelMap[cropName]!);
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       _showErrorSnackBar(
         '${translatedTexts['failedToLoadModel'] ?? 'Failed to load model for'} $cropName',
@@ -173,15 +241,18 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         imageQuality: 85,
       );
       if (picked == null) return;
+
       setState(() {
         _isLoading = true;
         result = null;
         imagePath = picked.path;
         _analysisProgress = 0.0;
       });
+
       imageBytes = await picked.readAsBytes();
-      _progressController.reset();
-      _progressController.forward();
+      _progressController
+        ..reset()
+        ..forward();
 
       await _analyzeImage(picked.path);
     } catch (e) {
@@ -196,7 +267,41 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  Future<void> _analyzeImage(String imagePath) async {
+  // Persist using secure storage userId + plant -> usercrop mapping
+  Future<void> _persistResultUsingPlant({
+    required String plantName,
+    required String detectedLabel,
+    required double confidence0to1,
+    required String localImagePath,
+  }) async {
+    const double healthyMinConfidence = 0.80;
+    final isHealthy = detectedLabel.toLowerCase().contains('healthy');
+    if (isHealthy && confidence0to1 < healthyMinConfidence) return;
+
+    final userId = await _readUserId();
+    if (userId == null || userId.isEmpty) {
+      _showErrorSnackBar('User not found in secure storage');
+      return;
+    }
+
+    try {
+      await DatabaseHelper.instance.saveDetectionUsingCatalogByPlantName(
+        userId: userId,
+        plantName: plantName,
+        detectedLabel: detectedLabel,
+        confidence: confidence0to1,
+        localImagePath: localImagePath,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Saved analysis locally')));
+    } on StateError catch (e) {
+      _showErrorSnackBar('Save failed: ${e.message}');
+    }
+  }
+
+  Future<void> _analyzeImage(String path) async {
     try {
       for (int i = 0; i <= 100; i += 5) {
         if (!mounted) return;
@@ -206,8 +311,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
       final preprocessor = preprocessMap[selectedCrop];
       final processedPath = preprocessor != null
-          ? await preprocessor(imagePath)
-          : imagePath;
+          ? await preprocessor(path)
+          : path;
 
       final cropName = selectedCrop!;
       final labels = diseaseLabels[cropName] ?? const ['Healthy', 'Unknown'];
@@ -229,6 +334,18 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       });
 
       _resultController.forward();
+
+      final hasError = topResult.containsKey('error');
+      if (!hasError && path.isNotEmpty) {
+        final label = (topResult['label'] ?? 'Unknown').toString();
+        final conf = (topResult['confidence'] as num?)?.toDouble() ?? 0.0;
+        await _persistResultUsingPlant(
+          plantName: selectedCrop!,
+          detectedLabel: label,
+          confidence0to1: conf,
+          localImagePath: path,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -426,86 +543,80 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               child: Row(
                 children: [
                   Expanded(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.photo_camera, size: 20),
-                        label: Flexible(
-                          child: Text(
-                            translatedTexts['takePhoto'] ?? 'Take Photo',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.photo_camera, size: 20),
+                      label: Flexible(
+                        child: Text(
+                          translatedTexts['takePhoto'] ?? 'Take Photo',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                           ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        onPressed: isEnabled
-                            ? () => _pickImage(ImageSource.camera)
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isEnabled
-                              ? AppColors.primaryGreen
-                              : AppColors.primaryGreen.withOpacity(0.5),
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size(double.infinity, 56),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: isEnabled ? 2 : 0,
+                      ),
+                      onPressed: isEnabled
+                          ? () => _pickImage(ImageSource.camera)
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isEnabled
+                            ? AppColors.primaryGreen
+                            : AppColors.primaryGreen.withOpacity(0.5),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 56),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
                         ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: isEnabled ? 2 : 0,
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.photo_library, size: 20),
-                        label: Flexible(
-                          child: Text(
-                            translatedTexts['chooseFromGallery'] ??
-                                'Choose From Gallery',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.photo_library, size: 20),
+                      label: Flexible(
+                        child: Text(
+                          translatedTexts['chooseFromGallery'] ??
+                              'Choose From Gallery',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                           ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        onPressed: isEnabled
-                            ? () => _pickImage(ImageSource.gallery)
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: isEnabled
+                      ),
+                      onPressed: isEnabled
+                          ? () => _pickImage(ImageSource.gallery)
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: isEnabled
+                            ? AppColors.primaryGreen
+                            : AppColors.primaryGreen.withOpacity(0.5),
+                        side: BorderSide(
+                          color: isEnabled
                               ? AppColors.primaryGreen
                               : AppColors.primaryGreen.withOpacity(0.5),
-                          side: BorderSide(
-                            color: isEnabled
-                                ? AppColors.primaryGreen
-                                : AppColors.primaryGreen.withOpacity(0.5),
-                            width: 2,
-                          ),
-                          minimumSize: const Size(double.infinity, 56),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: isEnabled ? 1 : 0,
+                          width: 2,
                         ),
+                        minimumSize: const Size(double.infinity, 56),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: isEnabled ? 1 : 0,
                       ),
                     ),
                   ),
@@ -992,8 +1103,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
-            physics:
-                const ClampingScrollPhysics(), // Prevent overscroll glow and bounce
+            physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
               child: IntrinsicHeight(
@@ -1011,9 +1121,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       ],
                       if (result != null && !_isLoading) _buildResults(),
                       const SizedBox(height: 32),
-                      Expanded(
-                        child: Container(),
-                      ), // Push content up when content is small
+                      const Expanded(child: SizedBox.shrink()),
                     ],
                   ),
                 ),
@@ -1024,5 +1132,4 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       ),
     );
   }
-
 }
