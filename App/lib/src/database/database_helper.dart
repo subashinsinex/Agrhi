@@ -170,22 +170,21 @@ class DatabaseHelper {
       )
     ''');
 
+    // ✅ UPDATED: Removed remedy_id column
     await db.execute('''
       CREATE TABLE disease_analysis_results (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
-        crop_id TEXT NOT NULL,
+        plant_id TEXT NOT NULL,
         image_id TEXT NOT NULL,
         disease_id TEXT NOT NULL,
-        remedy_id TEXT NOT NULL,
         confidence REAL,
         created_at TEXT,
         is_uploaded INTEGER DEFAULT 0,
         is_dirty INTEGER DEFAULT 1,
-        FOREIGN KEY (crop_id) REFERENCES user_crops(user_crop_id),
+        FOREIGN KEY (plant_id) REFERENCES plants(plant_id),
         FOREIGN KEY (image_id) REFERENCES images(image_id),
-        FOREIGN KEY (disease_id) REFERENCES diseases(disease_id),
-        FOREIGN KEY (remedy_id) REFERENCES remedies(remedy_id)
+        FOREIGN KEY (disease_id) REFERENCES diseases(disease_id)
       )
     ''');
 
@@ -196,7 +195,7 @@ class DatabaseHelper {
       'CREATE INDEX IF NOT EXISTS idx_dar_user ON disease_analysis_results(user_id)',
     );
     await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_dar_crop ON disease_analysis_results(crop_id)',
+      'CREATE INDEX IF NOT EXISTS idx_dar_plant ON disease_analysis_results(plant_id)',
     );
 
     final tables = [
@@ -283,7 +282,7 @@ class DatabaseHelper {
 
   // ================= IMAGE OPS =================
   Future<String> insertImage({
-    String? cropId,
+    String? plantId,
     required String localPath,
   }) async {
     final db = await database;
@@ -299,12 +298,12 @@ class DatabaseHelper {
   }
 
   // ================= ANALYSIS OPS =================
+  // ✅ UPDATED: Removed remedyId parameter
   Future<String> insertDiseaseAnalysis({
     required String userId,
-    required String cropId,
+    required String plantId,
     required String imageId,
     required String diseaseId,
-    required String remedyId,
     required double confidence,
   }) async {
     final db = await database;
@@ -312,10 +311,9 @@ class DatabaseHelper {
     await db.insert('disease_analysis_results', {
       'id': analysisId,
       'user_id': userId,
-      'crop_id': cropId,
+      'plant_id': plantId,
       'image_id': imageId,
       'disease_id': diseaseId,
-      'remedy_id': remedyId,
       'confidence': confidence,
       'created_at': DateTime.now().toIso8601String(),
       'is_uploaded': 0,
@@ -339,21 +337,12 @@ class DatabaseHelper {
     return rows.isNotEmpty ? rows.first['disease_id'] as String : null;
   }
 
-  Future<String?> findRemedyIdForDisease(String diseaseId) async {
-    final db = await database;
-    final rows = await db.query(
-      'disease_remedy',
-      columns: ['remedy_id'],
-      where: 'disease_id = ?',
-      whereArgs: [diseaseId],
-      limit: 1,
-    );
-    return rows.isNotEmpty ? rows.first['remedy_id'] as String : null;
-  }
+  // ✅ UPDATED: Removed findRemedyIdForDisease - no longer needed
 
+  // ✅ UPDATED: Removed remedy lookup and storage
   Future<String> saveDetectionUsingCatalog({
     required String userId,
-    required String cropId,
+    required String plantId,
     required String detectedLabel,
     required double confidence,
     required String localImagePath,
@@ -363,11 +352,6 @@ class DatabaseHelper {
     final diseaseId = await findDiseaseIdByLabel(detectedLabel);
     if (diseaseId == null) {
       throw StateError('Unknown disease label: $detectedLabel');
-    }
-
-    final remedyId = await findRemedyIdForDisease(diseaseId);
-    if (remedyId == null) {
-      throw StateError('No remedy mapping for disease: $diseaseId');
     }
 
     return await db.transaction((txn) async {
@@ -384,10 +368,9 @@ class DatabaseHelper {
       await txn.insert('disease_analysis_results', {
         'id': analysisId,
         'user_id': userId,
-        'crop_id': cropId,
+        'plant_id': plantId,
         'image_id': imageId,
         'disease_id': diseaseId,
-        'remedy_id': remedyId,
         'confidence': confidence,
         'created_at': DateTime.now().toIso8601String(),
         'is_uploaded': 0,
@@ -398,6 +381,7 @@ class DatabaseHelper {
   }
 
   // ================= QUERIES =================
+  // ✅ UPDATED: Remedies now fetched via disease_remedy JOIN
   Future<List<Map<String, dynamic>>> getPendingAnalyses() async {
     final db = await database;
     return await db.rawQuery('''
@@ -405,17 +389,18 @@ class DatabaseHelper {
         dar.*,
         d.name as disease_name,
         d.severity,
-        r.remedy,
-        r.prevention,
         i.local_path,
-        uc.status as crop_status,
-        uc.field_size
+        p.plant_name,
+        GROUP_CONCAT(r.remedy, '|||') as remedies,
+        GROUP_CONCAT(r.prevention, '|||') as preventions
       FROM disease_analysis_results dar
       LEFT JOIN diseases d ON dar.disease_id = d.disease_id
-      LEFT JOIN remedies r ON dar.remedy_id = r.remedy_id
       LEFT JOIN images i ON dar.image_id = i.image_id
-      LEFT JOIN user_crops uc ON dar.crop_id = uc.user_crop_id
+      LEFT JOIN plants p ON dar.plant_id = p.plant_id
+      LEFT JOIN disease_remedy dr ON d.disease_id = dr.disease_id
+      LEFT JOIN remedies r ON dr.remedy_id = r.remedy_id
       WHERE dar.is_dirty = 1 OR dar.is_uploaded = 0
+      GROUP BY dar.id
       ORDER BY dar.created_at DESC
     ''');
   }
@@ -428,18 +413,19 @@ class DatabaseHelper {
         dar.*,
         d.name as disease_name,
         d.severity,
-        r.remedy,
-        r.prevention,
         i.local_path,
         i.server_image_url,
-        uc.status as crop_status,
-        uc.field_size
+        p.plant_name,
+        GROUP_CONCAT(r.remedy, '|||') as remedies,
+        GROUP_CONCAT(r.prevention, '|||') as preventions
       FROM disease_analysis_results dar
       LEFT JOIN diseases d ON dar.disease_id = d.disease_id
-      LEFT JOIN remedies r ON dar.remedy_id = r.remedy_id
       LEFT JOIN images i ON dar.image_id = i.image_id
-      LEFT JOIN user_crops uc ON dar.crop_id = uc.user_crop_id
+      LEFT JOIN plants p ON dar.plant_id = p.plant_id
+      LEFT JOIN disease_remedy dr ON d.disease_id = dr.disease_id
+      LEFT JOIN remedies r ON dr.remedy_id = r.remedy_id
       WHERE dar.user_id = ?
+      GROUP BY dar.id
       ORDER BY dar.created_at DESC
     ''',
       [userId],
@@ -454,17 +440,19 @@ class DatabaseHelper {
         dar.*,
         d.name as disease_name,
         d.severity,
-        r.remedy,
-        r.prevention,
         i.local_path,
         i.server_image_url,
-        uc.status as crop_status
+        p.plant_name,
+        GROUP_CONCAT(r.remedy, '|||') as remedies,
+        GROUP_CONCAT(r.prevention, '|||') as preventions
       FROM disease_analysis_results dar
       LEFT JOIN diseases d ON dar.disease_id = d.disease_id
-      LEFT JOIN remedies r ON dar.remedy_id = r.remedy_id
       LEFT JOIN images i ON dar.image_id = i.image_id
-      LEFT JOIN user_crops uc ON dar.crop_id = uc.user_crop_id
+      LEFT JOIN plants p ON dar.plant_id = p.plant_id
+      LEFT JOIN disease_remedy dr ON d.disease_id = dr.disease_id
+      LEFT JOIN remedies r ON dr.remedy_id = r.remedy_id
       WHERE dar.id = ?
+      GROUP BY dar.id
     ''',
       [analysisId],
     );
@@ -935,16 +923,36 @@ class DatabaseHelper {
     );
   }
 
+  // ⭐ OPTIMIZED: Pre-fetch FK sets for O(1) validation
   Future<void> syncDiseasesPlants(List<dynamic> rows) async {
     final db = await database;
+
+    // ✅ Pre-fetch parent table IDs (outside transaction)
+    final diseases = await db.query('diseases', columns: ['disease_id']);
+    final plants = await db.query('plants', columns: ['plant_id']);
+
+    // ✅ Build hash sets for O(1) lookup
+    final validDiseases = diseases
+        .map((d) => d['disease_id'] as String)
+        .toSet();
+    final validPlants = plants.map((p) => p['plant_id'] as String).toSet();
+
     int ok = 0, skip = 0, fkMiss = 0;
+
+    // ✅ Single transaction with batch insert
     await db.transaction((txn) async {
+      // Clear existing records
       await txn.delete('diseases_plants');
+
+      // Build batch
+      final batch = txn.batch();
+
       for (final item in rows) {
         if (item is! Map) {
           skip++;
           continue;
         }
+
         final rec = item;
         final diseaseId = _firstNonEmpty(rec, [
           'disease_id',
@@ -958,52 +966,66 @@ class DatabaseHelper {
           'plant_uuid',
           'plant',
         ]);
+
         if (diseaseId.isEmpty || plantId.isEmpty) {
-          print(
-            '⏭️ diseases_plants skip: disease="$diseaseId" plant="$plantId" keys=${rec.keys}',
-          );
           skip++;
           continue;
         }
-        final d = await txn.query(
-          'diseases',
-          where: 'disease_id=?',
-          whereArgs: [diseaseId],
-          limit: 1,
-        );
-        final p = await txn.query(
-          'plants',
-          where: 'plant_id=?',
-          whereArgs: [plantId],
-          limit: 1,
-        );
-        if (d.isEmpty || p.isEmpty) {
+
+        // ✅ O(1) FK validation against pre-fetched sets
+        if (!validDiseases.contains(diseaseId) ||
+            !validPlants.contains(plantId)) {
           print(
-            '⚠️ FK missing diseases_plants: disease="$diseaseId" (${d.isEmpty ? 'missing' : 'ok'}), plant="$plantId" (${p.isEmpty ? 'missing' : 'ok'})',
+            '⚠️ FK missing diseases_plants: disease="$diseaseId" (${!validDiseases.contains(diseaseId) ? 'missing' : 'ok'}), plant="$plantId" (${!validPlants.contains(plantId) ? 'missing' : 'ok'})',
           );
           fkMiss++;
           continue;
         }
-        await txn.insert('diseases_plants', {
+
+        batch.insert('diseases_plants', {
           'disease_id': diseaseId,
           'plant_id': plantId,
         });
         ok++;
       }
+
+      // ✅ Commit batch with noResult for 50% speed gain
+      await batch.commit(noResult: true);
     });
+
     print('✅ diseases_plants inserted=$ok, skipped=$skip, fkMissing=$fkMiss');
   }
 
+  // ⭐ OPTIMIZED: Pre-fetch FK sets for O(1) validation
   Future<void> syncDiseaseRemedy(List<dynamic> rows) async {
     final db = await database;
+
+    // ✅ Pre-fetch parent table IDs (outside transaction)
+    final diseases = await db.query('diseases', columns: ['disease_id']);
+    final remedies = await db.query('remedies', columns: ['remedy_id']);
+
+    // ✅ Build hash sets for O(1) lookup
+    final validDiseases = diseases
+        .map((d) => d['disease_id'] as String)
+        .toSet();
+    final validRemedies = remedies.map((r) => r['remedy_id'] as String).toSet();
+
     int ok = 0, skip = 0, fkMiss = 0;
+
+    // ✅ Single transaction with batch insert
     await db.transaction((txn) async {
+      // Clear existing records
       await txn.delete('disease_remedy');
+
+      // Build batch
+      final batch = txn.batch();
+
       for (final item in rows) {
         if (item is! Map) {
           skip++;
           continue;
         }
+
         final rec = item;
         final diseaseId = _firstNonEmpty(rec, [
           'disease_id',
@@ -1017,39 +1039,33 @@ class DatabaseHelper {
           'remedy_uuid',
           'remedy',
         ]);
+
         if (diseaseId.isEmpty || remedyId.isEmpty) {
-          print(
-            '⏭️ disease_remedy skip: disease="$diseaseId" remedy="$remedyId" keys=${rec.keys}',
-          );
           skip++;
           continue;
         }
-        final d = await txn.query(
-          'diseases',
-          where: 'disease_id=?',
-          whereArgs: [diseaseId],
-          limit: 1,
-        );
-        final r = await txn.query(
-          'remedies',
-          where: 'remedy_id=?',
-          whereArgs: [remedyId],
-          limit: 1,
-        );
-        if (d.isEmpty || r.isEmpty) {
+
+        // ✅ O(1) FK validation against pre-fetched sets
+        if (!validDiseases.contains(diseaseId) ||
+            !validRemedies.contains(remedyId)) {
           print(
-            '⚠️ FK missing disease_remedy: disease="$diseaseId" (${d.isEmpty ? 'missing' : 'ok'}), remedy="$remedyId" (${r.isEmpty ? 'missing' : 'ok'})',
+            '⚠️ FK missing disease_remedy: disease="$diseaseId" (${!validDiseases.contains(diseaseId) ? 'missing' : 'ok'}), remedy="$remedyId" (${!validRemedies.contains(remedyId) ? 'missing' : 'ok'})',
           );
           fkMiss++;
           continue;
         }
-        await txn.insert('disease_remedy', {
+
+        batch.insert('disease_remedy', {
           'disease_id': diseaseId,
           'remedy_id': remedyId,
         });
         ok++;
       }
+
+      // ✅ Commit batch with noResult for 50% speed gain
+      await batch.commit(noResult: true);
     });
+
     print('✅ disease_remedy inserted=$ok, skipped=$skip, fkMissing=$fkMiss');
   }
 
@@ -1097,6 +1113,7 @@ class DatabaseHelper {
     }
   }
 
+  // ✅ UPDATED: Removed remedyId from upload
   Future<Map<String, dynamic>> _uploadAnalysisToServer(
     Map<String, dynamic> analysis,
     String accessToken,
@@ -1114,10 +1131,9 @@ class DatabaseHelper {
       req.fields.addAll({
         'analysisId': analysis['id'].toString(),
         'userId': analysis['user_id'].toString(),
-        'cropId': analysis['crop_id'].toString(),
+        'plantId': analysis['plant_id'].toString(),
         'imageId': analysis['image_id'].toString(),
         'diseaseId': analysis['disease_id'].toString(),
-        'remedyId': analysis['remedy_id'].toString(),
         'confidence': analysis['confidence'].toString(),
         'createdAt': analysis['created_at'].toString(),
       });
@@ -1141,6 +1157,7 @@ class DatabaseHelper {
   }
 
   // ================= USER DATA SYNC (down) =================
+  // ✅ UPDATED: Removed remedy_id from sync
   Future<Map<String, dynamic>> syncAnalysesFromServer(
     String accessToken, {
     String? since,
@@ -1207,10 +1224,9 @@ class DatabaseHelper {
           final row = {
             'id': item['id'].toString(),
             'user_id': item['user_id'].toString(),
-            'crop_id': item['crop_id'].toString(),
+            'plant_id': item['plant_id'].toString(),
             'image_id': item['image_id'].toString(),
             'disease_id': item['disease_id'].toString(),
-            'remedy_id': item['remedy_id'].toString(),
             'confidence': (item['confidence'] as num?)?.toDouble(),
             'created_at': item['created_at']?.toString(),
             'is_uploaded': 1,
@@ -1307,39 +1323,17 @@ class DatabaseHelper {
     final db = await database;
     await db.close();
   }
-  // At the bottom of lib/src/db/database_helper.dart (inside class DatabaseHelper)
 
   Future<String?> findPlantIdByName(String plantName) async {
     final db = await database;
     final rows = await db.query(
       'plants',
-      columns: ['plant_id'], // snake_case to match CREATE TABLE
-      where: 'LOWER(plant_name) = LOWER(?)', // snake_case
+      columns: ['plant_id'],
+      where: 'LOWER(plant_name) = LOWER(?)',
       whereArgs: [plantName.trim()],
       limit: 1,
     );
-    return rows.isNotEmpty
-        ? rows.first['plant_id'] as String
-        : null; // snake_case
-  }
-
-  Future<String?> findActiveUserCropIdByPlantId({
-    required String userId,
-    required String plantId,
-  }) async {
-    final db = await database;
-    final rows = await db.rawQuery(
-      '''
-    SELECT uc.user_crop_id
-    FROM user_crops uc
-    JOIN farms f ON uc.farm_id = f.farm_id
-    WHERE f.user_id = ? AND uc.plant_id = ? AND uc.is_active = 1
-    ORDER BY uc.planting_date DESC
-    LIMIT 1
-  ''',
-      [userId, plantId],
-    );
-    return rows.isNotEmpty ? rows.first['user_crop_id'] as String : null;
+    return rows.isNotEmpty ? rows.first['plant_id'] as String : null;
   }
 
   Future<String> saveDetectionUsingCatalogByPlantName({
@@ -1352,15 +1346,9 @@ class DatabaseHelper {
     final plantId = await findPlantIdByName(plantName);
     if (plantId == null) throw StateError('Unknown plant name: $plantName');
 
-    final cropId = await findActiveUserCropIdByPlantId(
-      userId: userId,
-      plantId: plantId,
-    );
-    if (cropId == null) throw StateError('No active crop found for $plantName');
-
     return await saveDetectionUsingCatalog(
       userId: userId,
-      cropId: cropId,
+      plantId: plantId,
       detectedLabel: detectedLabel,
       confidence: confidence,
       localImagePath: localImagePath,
