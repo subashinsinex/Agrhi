@@ -34,7 +34,6 @@ const jwtChecker = (req, res, next) => {
     // Set req.user_id
     req.user_id = decoded.user_id || decoded.id;
 
-    console.log(`✅ JWT verified for user: ${req.user_id}`);
     next();
   });
 };

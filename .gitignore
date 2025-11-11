@@ -69,6 +69,7 @@ Server/build/
 Server/.cache/ 
 Server/.eslintcache 
 Server/.tsbuildinfo 
+Server/uploads
 
 # If using TypeScript in Server
 Server/tsconfig.tsbuildinfo 

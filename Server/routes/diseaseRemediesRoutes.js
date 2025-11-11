@@ -3,7 +3,6 @@ const router = express.Router();
 const diseaseRemediesServices = require("../services/diseaseRemediesServices");
 const jwtChecker = require("../middleware/jwtChecker");
 const adminChecker = require("../middleware/adminChecker");
-const upload = require("../middleware/uploadConfig");
 // router.use(jwtChecker, adminChecker);
 
 // --- Diseases CRUD ---
@@ -192,55 +191,6 @@ router.get("/images", jwtChecker, async (req, res) => {
     res.status(500).json({ message: "Error fetching images" });
   }
 });
-
-router.post(
-  "/addimages",
-  jwtChecker,
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      // Check if file was uploaded
-      if (!req.file) {
-        return res.status(400).json({ message: "No image file uploaded" });
-      }
-
-      // Get crop_id from request body
-      const { crop_id } = req.body;
-
-      if (!crop_id) {
-        return res.status(400).json({ message: "crop_id is required" });
-      }
-
-      // Construct image URL/path (store relative path)
-      const image_url = `/uploads/disease_images/${req.file.filename}`;
-
-      // Prepare data for database
-      const imageData = {
-        crop_id: parseInt(crop_id),
-        image_url: image_url,
-      };
-
-      // Save to database
-      const data = await diseaseRemediesServices.addImage(imageData);
-
-      res.status(201).json({
-        message: "Image uploaded successfully",
-        data: data,
-        file_info: {
-          filename: req.file.filename,
-          path: image_url,
-          size: req.file.size,
-        },
-      });
-    } catch (error) {
-      console.error("Error adding image:", error);
-      res.status(500).json({
-        message: "Error adding image",
-        error: error.message,
-      });
-    }
-  }
-);
 
 // --- Disease Analysis Read ---
 router.get("/disease-analysis-results", jwtChecker, async (req, res) => {

@@ -23,7 +23,7 @@ async function generateUniqueId(client, tableName, idColumn) {
  */
 async function batchUploadAnalyses(userId, analyses) {
   const uploadedIds = [];
-  const client = await db.pool.connect();
+  const client = await db.connect();
 
   try {
     await client.query("BEGIN");
@@ -151,12 +151,12 @@ async function getAnalysisChanges(userId, since = null) {
     params = [userId];
   }
 
-  const result = await db.pool.query(query, params);
+  const result = await db.query(query, params);
 
   // Get deleted IDs (optional - for tracking deletions)
   let deletedIds = [];
   try {
-    const deletedResult = await db.pool.query(
+    const deletedResult = await db.query(
       `SELECT id FROM deleted_analyses 
        WHERE user_id = $1 AND deleted_at > $2`,
       [userId, since || "1970-01-01"]
@@ -181,7 +181,7 @@ async function getAnalysisChanges(userId, since = null) {
 async function saveImageMetadata(imageId, imageUrl) {
   console.log(`💾 Saving image: ${imageId} -> ${imageUrl}`);
 
-  await db.pool.query(
+  await db.query(
     `INSERT INTO images (image_id, image_url)
      VALUES ($1, $2)
      ON CONFLICT (image_id) DO UPDATE SET

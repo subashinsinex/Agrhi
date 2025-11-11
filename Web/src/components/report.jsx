@@ -99,7 +99,7 @@ const Report = () => {
   // Confidence color based on value (assuming 0 to 100 for percentage)
   const confColor = (c) => {
     // SAFETY FIX: Convert to number first, defaulting to 0
-    const numC = Number(c) || 0;
+    const numC = Number(c) * 100 || 0;
     return numC >= 90 ? "#28a745" : numC >= 70 ? "#ffc107" : "#dc3545";
   };
 
@@ -253,7 +253,7 @@ const Report = () => {
           {/* CONFIDENCE FIX: Removed * 100, Added Number() coercion for safety */}
           Confidence:{" "}
           <span style={{ marginLeft: 4 }}>
-            {(Number(r.confidence) || 0).toFixed(1)}%
+            {Number(r.confidence) * 100 || 0}%
           </span>
         </div>
         <button
@@ -462,8 +462,7 @@ const Report = () => {
                     marginLeft: 6,
                   }}
                 >
-                  {/* CONFIDENCE FIX: Removed * 100, Added Number() coercion for safety */}
-                  {(Number(selectedReport.confidence) || 0).toFixed(1)}%
+                  {Number(selectedReport.confidence) * 100 || 0}%
                 </span>
               </div>
               <div style={{ marginTop: 15, textAlign: "center" }}>
