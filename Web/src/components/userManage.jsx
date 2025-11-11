@@ -37,7 +37,7 @@ const getCategoryLabel = (id) => {
   return category ? category.label : "Unknown";
 };
 
-const apiBase = `http://${SERVER_IP}:5000/api/users`;
+const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/users`;
 
 const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
   // Accepts props

@@ -10,9 +10,9 @@ import {
   ShieldCheck,
   Zap,
 } from "lucide-react";
-import { SERVER_IP } from "../constant";
+import { SERVER_IP,SERVER_PORT } from "../constant";
 
-const apiBase = `http://${SERVER_IP}:5000/api/profile`; // Adjust path per your backend
+const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/profile`; // Adjust path per your backend
 
 // Sub-Component for Clean Detail Rows
 const DetailRow = ({ Icon, label, value }) => (

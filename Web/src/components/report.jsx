@@ -9,10 +9,10 @@ import {
   X,
   Copy,
 } from "lucide-react";
-import { SERVER_IP } from "../constant";
+import { SERVER_IP, SERVER_PORT } from "../constant";
 
 // API endpoint
-const apiBase = `http://${SERVER_IP}:5000/api/diseaseRemedies`;
+const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/diseaseRemedies`;
 
 /**
  * Renders a status message with an appropriate icon.
@@ -177,7 +177,7 @@ const Report = () => {
 
       {r.image_url && (
         <a
-          href={`http://${SERVER_IP}:5000${r.image_url}`}
+          href={`http://${SERVER_IP}:${SERVER_PORT}${r.image_url}`}
           target="_blank"
           rel="noopener noreferrer"
           title="View Original Image"
@@ -190,7 +190,7 @@ const Report = () => {
           }}
         >
           <img
-            src={`http://${SERVER_IP}:5000${r.image_url}`}
+            src={`http://${SERVER_IP}:${SERVER_PORT}${r.image_url}`}
             alt={`Detection for ${r.disease_name}`}
             style={{
               border: "2px solid #ddd",
@@ -468,14 +468,14 @@ const Report = () => {
               </div>
               <div style={{ marginTop: 15, textAlign: "center" }}>
                 <a
-                  href={`http://${SERVER_IP}:5000${selectedReport.image_url}`}
+                  href={`http://${SERVER_IP}:${SERVER_PORT}${selectedReport.image_url}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ display: "inline-block", position: "relative" }}
                   title="View full size image"
                 >
                   <img
-                    src={`http://${SERVER_IP}:5000${selectedReport.image_url}`}
+                    src={`http://${SERVER_IP}:${SERVER_PORT}${selectedReport.image_url}`}
                     alt="Detection"
                     style={{
                       border: "1px solid #ced4da",

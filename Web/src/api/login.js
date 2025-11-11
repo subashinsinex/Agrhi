@@ -1,9 +1,9 @@
 import axios from "axios";
-import { SERVER_IP } from "../constant";
+import { SERVER_IP, SERVER_PORT } from "../constant";
 
 // Create Axios instance for all authenticated requests
 const axiosInstance = axios.create({
-  baseURL: `http://${SERVER_IP}:5000`,
+  baseURL: `http://${SERVER_IP}:${SERVER_PORT}`,
 });
 
 // Interceptor for refreshing token if access token expired
@@ -63,11 +63,14 @@ axiosInstance.interceptors.response.use(
 // Login API function
 export async function login(phone_number, password, platform) {
   try {
-    const response = await axios.post(`http://${SERVER_IP}:5000/api/login`, {
-      phone_number,
-      password,
-      platform,
-    });
+    const response = await axios.post(
+      `http://${SERVER_IP}:${SERVER_PORT}/api/login`,
+      {
+        phone_number,
+        password,
+        platform,
+      }
+    );
     return {
       success: true,
       access_token: response.data.access_token,
@@ -89,7 +92,7 @@ export async function login(phone_number, password, platform) {
 export async function refreshAccessToken(refresh_token) {
   try {
     const response = await axios.post(
-      `http://${SERVER_IP}:5000/api/refreshtoken`,
+      `http://${SERVER_IP}:${SERVER_PORT}/api/refreshtoken`,
       { refresh_token }
     );
     return {

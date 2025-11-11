@@ -5,7 +5,7 @@ import { Search, Plus, Trash2, Edit, ExternalLink, MapPin } from "lucide-react";
 // NOTE: This constant is assumed to be defined externally, keeping it here for context.
 import { SERVER_IP } from "../constant";
 
-const apiBase = `http://${SERVER_IP}:5000/api/subsidies`;
+const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/subsidies`;
 
 // --- State mapping logic is now handled by the backend's JOIN query ---
 

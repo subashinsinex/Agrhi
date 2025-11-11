@@ -6,9 +6,11 @@ class AppConstants {
   static const String appDescription =
       'Revolutionizing agriculture with smart IoT solutions';
   // development url = http://10.21.69.186:5000/api
-  // production url = http://10.1.4.66:5000/api
+  // development url = http://10.21.79.141:5000/api
+  // production url = http://14.139.161.69:8000/api
+  
   // API Configuration
-  static const String baseUrl = 'http://10.21.69.186:5000/api';
+  static const String baseUrl = 'http://14.139.161.69:8000/api';
   static const String loginEndpoint = '$baseUrl/login';
   static const String signupEndpoint = '$baseUrl/profile/createUser';
   static const String getProfileEndpoint = '$baseUrl/profile/getUserDetails/:user_id';

@@ -6,14 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
+import '../../src/services/disease_analysis_service.dart';
 import '../../src/models/model_service.dart';
 import '../../src/models/crop_preprocessors.dart';
 import '../../src/models/disease_labels.dart';
 import '../../src/services/language_service.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
-import '../../src/database/database_helper.dart';
 
 class DetectDiseaseScreen extends StatefulWidget {
   const DetectDiseaseScreen({super.key});
@@ -268,7 +267,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   }
 
   // Persist using secure storage userId + plant -> usercrop mapping
-  Future<void> _persistResultUsingPlant({
+Future<void> _persistResultUsingPlant({
     required String plantName,
     required String detectedLabel,
     required double confidence0to1,
@@ -285,17 +284,19 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
 
     try {
-      await DatabaseHelper.instance.saveDetectionUsingCatalogByPlantName(
+      // ✅ Use DiseaseAnalysisService instead of DatabaseHelper
+      await DiseaseAnalysisService.instance.saveDetectionByPlantName(
         userId: userId,
         plantName: plantName,
         detectedLabel: detectedLabel,
         confidence: confidence0to1,
         localImagePath: localImagePath,
       );
+
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Saved analysis locally')));
+      ).showSnackBar(const SnackBar(content: Text('✅ Saved analysis locally')));
     } on StateError catch (e) {
       _showErrorSnackBar('Save failed: ${e.message}');
     }

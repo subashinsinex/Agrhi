@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { axiosInstance } from "../api/login";
-import { SERVER_IP } from "../constant";
+import { SERVER_IP, SERVER_PORT } from "../constant";
 // Icons for better visual appeal
 import {
   FaSeedling,
@@ -286,7 +286,7 @@ const initialCropForm = {
   isactive: true,
 };
 
-const apiBase = `http://${SERVER_IP}:5000/api/farmcrop`;
+const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/farmcrop`;
 
 const FarmCrop = () => {
   const [farms, setFarms] = useState([]);

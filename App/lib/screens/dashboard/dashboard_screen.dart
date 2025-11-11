@@ -12,8 +12,8 @@ import '../components/feature_grid.dart';
 import '../features/disease_detection_screen.dart';
 import '../features/subsidy_screen.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../src/database/database_helper.dart';
 import '../../src/services/auth_service.dart';
+import '../../src/services/sync_service.dart'; // ADD THIS IMPORT
 
 Future<void> printAllSecureStorage() async {
   const storage = FlutterSecureStorage(
@@ -162,6 +162,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'syncFailed': 'Sync failed. Please try again.',
       'sessionExpired': 'Session expired. Please log in again.',
       'noToken': 'Authentication required. Please log in.',
+      'syncingData': 'Syncing data...', // NEW
+      'uploaded': 'Uploaded', // NEW
+      'downloaded': 'Downloaded', // NEW
+      'images': 'Images', // NEW
+      'analyses': 'analyses', // NEW
     };
 
     final newTranslated = <String, String>{};
@@ -229,14 +234,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return null;
   }
 
-  // Optimized: get valid access token with JWT expiry check and refresh (fallback to stored expiry)
+  // Optimized: get valid access token with JWT expiry check and refresh
   Future<String?> _getValidAccessTokenForSync() async {
-    // Read token
     String? accessToken =
         await _readWithRetry('access_token') ??
         await _storage.read(key: 'access_token');
 
-    // Read supported stored expiry fields (fallback path)
     String? expiryIso =
         await _readWithRetry('access_token_expires_at') ??
         await _storage.read(key: 'access_token_expires_at');
@@ -249,13 +252,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final now = DateTime.now().toUtc();
     const skew = Duration(seconds: 60);
 
-    // Prefer JWT exp if token available
     if (accessToken != null && accessToken.isNotEmpty) {
       final jwtExp = _getJwtExpiryUtc(accessToken);
       if (jwtExp != null) {
         isExpired = now.add(skew).isAfter(jwtExp);
       } else {
-        // Fallback to stored metadata if JWT has no exp
         try {
           if (expiryIso != null && expiryIso.isNotEmpty) {
             final exp = DateTime.tryParse(expiryIso)?.toUtc();
@@ -267,29 +268,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
               isExpired = now.add(skew).isAfter(exp);
             }
           } else {
-            // No metadata — assume still valid if token exists
             isExpired = false;
           }
         } catch (_) {
-          // If parsing fails, attempt refresh
           isExpired = true;
         }
       }
     } else {
-      isExpired = true; // No token found
+      isExpired = true;
     }
 
     if (!isExpired && accessToken != null && accessToken.isNotEmpty) {
       return accessToken;
     }
 
-    // Refresh token using your auth service; it should update secure storage
     try {
-      print('🔄 Attempting to refresh access token (JWT check path)...');
+      print('🔄 Attempting to refresh access token...');
       await _authService.refreshAccessToken();
       print('✅ Access token refreshed successfully');
 
-      // Re-read token and re-check JWT expiry
       accessToken =
           await _readWithRetry('access_token') ??
           await _storage.read(key: 'access_token');
@@ -305,11 +302,138 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return stillExpired ? null : accessToken;
       }
 
-      // If no exp in JWT, accept refreshed token
       return accessToken;
     } catch (e) {
       print('❌ Failed to refresh access token: $e');
       return null;
+    }
+  }
+
+  // ========== UPDATED SYNC FUNCTION (TWO-WAY SYNC) ==========
+  Future<void> _performFullSync() async {
+    setState(() => _isSyncing = true);
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Ensure token is valid
+    final validToken = await _getValidAccessTokenForSync();
+    if (validToken == null || validToken.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            translatedTexts['sessionExpired'] ??
+                'Session expired. Please log in again.',
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.errorColor,
+          duration: const Duration(seconds: 3),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+      if (mounted) setState(() => _isSyncing = false);
+      return;
+    }
+
+    // Show syncing feedback
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(translatedTexts['syncingData'] ?? 'Syncing data...'),
+            ),
+          ],
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.infoColor,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+
+    try {
+      // Perform full sync (catalogs + two-way disease analyses + images)
+      final syncResult = await SyncService.instance.performFullSync(validToken);
+
+      final bool success = (syncResult['success'] as bool?) ?? false;
+
+      if (success) {
+        // Extract results
+        final catalogsResult = syncResult['catalogs'] as Map<String, dynamic>?;
+        final twoWayResult =
+            syncResult['two_way_sync'] as Map<String, dynamic>?;
+
+        final catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
+        final uploaded = (twoWayResult?['upload']?['uploaded'] as int?) ?? 0;
+        final downloaded =
+            (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
+        final imagesUploaded =
+            (twoWayResult?['images']?['uploaded'] as int?) ?? 0;
+
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ ${translatedTexts['syncComplete'] ?? 'Sync complete'}!\n'
+              '📚 Catalogs: $catalogsUpdated updated\n'
+              '📤 ${translatedTexts['uploaded'] ?? 'Uploaded'}: $uploaded ${translatedTexts['analyses'] ?? 'analyses'}\n'
+              '📥 ${translatedTexts['downloaded'] ?? 'Downloaded'}: $downloaded ${translatedTexts['analyses'] ?? 'analyses'}\n'
+              '🖼️ ${translatedTexts['images'] ?? 'Images'}: $imagesUploaded uploaded',
+            ),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppColors.successColor,
+            duration: const Duration(seconds: 5),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+
+        print('✅ Full sync completed successfully');
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              translatedTexts['syncPartial'] ??
+                  'Sync finished with some issues',
+            ),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppColors.warningColor,
+            duration: const Duration(seconds: 3),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+        print('⚠️ Sync completed with errors: ${syncResult['error']}');
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            translatedTexts['syncFailed'] ?? 'Sync failed. Please try again.',
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.errorColor,
+          duration: const Duration(seconds: 3),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+      print('❌ Sync error: $e');
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
@@ -372,128 +496,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onMenuPressed: _openSidebar,
         additionalActions: [
           Padding(
-            padding: const EdgeInsetsDirectional.only(
-              end: 12,
-            ), // was margin: end: 4
+            padding: const EdgeInsetsDirectional.only(end: 12),
             child: IconButton(
               tooltip: translatedTexts['sync'] ?? 'Sync',
-              onPressed: _isSyncing
-                  ? null
-                  : () async {
-                      setState(() => _isSyncing = true);
-
-                      final messenger = ScaffoldMessenger.of(context);
-
-                      // Ensure token is valid (JWT check + refresh if needed)
-                      final validToken = await _getValidAccessTokenForSync();
-                      if (validToken == null || validToken.isEmpty) {
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              translatedTexts['sessionExpired'] ??
-                                  'Session expired. Please log in again.',
-                            ),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: AppColors.errorColor,
-                            duration: const Duration(seconds: 3),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        );
-                        if (mounted) setState(() => _isSyncing = false);
-                        return;
-                      }
-
-                      // Feedback: sync starting
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Row(
-                            children: [
-                              const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  translatedTexts['syncing'] ??
-                                      'Sync in progress...',
-                                ),
-                              ),
-                            ],
-                          ),
-                          behavior: SnackBarBehavior.floating,
-                          backgroundColor: AppColors.infoColor,
-                          duration: const Duration(seconds: 2),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      );
-
-                      try {
-                        // Reuse your existing smart sync
-                        final syncResult = await DatabaseHelper.instance
-                            .smartSyncCatalogs(validToken);
-
-                        final bool ok =
-                            (syncResult['success'] as bool?) ?? false;
-                        final int updated =
-                            (syncResult['updated'] as int?) ?? 0;
-                        final int failedCount =
-                            (syncResult['failed'] as List?)?.length ?? 0;
-
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              ok
-                                  ? (translatedTexts['syncComplete'] ??
-                                        'Sync complete: $updated table(s) updated.')
-                                  : (translatedTexts['syncPartial'] ??
-                                        'Sync finished: $updated updated, $failedCount failed.'),
-                            ),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: ok
-                                ? AppColors.successColor
-                                : AppColors.warningColor,
-                            duration: const Duration(seconds: 3),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        );
-
-                        if (ok) {
-                          // ignore: avoid_print
-                          print('✅ Synced $updated tables');
-                        } else {
-                          // ignore: avoid_print
-                          print('⚠️ ${syncResult['message']}');
-                        }
-                      } catch (e) {
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              translatedTexts['syncFailed'] ??
-                                  'Sync failed. Please try again.',
-                            ),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: AppColors.errorColor,
-                            duration: const Duration(seconds: 3),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        );
-                      } finally {
-                        if (mounted) setState(() => _isSyncing = false);
-                      }
-                    },
+              onPressed: _isSyncing ? null : _performFullSync, // UPDATED
               icon: _isSyncing
                   ? const SizedBox(
                       width: 20,
@@ -508,7 +514,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-
       drawer: const AppSidebar(),
       drawerEnableOpenDragGesture: true,
       drawerEdgeDragWidth: 120,
@@ -539,7 +544,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // Show skeleton loader while loading, then profile card
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
                   child: _isLoadingProfile
@@ -607,7 +611,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Row(
         children: [
-          // Avatar skeleton
           Container(
             width: 60,
             height: 60,
@@ -617,12 +620,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           const SizedBox(width: 16),
-          // Text skeleton
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Name skeleton
                 Container(
                   width: double.infinity,
                   height: 16,
@@ -632,7 +633,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // Email skeleton
                 Container(
                   width: 150,
                   height: 14,
@@ -642,7 +642,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                // Phone skeleton
                 Container(
                   width: 120,
                   height: 14,

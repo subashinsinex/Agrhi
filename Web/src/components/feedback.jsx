@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { axiosInstance } from "../api/login";
 import { Search, Trash2, Edit, MessageCircle, CheckCircle } from "lucide-react";
-import { SERVER_IP } from "../constant";
+import { SERVER_IP, SERVER_PORT} from "../constant";
 
-const apiBase = `http://${SERVER_IP}:5000/api/feedback`;
+const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/feedback`;
 
 // Feedback status constraints
 const STATUS_OPTIONS = ["not_viewed", "viewed", "responsed", "solved"];

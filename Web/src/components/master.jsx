@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { axiosInstance } from "../api/login";
-import { SERVER_IP } from "../constant";
+import { SERVER_IP, SERVER_PORT } from "../constant";
 // Import icons needed for the new design (Removed X and Search)
 import { Plus, Settings, Zap, Droplet, Sun, Sprout } from "lucide-react";
 
 // API base
-const apiBase = `http://${SERVER_IP}:5000/api/farmcrop`;
+const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/farmcrop`;
 
 const Master = ({ isSidebarOpen, toggleSidebar }) => {
   // Data states for each table
