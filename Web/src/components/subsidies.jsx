@@ -3,7 +3,7 @@ import { axiosInstance } from "../api/login";
 import { Search, Plus, Trash2, Edit, ExternalLink, MapPin } from "lucide-react";
 
 // NOTE: This constant is assumed to be defined externally, keeping it here for context.
-import { SERVER_IP } from "../constant";
+import { SERVER_IP, SERVER_PORT } from "../constant";
 
 const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/subsidies`;
 

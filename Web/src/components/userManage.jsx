@@ -18,7 +18,7 @@ import {
   Search,
 } from "lucide-react";
 
-import { SERVER_IP } from "../constant";
+import { SERVER_IP, SERVER_PORT } from "../constant";
 
 // IMPORTANT: Assume this component now receives props from a parent layout:
 // props: { isSidebarOpen, toggleSidebar }
