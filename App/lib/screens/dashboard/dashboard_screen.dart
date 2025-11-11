@@ -151,7 +151,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'diseaseDetection': 'Disease Detection',
       'subsidy': 'Subsidy',
       'cropHistory': 'Crop History',
-      'expertAdvice': 'Expert Advice',
+      'feedback': 'Feedback',
       'detectionHistory': 'Detection History',
       'notifications': 'Notifications',
       'notificationsComingSoon': 'Notifications feature coming soon!',
@@ -473,10 +473,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       FeatureItem(
-        title: translatedTexts['expertAdvice'] ?? 'Expert Advice',
+        title: translatedTexts['feedback'] ?? 'Feedback',
         icon: Icons.person,
         onTap: () => _navigateToFeature(
-          translatedTexts['expertAdvice'] ?? 'Expert Advice',
+          translatedTexts['feedback'] ?? 'Feedback',
           Icons.person,
         ),
       ),

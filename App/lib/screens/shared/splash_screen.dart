@@ -205,15 +205,6 @@ class _SplashScreenState extends State<SplashScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: AppColors.primaryGreen,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
           Text(
             'Smart Farm App',
             style: TextStyle(

@@ -312,7 +312,7 @@ class AppSidebar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
               ),
               elevation: 24,
-              backgroundColor: AppColors.backgroundColor,
+              backgroundColor: AppColors.primaryWhite,
               icon: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
