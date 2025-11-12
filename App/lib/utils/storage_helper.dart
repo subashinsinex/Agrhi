@@ -80,7 +80,7 @@ class StorageHelper {
         final profileMap = Map<String, dynamic>.from(
           jsonDecode(profileJson) as Map<String, dynamic>,
         );
-        return profileMap['id'] as String?;
+        return profileMap['user_id'] as String?;
       } catch (e) {
         print('❌ Failed to parse user profile JSON: $e');
       }

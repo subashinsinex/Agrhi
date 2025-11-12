@@ -9,11 +9,12 @@ import '../../src/services/language_service.dart';
 import '../components/weather_card.dart';
 import '../components/profile_card.dart';
 import '../components/feature_grid.dart';
-import '../features/disease_detection_screen.dart';
-import '../features/subsidy_screen.dart';
+import 'disease_detection_screen.dart';
+import 'subsidy_screen.dart';
+import 'disease_history_screen.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../src/services/auth_service.dart';
-import '../../src/services/sync_service.dart'; // ADD THIS IMPORT
+import '../../src/services/sync_service.dart';
 
 Future<void> printAllSecureStorage() async {
   const storage = FlutterSecureStorage(
@@ -473,19 +474,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       FeatureItem(
+        title: translatedTexts['detectionHistory'] ?? 'Detection History',
+        icon: Icons.history,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const DiseaseHistoryScreen()),
+        ),
+      ),
+      FeatureItem(
         title: translatedTexts['feedback'] ?? 'Feedback',
         icon: Icons.person,
         onTap: () => _navigateToFeature(
           translatedTexts['feedback'] ?? 'Feedback',
           Icons.person,
-        ),
-      ),
-      FeatureItem(
-        title: translatedTexts['detectionHistory'] ?? 'Detection History',
-        icon: Icons.history,
-        onTap: () => _navigateToFeature(
-          translatedTexts['detectionHistory'] ?? 'Detection History',
-          Icons.history,
         ),
       ),
     ];

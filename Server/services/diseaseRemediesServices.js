@@ -108,6 +108,13 @@ async function updateDisease(disease_id, updated) {
       "UPDATE diseases SET name=$1, severity=$2 WHERE disease_id=$3 RETURNING *";
     const values = [updated.name, updated.severity, disease_id];
     const result = await pool.query(sql, values);
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'diseases'"
+    );
+
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'diseases_plants'"
+    );
 
     // If plant_id provided: replace links in diseasesplants join table
     if (updated.plant_id) {
@@ -402,10 +409,9 @@ async function diseaseRemedy() {
   return result.rows;
 }
 
-async function diseasePlants(disease_id) {
+async function diseasePlants() {
   const result = await pool.query(
-    "SELECT plant_id FROM diseases_plants WHERE disease_id = $1",
-    [disease_id]
+    'SELECT * FROM diseases_plants ORDER BY disease_id, plant_id'
   );
   return result.rows;
 }
