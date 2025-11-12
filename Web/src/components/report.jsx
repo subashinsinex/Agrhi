@@ -122,12 +122,62 @@ const Report = () => {
 
   // Function to copy image URL and show message
   const handleCopyLink = () => {
+    const ip = `http://${SERVER_IP}:${SERVER_PORT}/`;
+
     if (selectedReport?.image_url) {
-      navigator.clipboard.writeText(selectedReport.image_url);
-      setMsg("Image URL copied to clipboard!");
-      clearMessages();
+      const linkToCopy = ip + selectedReport.image_url;
+
+      // 1. Check if the modern Clipboard API is available
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard
+          .writeText(linkToCopy)
+          .then(() => {
+            setMsg("✅ Image URL copied to clipboard!");
+            clearMessages();
+          })
+          .catch((err) => {
+            // This handles permission denial even if clipboard is defined
+            setMsg(
+              "⚠️ Failed to copy: Permission denied or unsecured context."
+            );
+            // Fallback attempt
+            copyTextToClipboardFallback(linkToCopy);
+            clearMessages();
+          });
+      } else {
+        // 2. Fallback for insecure context or older browsers
+        copyTextToClipboardFallback(linkToCopy);
+        setMsg("✅ Image URL copied using fallback!");
+        clearMessages();
+      }
     }
   };
+
+  // Fallback function using document.execCommand
+  function copyTextToClipboardFallback(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+
+    // Make the textarea invisible and append it to the document
+    textArea.style.position = "fixed";
+    textArea.style.opacity = "0";
+    document.body.appendChild(textArea);
+
+    // Select the text and execute the copy command
+    textArea.focus();
+    textArea.select();
+
+    try {
+      const successful = document.execCommand("copy");
+      if (!successful) {
+        console.error('Fallback: document.execCommand("copy") failed.');
+      }
+    } catch (err) {
+      console.error("Fallback: Error while attempting to copy.", err);
+    }
+
+    document.body.removeChild(textArea);
+  }
 
   // --- Report Card Component ---
   const ReportCard = ({ r, confColor, openDetailModal }) => (
