@@ -417,16 +417,10 @@ async function diseaseRemedy() {
 }
 
 async function diseasePlants() {
-<<<<<<< HEAD
   const sql = `
     SELECT * FROM diseases_plants ORDER BY disease_id, plant_id
   `;
   const result = await pool.query(sql);
-=======
-  const result = await pool.query(
-    'SELECT * FROM diseases_plants ORDER BY disease_id, plant_id'
-  );
->>>>>>> 840374f89285353e34bd926f9c85896dc03ac009
   return result.rows;
 }
 
