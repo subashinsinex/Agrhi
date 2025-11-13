@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../database/database_helper.dart';
 import '../../utils/constants.dart';
@@ -12,6 +13,31 @@ class SyncService {
 
   final DatabaseHelper _db = DatabaseHelper.instance;
   static const String baseUrl = AppConstants.baseUrl;
+
+  // ================= FULL SYNC =================
+
+  /// Perform full sync: catalogs + analyses + images
+  Future<Map<String, dynamic>> performFullSync(String accessToken) async {
+    try {
+      print('🔄 Starting full sync...');
+
+      // Step 1: Sync catalogs (diseases, remedies, plants, etc.)
+      final catalogResult = await _db.smartSyncCatalogs(accessToken);
+
+      // Step 2: Two-way sync for analyses and images
+      final twoWayResult = await performTwoWaySync(accessToken);
+
+      return {
+        'success': catalogResult['success'] && twoWayResult['success'],
+        'catalogs': catalogResult,
+        'two_way_sync': twoWayResult,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+    } catch (e) {
+      print('❌ Full sync error: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 
   // ================= TWO-WAY SYNC FOR DISEASE ANALYSIS =================
 
@@ -26,19 +52,24 @@ class SyncService {
       // Step 2: Pull server updates (download new/changed analyses)
       final downloadResult = await downloadServerAnalyses(accessToken);
 
-      // Step 3: Sync images separately
-      final imageResult = await syncImages(accessToken);
+      // Step 3: Upload local images that haven't been uploaded
+      final imageUploadResult = await syncImages(accessToken);
+
+      // Step 4: Download server images that don't exist locally
+      final imageDownloadResult = await downloadServerImages(accessToken);
 
       final allSuccess =
           uploadResult['success'] &&
           downloadResult['success'] &&
-          imageResult['success'];
+          imageUploadResult['success'] &&
+          imageDownloadResult['success'];
 
       return {
         'success': allSuccess,
         'upload': uploadResult,
         'download': downloadResult,
-        'images': imageResult,
+        'image_upload': imageUploadResult,
+        'image_download': imageDownloadResult,
         'timestamp': DateTime.now().toIso8601String(),
       };
     } catch (e) {
@@ -196,7 +227,7 @@ class SyncService {
   }
 
   /// Apply server changes to local database
-  /// ⭐ METHOD 1: Smart handling of placeholder URLs
+  /// ⭐ Smart handling of placeholder URLs
   Future<void> _applyServerChanges(
     List<Map<String, dynamic>> analyses,
     List<String> deletedIds,
@@ -314,10 +345,10 @@ class SyncService {
     );
   }
 
-  // ================= IMAGE SYNC =================
+  // ================= IMAGE UPLOAD (LOCAL TO SERVER) =================
 
   /// Sync images: upload local images to server
-  /// ⭐ METHOD 2: Comprehensive query to catch all pending images
+  /// ⭐ Comprehensive query to catch all pending images
   Future<Map<String, dynamic>> syncImages(String accessToken) async {
     try {
       final db = await _db.database;
@@ -418,6 +449,134 @@ class SyncService {
     }
   }
 
+  // ================= IMAGE DOWNLOAD (SERVER TO LOCAL) =================
+
+  /// Download images from server that don't exist locally
+  /// ⭐ Download server images to local storage
+  Future<Map<String, dynamic>> downloadServerImages(String accessToken) async {
+    try {
+      final db = await _db.database;
+
+      // Find images that have server URLs but no local copy
+      final imagesToDownload = await db.query(
+        'images',
+        where: """
+          server_image_url IS NOT NULL 
+          AND server_image_url != '' 
+          AND server_image_url != '/uploads/images/pending'
+          AND (local_path IS NULL OR local_path = '')
+        """,
+      );
+
+      print('📥 Downloading ${imagesToDownload.length} images from server...');
+
+      int downloaded = 0;
+      final errors = <String>[];
+
+      for (final image in imagesToDownload) {
+        final imageId = image['image_id'] as String;
+        final serverUrl = image['server_image_url'] as String;
+
+        try {
+          final localPath = await _downloadImage(
+            imageId,
+            serverUrl,
+            accessToken,
+          );
+          if (localPath != null) {
+            downloaded++;
+            print('✅ Image downloaded: $imageId -> $localPath');
+          }
+        } catch (e) {
+          print('❌ Failed to download image $imageId: $e');
+          errors.add(imageId);
+        }
+      }
+
+      return {
+        'success': errors.isEmpty,
+        'downloaded': downloaded,
+        'total': imagesToDownload.length,
+        'errors': errors,
+      };
+    } catch (e) {
+      print('❌ Image download error: $e');
+      return {'success': false, 'error': e.toString(), 'downloaded': 0};
+    }
+  }
+
+  /// Download single image from server and save locally
+  /// ⭐ FIX: Removes /api from baseUrl for image downloads
+  Future<String?> _downloadImage(
+    String imageId,
+    String serverUrl,
+    String accessToken,
+  ) async {
+    try {
+      // Construct full URL
+      String fullUrl;
+      if (serverUrl.startsWith('http')) {
+        // Already a full URL
+        fullUrl = serverUrl;
+      } else {
+        // ⭐ FIX: Remove '/api' from baseUrl for image downloads
+        // baseUrl = http://10.21.79.141:5000/api
+        // imageBaseUrl = http://10.21.79.141:5000
+        final imageBaseUrl = baseUrl.replaceAll('/api', '');
+        fullUrl = '$imageBaseUrl$serverUrl';
+      }
+
+      print('📥 Downloading image from: $fullUrl');
+
+      // Download image
+      final response = await http
+          .get(
+            Uri.parse(fullUrl),
+            headers: {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        print('❌ Download failed: ${response.statusCode}');
+        return null;
+      }
+
+      // Get app directory for storing images
+      final directory = await getApplicationDocumentsDirectory();
+      final imagesDir = Directory('${directory.path}/disease_images');
+
+      // Create directory if it doesn't exist
+      if (!await imagesDir.exists()) {
+        await imagesDir.create(recursive: true);
+      }
+
+      // Generate local filename
+      final extension = serverUrl.split('.').last.split('?').first;
+      final filename = '$imageId.$extension';
+      final localPath = '${imagesDir.path}/$filename';
+
+      // Save image to local file
+      final file = File(localPath);
+      await file.writeAsBytes(response.bodyBytes);
+
+      print('💾 Image saved to: $localPath');
+
+      // Update database with local path
+      final db = await _db.database;
+      await db.update(
+        'images',
+        {'local_path': localPath},
+        where: 'image_id = ?',
+        whereArgs: [imageId],
+      );
+
+      return localPath;
+    } catch (e) {
+      print('❌ Image download error: $e');
+      return null;
+    }
+  }
+
   // ================= SYNC TIMESTAMP MANAGEMENT =================
 
   Future<String?> _getLastSyncTimestamp() async {
@@ -447,28 +606,5 @@ class SyncService {
   /// Get sync status
   Future<Map<String, dynamic>> getSyncStatus() async {
     return await _db.getSyncStatus();
-  }
-
-  /// Perform full sync (catalogs + analyses)
-  Future<Map<String, dynamic>> performFullSync(String accessToken) async {
-    try {
-      print('🔄 Starting full sync...');
-
-      // Step 1: Sync catalogs (diseases, remedies, plants, etc.)
-      final catalogResult = await _db.smartSyncCatalogs(accessToken);
-
-      // Step 2: Two-way sync for analyses and images
-      final twoWayResult = await performTwoWaySync(accessToken);
-
-      return {
-        'success': catalogResult['success'] && twoWayResult['success'],
-        'catalogs': catalogResult,
-        'two_way_sync': twoWayResult,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-    } catch (e) {
-      print('❌ Full sync error: $e');
-      return {'success': false, 'error': e.toString()};
-    }
   }
 }
