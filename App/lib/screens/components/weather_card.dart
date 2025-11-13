@@ -5,10 +5,16 @@ import '../../src/services/weather_service.dart';
 import '../../src/services/language_service.dart';
 
 class WeatherCard extends StatefulWidget {
-  final String location;
+  final String? location; // Make this optional
+  final bool useDeviceLocation; // New parameter
   final Color? backgroundColor;
 
-  const WeatherCard({super.key, required this.location, this.backgroundColor});
+  const WeatherCard({
+    super.key,
+    this.location,
+    this.useDeviceLocation = false,
+    this.backgroundColor,
+  });
 
   @override
   State<WeatherCard> createState() => _WeatherCardState();
@@ -18,6 +24,7 @@ class _WeatherCardState extends State<WeatherCard> {
   String? temperature;
   String? condition;
   String? wind;
+  String? displayLocation;
   IconData weatherIcon = Icons.cloud;
   bool isLoading = true;
 
@@ -54,6 +61,8 @@ class _WeatherCardState extends State<WeatherCard> {
       'snow': 'Snow',
       'thunderstorm': 'Thunderstorm',
       'unknown': 'Unknown',
+      'currentLocation': 'Current Location',
+      'locationError': 'Location unavailable',
     };
 
     final Map<String, String> newTranslations = {};
@@ -94,12 +103,24 @@ class _WeatherCardState extends State<WeatherCard> {
     }
 
     try {
-      final weather = await WeatherService().getWeatherByPlace(widget.location);
+      Weather weather;
+
+      if (widget.useDeviceLocation) {
+        // Use device's current location
+        weather = await WeatherService().getWeatherByCurrentLocation();
+      } else if (widget.location != null) {
+        // Use provided location name
+        weather = await WeatherService().getWeatherByPlace(widget.location!);
+      } else {
+        throw Exception('No location provided');
+      }
+
       if (!mounted) return;
 
       final conditionStr = _translateCondition(weather.weatherCode);
 
       setState(() {
+        displayLocation = weather.locationName;
         temperature =
             "${weather.temperature.toStringAsFixed(1)}${translatedTexts['degreeCelsius'] ?? '°C'}";
         condition = conditionStr;
@@ -108,10 +129,12 @@ class _WeatherCardState extends State<WeatherCard> {
         weatherIcon = _mapWeatherToIcon(weather.weatherCode);
         isLoading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         isLoading = false;
+        displayLocation =
+            translatedTexts['locationError'] ?? 'Location unavailable';
         temperature = "--";
         condition = translatedTexts['unavailable'] ?? 'Unavailable';
         wind = "--";
@@ -166,7 +189,7 @@ class _WeatherCardState extends State<WeatherCard> {
         return Icons.cloud_rounded;
       case 45:
       case 48:
-        return Icons.foggy; // ensure this icon exists in your app
+        return Icons.foggy;
       case 51:
       case 53:
       case 55:
@@ -233,14 +256,21 @@ class _WeatherCardState extends State<WeatherCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.location,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        color: AppColors.primaryWhite,
-                        fontWeight: FontWeight.w600,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    Row(
+                      children: [
+                        if (widget.useDeviceLocation) const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            displayLocation ?? widget.location ?? 'Loading...',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              color: AppColors.primaryWhite,
+                              fontWeight: FontWeight.w600,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -272,7 +302,7 @@ class _WeatherCardState extends State<WeatherCard> {
                       ),
                     )
                   : Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: AppColors.primaryWhite.withOpacity(0.2),
@@ -280,7 +310,7 @@ class _WeatherCardState extends State<WeatherCard> {
                       child: Text(
                         temperature ?? "--",
                         style: const TextStyle(
-                          fontSize: 20,
+                          fontSize: 24,
                           color: AppColors.primaryWhite,
                           fontWeight: FontWeight.bold,
                         ),
@@ -297,16 +327,17 @@ class _WeatherCardState extends State<WeatherCard> {
 class _WeatherIcon extends StatelessWidget {
   final IconData icon;
   const _WeatherIcon({required this.icon});
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 50,
-      height: 50,
+      width: 75,
+      height: 75,
       decoration: BoxDecoration(
-        color: AppColors.primaryWhite,
+        color: AppColors.mediumGreenAccent,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Icon(icon, color: AppColors.primaryGreen, size: 28),
+      child: Icon(icon, color: AppColors.primaryGreen, size: 48),
     );
   }
 }

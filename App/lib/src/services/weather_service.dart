@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 /// ---------------- Weather Service ----------------
 class WeatherService {
@@ -12,6 +14,40 @@ class WeatherService {
   Future<Weather> getWeatherByPlace(String placeName) async {
     final location = await _getCoordinates(placeName);
     return getWeather(location.latitude, location.longitude, location.name);
+  }
+
+  /// Fetch weather by device's current location
+  Future<Weather> getWeatherByCurrentLocation() async {
+    // Check and request location permissions
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Location services are disabled.');
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        throw Exception('Location permissions are denied');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('Location permissions are permanently denied');
+    }
+
+    // Get current position
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    // Get place name from coordinates using reverse geocoding
+    String placeName = await _getPlaceNameFromCoordinates(
+      position.latitude,
+      position.longitude,
+    );
+
+    return getWeather(position.latitude, position.longitude, placeName);
   }
 
   /// Fetch weather by latitude & longitude
@@ -39,6 +75,31 @@ class WeatherService {
     }
 
     return Weather.fromJson(currentWeather, placeName ?? 'Unknown');
+  }
+
+  /// Private: Get place name from coordinates (reverse geocoding)
+  Future<String> _getPlaceNameFromCoordinates(
+    double latitude,
+    double longitude,
+  ) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        latitude,
+        longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+        // Return city name, or locality, or subAdministrativeArea
+        return place.locality ??
+            place.subAdministrativeArea ??
+            place.administrativeArea ??
+            'Unknown Location';
+      }
+      return 'Unknown Location';
+    } catch (e) {
+      return 'Unknown Location';
+    }
   }
 
   /// Private: Get coordinates by place name

@@ -1,3 +1,4 @@
+import '../../src/database/database_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth/login_screen.dart';
@@ -14,6 +15,11 @@ class AppSidebar extends StatelessWidget {
 
     // Delete all secure storage data (tokens, user profile, etc.)
     await storage.deleteAll();
+
+    final db = await DatabaseHelper.instance.database;
+
+    await db.delete('disease_analysis_results');
+    await db.delete('images');
 
     if (context.mounted) {
       final languageService = Provider.of<LanguageService>(

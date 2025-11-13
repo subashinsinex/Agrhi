@@ -24,11 +24,7 @@ router.post("/login", async (req, res) => {
 });
 
 router.post("/refreshtoken", async (req, res) => {
-  const result = await loginServices.refreshToken(req, res);
-  console.log("Refresh token result:", result);
-  if (result && result.error) {
-    res.status(result.status || 500).json({ error: result.error });
-  }
+  await loginServices.refreshToken(req, res);
 });
 
 module.exports = router;

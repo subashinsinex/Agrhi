@@ -290,7 +290,7 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
       backgroundColor: AppColors.backgroundColor,
       appBar: AppBar(
         title: SmartReTranslator(
-          text: 'Disease History',
+          text: 'Detection History',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: AppColors.primaryGreen,
@@ -379,7 +379,7 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               SmartReTranslator(
-                                text: 'Search by plant, disease, or severity',
+                                text: 'Search by plants, disease, or severity',
                                 style: const TextStyle(
                                   color: AppColors.primaryGreen,
                                   fontWeight: FontWeight.w600,
@@ -396,7 +396,7 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
                                   ),
                                   contentPadding: const EdgeInsets.symmetric(
                                     vertical: 0,
-                                    horizontal: 14,
+                                    horizontal: 12,
                                   ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(10),
@@ -414,8 +414,8 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
                           final item = _filteredHistory[index];
                           return Padding(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 0,
-                              vertical: 6,
+                              horizontal: 4,
+                              vertical: 0,
                             ),
                             child: _DiseaseHistoryCard(
                               item: item,
@@ -480,54 +480,47 @@ class _DiseaseHistoryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Plant Name
-                    Text(
-                      item.plantName,
+                    // Plant Name - TRANSLATED
+                    SmartReTranslator(
+                      text: item.plantName,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: AppColors.primaryGreen,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    // Disease Name
-                    Text(
-                      item.diseaseName,
+                    // Disease Name - TRANSLATED
+                    SmartReTranslator(
+                      text: item.diseaseName,
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textPrimary,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     // Date
-                    Text(
-                      item.formattedDate,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
-                      ),
+                    SmartReTranslator(
+                      text: _formatDate(item.createdAt),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                     ),
-                    const SizedBox(height: 2),
-                    // Severity and Confidence
-                    Row(
+                    const SizedBox(height: 4),
+                    // Severity and Confidence - TRANSLATED
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         _buildBadge(
                           'Severity: ${item.severity}',
                           item.severityColor,
                         ),
-                        const SizedBox(width: 8),
                         _buildBadge(
                           item.confidencePercent,
                           AppColors.primaryGreen,
                         ),
                       ],
-                    ),
+                    )
                   ],
                 ),
               ),
@@ -536,6 +529,27 @@ class _DiseaseHistoryCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays == 0) {
+        return 'Today';
+      } else if (difference.inDays == 1) {
+        return 'Yesterday';
+      } else if (difference.inDays < 7) {
+        return '${difference.inDays} days ago';
+      } else {
+        return '${date.day}/${date.month}/${date.year}';
+      }
+    } catch (e) {
+      return dateString;
+    }
   }
 
   Widget _buildImage() {
@@ -605,8 +619,8 @@ class _DiseaseHistoryCard extends StatelessWidget {
         color: color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(
-        text,
+      child: SmartReTranslator(
+        text: text,
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
@@ -666,9 +680,9 @@ class DiseaseDetailDialog extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Plant and Disease
-                    Text(
-                      item.plantName,
+                    // Plant and Disease - TRANSLATED
+                    SmartReTranslator(
+                      text: item.plantName,
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -676,8 +690,8 @@ class DiseaseDetailDialog extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      item.diseaseName,
+                    SmartReTranslator(
+                      text: item.diseaseName,
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -685,7 +699,7 @@ class DiseaseDetailDialog extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Badges
+                    // Badges - TRANSLATED
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -703,8 +717,8 @@ class DiseaseDetailDialog extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      'Detected on ${item.formattedDate}',
+                    SmartReTranslator(
+                      text: 'Detected on ${item.formattedDate}',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey[600],
@@ -712,7 +726,7 @@ class DiseaseDetailDialog extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    // Remedies
+                    // Remedies - TRANSLATED
                     if (item.remedies.isNotEmpty) ...[
                       _buildSectionTitle('Remedies', Icons.healing),
                       const SizedBox(height: 8),
@@ -721,7 +735,7 @@ class DiseaseDetailDialog extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
                     ],
-                    // Preventions
+                    // Preventions - TRANSLATED
                     if (item.preventions.isNotEmpty) ...[
                       _buildSectionTitle('Prevention', Icons.shield),
                       const SizedBox(height: 8),
@@ -729,13 +743,14 @@ class DiseaseDetailDialog extends StatelessWidget {
                         (prevention) => _buildBulletPoint(prevention),
                       ),
                     ],
-                    // Empty state
+                    // Empty state - TRANSLATED
                     if (item.remedies.isEmpty && item.preventions.isEmpty)
                       Center(
                         child: Padding(
                           padding: const EdgeInsets.all(20),
-                          child: Text(
-                            'No remedies or prevention information available',
+                          child: SmartReTranslator(
+                            text:
+                                'No remedies or prevention information available',
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[600],
@@ -815,8 +830,8 @@ class DiseaseDetailDialog extends StatelessWidget {
       children: [
         Icon(icon, size: 20, color: AppColors.primaryGreen),
         const SizedBox(width: 8),
-        Text(
-          title,
+        SmartReTranslator(
+          text: title,
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -835,8 +850,8 @@ class DiseaseDetailDialog extends StatelessWidget {
         children: [
           const Text('• ', style: TextStyle(fontSize: 16)),
           Expanded(
-            child: Text(
-              text,
+            child: SmartReTranslator(
+              text: text,
               style: const TextStyle(
                 fontSize: 14,
                 height: 1.4,
@@ -861,8 +876,8 @@ class DiseaseDetailDialog extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(width: 6),
-          Text(
-            label,
+          SmartReTranslator(
+            text: label,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,

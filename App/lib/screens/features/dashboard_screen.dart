@@ -1,3 +1,4 @@
+import 'package:agrhi/screens/features/feedback_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
@@ -386,10 +387,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SnackBar(
             content: Text(
               '✅ ${translatedTexts['syncComplete'] ?? 'Sync complete'}!\n'
-              '📚 Catalogs: $catalogsUpdated updated\n'
+              '📚 ${translatedTexts['Catalogs'] ?? 'Catalogs'}: $catalogsUpdated ${translatedTexts['updated'] ?? 'Updated'}\n'
               '📤 ${translatedTexts['uploaded'] ?? 'Uploaded'}: $uploaded ${translatedTexts['analyses'] ?? 'analyses'}\n'
               '📥 ${translatedTexts['downloaded'] ?? 'Downloaded'}: $downloaded ${translatedTexts['analyses'] ?? 'analyses'}\n'
-              '🖼️ ${translatedTexts['images'] ?? 'Images'}: $imagesUploaded uploaded',
+              '🖼️ ${translatedTexts['images'] ?? 'Images'}: $imagesUploaded ${translatedTexts['uploaded'] ?? 'Uploaded'}',
             ),
             behavior: SnackBarBehavior.floating,
             backgroundColor: AppColors.successColor,
@@ -484,9 +485,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       FeatureItem(
         title: translatedTexts['feedback'] ?? 'Feedback',
         icon: Icons.person,
-        onTap: () => _navigateToFeature(
-          translatedTexts['feedback'] ?? 'Feedback',
-          Icons.person,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const FeedbackScreen()),
         ),
       ),
     ];
@@ -527,7 +528,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(vertical: 25.0),
             child: Column(
               children: [
-                WeatherCard(location: "Chennai"),
+                WeatherCard(
+                  useDeviceLocation: true,
+                ),
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -600,7 +603,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.primaryWhite,
+        color: AppColors.primaryGreen,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -616,7 +619,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.grey[300],
+              color: AppColors.mediumGreenAccent,
               shape: BoxShape.circle,
             ),
           ),
@@ -629,7 +632,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: double.infinity,
                   height: 16,
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
+                    color: AppColors.mediumGreenAccent,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -638,7 +641,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: 150,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
+                    color: AppColors.mediumGreenAccent,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -647,7 +650,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: 120,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
+                    color: AppColors.mediumGreenAccent,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),

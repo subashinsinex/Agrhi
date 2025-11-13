@@ -37,10 +37,10 @@ const addFeedback = async ({ user_id, message, isproblem }) => {
   }
 };
 
-// Get feedback by ID
-const getFeedbackById = async (id) => {
-  const result = await db.query(`SELECT * FROM feedback WHERE id = $1`, [id]);
-  return result.rows[0];
+// Get feedback by USER_ID
+const getFeedbackById = async (user_id) => {
+  const result = await db.query(`SELECT * FROM feedback WHERE user_id = $1`, [user_id]);
+  return result.rows;
 };
 
 // Admin responds to feedback (sets reply, updates status)
