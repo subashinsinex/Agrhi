@@ -66,7 +66,7 @@ exports.getFarmById = async (req, res) => {
 
 exports.addFarm = async (req, res) => {
   const {
-    user_id,
+    phone_number, // <-- use phone_number in frontend
     farm_size,
     survey_number,
     pincode,
@@ -74,11 +74,22 @@ exports.addFarm = async (req, res) => {
     irrigation_id,
     water_src_id,
   } = req.body;
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Lookup user_id by phone_number
+    const userRes = await client.query(
+      "SELECT user_id FROM users_auth WHERE phone_number = $1 LIMIT 1",
+      [phone_number]
+    );
+    if (userRes.rowCount === 0) {
+      throw new Error("Phone number not found. Invalid user.");
+    }
+    const user_id = userRes.rows[0].user_id;
     const farm_id = await generateUniqueId(client, "farms", "farm_id");
-    // Insert farm
+
+    // rest of your insert logic
     const farmResult = await client.query(
       `INSERT INTO farms (user_id, farm_id, farm_size, survey_number, pincode)
        VALUES ($1, $2, $3, $4, $5)

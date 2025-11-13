@@ -136,6 +136,13 @@ async function updateDisease(disease_id, updated) {
       WHERE d.disease_id = $1
     `;
     const joinRes = await pool.query(joinSql, [disease_id]);
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'diseases'"
+    );
+
+    await pool.query(
+      "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'diseases_plants'"
+    );
     return joinRes.rows; // array of disease-plant combos
   } catch (error) {
     console.error("updateDisease error:", error.message || error);
@@ -402,11 +409,11 @@ async function diseaseRemedy() {
   return result.rows;
 }
 
-async function diseasePlants(disease_id) {
-  const result = await pool.query(
-    "SELECT plant_id FROM diseases_plants WHERE disease_id = $1",
-    [disease_id]
-  );
+async function diseasePlants() {
+  const sql = `
+    SELECT * FROM diseases_plants ORDER BY disease_id, plant_id
+  `;
+  const result = await pool.query(sql);
   return result.rows;
 }
 

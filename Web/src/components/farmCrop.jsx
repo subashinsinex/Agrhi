@@ -267,7 +267,7 @@ const style = {
 
 // --- FORM MODELS (unchanged) ---
 const initialFarmForm = {
-  user_id: "",
+  phone_number: "",
   farm_size: "",
   survey_number: "",
   pincode: "",
@@ -587,10 +587,10 @@ const FarmCrop = () => {
         {showAddFarm && (
           <form style={style.addEditFormCard} onSubmit={submitAddFarm}>
             <input
-              name="user_id"
+              name="phone_number"
               style={style.formField}
-              value={farmForm.user_id}
-              placeholder="🧑‍🌾 Farmer ID"
+              value={farmForm.phone_number}
+              placeholder="Phone Number"
               onChange={handleFarmInput}
               required
             />
