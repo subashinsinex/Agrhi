@@ -91,7 +91,7 @@ class _SignupScreenState extends State<SignupScreen> {
       'confirmPassword': 'Confirm Password',
       'dateOfBirth': 'Date of Birth',
       'address': 'Address',
-      'pincode': 'Pincode',
+      'pincode': 'pincode',
       'category': 'Category',
       'selectCategory': 'Select Category',
       'accountCreated': 'Account created successfully!',

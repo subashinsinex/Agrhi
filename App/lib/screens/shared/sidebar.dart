@@ -1,3 +1,5 @@
+import 'package:agrhi/screens/features/disease_detection_screen.dart';
+
 import '../../src/database/database_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +7,7 @@ import '../auth/login_screen.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../features/feedback_screen.dart';
 
 class AppSidebar extends StatelessWidget {
   const AppSidebar({super.key});
@@ -145,50 +148,15 @@ class AppSidebar extends StatelessWidget {
                 ),
                 _buildMenuTile(
                   context,
-                  icon: Icons.medical_services_outlined,
-                  title: 'Plant Doctor',
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                ),
-                _buildMenuTile(
-                  context,
                   icon: Icons.biotech_outlined,
                   title: 'Disease Detection',
                   onTap: () {
-                    Navigator.pop(context);
-                  },
-                ),
-                _buildMenuTile(
-                  context,
-                  icon: Icons.analytics_outlined,
-                  title: 'Analytics',
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                ),
-                _buildMenuTile(
-                  context,
-                  icon: Icons.grass_outlined,
-                  title: 'Soil Health',
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                ),
-                _buildMenuTile(
-                  context,
-                  icon: Icons.wb_sunny_outlined,
-                  title: 'Weather',
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                ),
-                _buildMenuTile(
-                  context,
-                  icon: Icons.attach_money_outlined,
-                  title: 'Market Prices',
-                  onTap: () {
-                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const DetectDiseaseScreen(),
+                      ),
+                    );
                   },
                 ),
 
@@ -210,7 +178,10 @@ class AppSidebar extends StatelessWidget {
                   icon: Icons.help_outline,
                   title: 'Help & Support',
                   onTap: () {
-                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(
+                        builder: (context) => const FeedbackScreen(),
+                      ),
+                    );
                   },
                 ),
               ],

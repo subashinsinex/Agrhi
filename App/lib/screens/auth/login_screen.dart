@@ -37,8 +37,6 @@ class _LoginScreenState extends State<LoginScreen> {
     'password': 'Password',
     'dontHaveAccount': "Don't have an account?",
     'signUp': 'Sign Up',
-    'agrhi': 'Agrhi',
-    'smartFarmApp': 'Smart Farm App',
     'skipForDemo': 'Skip for demo',
   };
 
@@ -85,9 +83,6 @@ class _LoginScreenState extends State<LoginScreen> {
       'password': 'Password',
       'dontHaveAccount': "Don't have an account?",
       'signUp': 'Sign Up',
-      'agrhi': 'Agrhi',
-      'smartFarmApp': 'Smart Farm App',
-      'skipForDemo': 'Skip for demo',
     };
 
     Map<String, String> newTranslated = {};
@@ -337,7 +332,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 5),
                                 Text(
-                                  translatedTexts['agrhi'] ?? 'Agrhi',
+                                  'Agrhi',
                                   style: TextStyle(
                                     fontSize: 36,
                                     fontWeight: FontWeight.bold,
@@ -347,8 +342,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  translatedTexts['smartFarmApp'] ??
-                                      'Smart Farming',
+                                  'Smart Farm App',
                                   style: TextStyle(
                                     fontSize: 16,
                                     color: AppColors.textSecondary,

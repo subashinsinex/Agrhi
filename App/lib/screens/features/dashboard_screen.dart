@@ -1,7 +1,9 @@
+// lib/screens/features/dashboard_screen.dart
 import 'package:agrhi/screens/features/feedback_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
+import 'dart:async';
 import '../shared/sidebar.dart';
 import '../shared/placeholder_screen.dart';
 import '../shared/widgets/custom_app_bar.dart';
@@ -26,7 +28,7 @@ Future<void> printAllSecureStorage() async {
     ),
   );
   final all = await storage.readAll();
-  all.forEach((k, v) => print('$k = $v'));
+  debugPrint('📦 Secure Storage: ${all.keys.join(", ")}');
 }
 
 class DashboardScreen extends StatefulWidget {
@@ -44,7 +46,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoadingProfile = true;
   final AuthService _authService = AuthService();
 
-  // Keep the State field only
+  // Sync state
   bool _isSyncing = false;
 
   // Secure storage with options
@@ -62,6 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadTranslations();
       _loadUserData();
+      _performSmartSync(force: false);
     });
   }
 
@@ -72,7 +75,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_currentLanguage != languageService.currentLocale.languageCode) {
       _currentLanguage = languageService.currentLocale.languageCode;
       _loadTranslations();
-      printAllSecureStorage();
     }
   }
 
@@ -88,8 +90,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
         }
       } catch (e) {
-        print('❌ Storage read attempt ${i + 1} failed for $key: $e');
-        if (i == maxRetries - 1) rethrow;
+        if (i == maxRetries - 1) {
+          debugPrint('Storage read failed for $key: $e');
+          rethrow;
+        }
       }
     }
     return null;
@@ -101,40 +105,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() => _isLoadingProfile = true);
 
     try {
-      print('📋 Loading user profile from storage...');
       final profileJson = await _readWithRetry('user_profile');
-      final userId = await _readWithRetry('user_id');
-      print('📋 User ID: ${userId ?? "NULL"}');
-      print(
-        '📋 Profile JSON: ${profileJson != null ? "Found (${profileJson.length} chars)" : "NULL"}',
-      );
 
       if (profileJson != null) {
-        try {
-          final profile = jsonDecode(profileJson) as Map<String, dynamic>;
-          if (mounted) {
-            setState(() {
-              userData = {
-                'name': profile['name'] ?? 'Guest User',
-                'email': profile['email'],
-                'phone': profile['phone_number'],
-                'category': profile['user_category'],
-                'address': profile['address'],
-              };
-              _isLoadingProfile = false;
-            });
-            print('✅ User profile loaded successfully: ${userData?['name']}');
-          }
-        } catch (e) {
-          print('❌ Error parsing user profile JSON: $e');
-          if (mounted) setState(() => _isLoadingProfile = false);
+        final profile = jsonDecode(profileJson) as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            userData = {
+              'name': profile['name'] ?? 'Guest User',
+              'email': profile['email'],
+              'phone': profile['phone_number'],
+              'category': profile['user_category'],
+              'address': profile['address'],
+            };
+            _isLoadingProfile = false;
+          });
         }
       } else {
-        print('⚠️ User profile not found in storage');
+        debugPrint('User profile not found in storage');
         if (mounted) setState(() => _isLoadingProfile = false);
       }
     } catch (e) {
-      print('❌ Error loading user data: $e');
+      debugPrint('Error loading user data: $e');
       if (mounted) setState(() => _isLoadingProfile = false);
     }
   }
@@ -153,7 +145,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'diseaseDetection': 'Disease Detection',
       'subsidy': 'Subsidy',
       'cropHistory': 'Crop History',
-      'feedback': 'Feedback',
+      'help&support': 'Help & Support',
       'detectionHistory': 'Detection History',
       'notifications': 'Notifications',
       'notificationsComingSoon': 'Notifications feature coming soon!',
@@ -164,11 +156,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'syncFailed': 'Sync failed. Please try again.',
       'sessionExpired': 'Session expired. Please log in again.',
       'noToken': 'Authentication required. Please log in.',
-      'syncingData': 'Syncing data...', // NEW
-      'uploaded': 'Uploaded', // NEW
-      'downloaded': 'Downloaded', // NEW
-      'images': 'Images', // NEW
-      'analyses': 'analyses', // NEW
+      'syncingData': 'Syncing data...',
+      'uploaded': 'Uploaded',
+      'downloaded': 'Downloaded',
+      'images': 'Images',
+      'analyses': 'analyses',
+      'Catalogs': 'Catalogs',
+      'updated': 'Updated',
     };
 
     final newTranslated = <String, String>{};
@@ -216,7 +210,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (map is Map<String, dynamic>) return map;
       if (map is Map) return Map<String, dynamic>.from(map);
       return null;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('JWT decode error: $e');
       return null;
     }
   }
@@ -224,7 +219,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _getJwtExpiryUtc(String token) {
     final payload = _decodeJwtPayload(token);
     if (payload == null) return null;
+
     final exp = payload['exp'];
+
     if (exp is int) {
       return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
     } else if (exp is String) {
@@ -233,10 +230,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return DateTime.fromMillisecondsSinceEpoch(n * 1000, isUtc: true);
       }
     }
+
     return null;
   }
 
-  // Optimized: get valid access token with JWT expiry check and refresh
+  // Get valid access token with JWT expiry check and refresh
   Future<String?> _getValidAccessTokenForSync() async {
     String? accessToken =
         await _readWithRetry('access_token') ??
@@ -285,16 +283,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     try {
-      print('🔄 Attempting to refresh access token...');
       await _authService.refreshAccessToken();
-      print('✅ Access token refreshed successfully');
-
       accessToken =
           await _readWithRetry('access_token') ??
           await _storage.read(key: 'access_token');
 
       if (accessToken == null || accessToken.isEmpty) {
-        print('❌ Refresh succeeded but no access_token found in storage');
+        debugPrint('Token refresh succeeded but no access_token found');
         return null;
       }
 
@@ -306,13 +301,107 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       return accessToken;
     } catch (e) {
-      print('❌ Failed to refresh access token: $e');
+      debugPrint('Failed to refresh access token: $e');
       return null;
     }
   }
 
-  // ========== UPDATED SYNC FUNCTION (TWO-WAY SYNC) ==========
+  // ========== SMART SYNC WITH FORCE PARAMETER ==========
+  /// Smart sync with optional force parameter
+  /// @param force - if true, bypasses the last sync time check
+  Future<void> _performSmartSync({bool force = false}) async {
+    if (_isSyncing) return;
+
+    // If not forcing, check last sync time
+    if (!force) {
+      try {
+        final lastSyncStr = await _storage.read(key: 'last_sync_time');
+
+        if (lastSyncStr != null && lastSyncStr.isNotEmpty) {
+          final lastSync = DateTime.tryParse(lastSyncStr);
+          if (lastSync != null) {
+            final timeSinceSync = DateTime.now().difference(lastSync);
+
+            if (timeSinceSync.inMinutes < 5) {
+              debugPrint(
+                'Skipping auto-sync - last synced ${timeSinceSync.inMinutes} min ago',
+              );
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error checking last sync time: $e');
+      }
+    }
+
+    // Perform silent sync
+    await _performSilentSync();
+
+    // Store last sync time
+    try {
+      await _storage.write(
+        key: 'last_sync_time',
+        value: DateTime.now().toIso8601String(),
+      );
+    } catch (e) {
+      debugPrint('Error storing last sync time: $e');
+    }
+  }
+
+  // ========== SILENT SYNC WITHOUT UI FEEDBACK ==========
+  /// Silent automatic sync without UI feedback
+  Future<void> _performSilentSync() async {
+    if (_isSyncing) return;
+
+    setState(() => _isSyncing = true);
+
+    try {
+      // Ensure token is valid
+      final validToken = await _getValidAccessTokenForSync();
+      if (validToken == null || validToken.isEmpty) {
+        if (mounted) setState(() => _isSyncing = false);
+        return;
+      }
+
+      // Perform full sync (catalogs + two-way disease analyses + images)
+      final syncResult = await SyncService.instance.performFullSync(validToken);
+
+      final bool success = (syncResult['success'] as bool?) ?? false;
+
+      if (success) {
+        // Extract results
+        final catalogsResult = syncResult['catalogs'] as Map<String, dynamic>?;
+        final twoWayResult =
+            syncResult['two_way_sync'] as Map<String, dynamic>?;
+
+        final catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
+        final uploaded = (twoWayResult?['upload']?['uploaded'] as int?) ?? 0;
+        final downloaded =
+            (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
+        final imagesUploaded =
+            (twoWayResult?['images']?['uploaded'] as int?) ?? 0;
+
+        debugPrint(
+          'Silent sync: catalogs=$catalogsUpdated, up=$uploaded, down=$downloaded, img=$imagesUploaded',
+        );
+      } else {
+        debugPrint('Silent sync error: ${syncResult['error']}');
+      }
+    } catch (e) {
+      debugPrint('Silent sync exception: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
+  }
+
+  // ========== MANUAL SYNC WITH UI FEEDBACK (ALWAYS FORCES) ==========
+  /// Manual sync - always forces sync with UI feedback
   Future<void> _performFullSync() async {
+    if (_isSyncing) return;
+
     setState(() => _isSyncing = true);
 
     final messenger = ScaffoldMessenger.of(context);
@@ -401,7 +490,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         );
 
-        print('✅ Full sync completed successfully');
+        // Update last sync time after successful manual sync
+        await _storage.write(
+          key: 'last_sync_time',
+          value: DateTime.now().toIso8601String(),
+        );
       } else {
         messenger.showSnackBar(
           SnackBar(
@@ -417,7 +510,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         );
-        print('⚠️ Sync completed with errors: ${syncResult['error']}');
+        debugPrint('Manual sync error: ${syncResult['error']}');
       }
     } catch (e) {
       messenger.showSnackBar(
@@ -433,7 +526,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       );
-      print('❌ Sync error: $e');
+      debugPrint('Manual sync exception: $e');
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
@@ -483,8 +576,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       FeatureItem(
-        title: translatedTexts['feedback'] ?? 'Feedback',
-        icon: Icons.person,
+        icon: Icons.help_outline,
+        title: translatedTexts['help&support'] ?? 'Help & Support',
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const FeedbackScreen()),
@@ -501,7 +594,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsetsDirectional.only(end: 12),
             child: IconButton(
               tooltip: translatedTexts['sync'] ?? 'Sync',
-              onPressed: _isSyncing ? null : _performFullSync, // UPDATED
+              onPressed: _isSyncing ? null : _performFullSync,
               icon: _isSyncing
                   ? const SizedBox(
                       width: 20,
@@ -528,9 +621,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(vertical: 25.0),
             child: Column(
               children: [
-                WeatherCard(
-                  useDeviceLocation: true,
-                ),
+                WeatherCard(useDeviceLocation: true),
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerLeft,

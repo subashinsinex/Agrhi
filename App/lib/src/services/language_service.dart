@@ -119,6 +119,7 @@ class LanguageService extends ChangeNotifier {
     Locale('te'),
     Locale('tr'),
     Locale('ms'),
+    Locale('el'),
   ];
 
   static const Map<String, String> languageNames = {
@@ -128,6 +129,7 @@ class LanguageService extends ChangeNotifier {
     'te': 'తెలుగు',
     'tr': 'Türkçe',
     'ms': 'Bahasa Melayu',
+    'el': 'Ελληνικά',
   };
 
   OnDeviceTranslator? _sourceToEnglishTranslator;
@@ -454,6 +456,8 @@ class LanguageService extends ChangeNotifier {
         return TranslateLanguage.turkish;
       case 'ms':
         return TranslateLanguage.malay;
+      case 'el':
+        return TranslateLanguage.greek;
       default:
         return TranslateLanguage.english;
     }
@@ -861,22 +865,5 @@ class LanguageService extends ChangeNotifier {
       final sizeGB = (sizeMB / 1024).toStringAsFixed(2);
       return '$sizeGB GB';
     }
-  }
-
-  void printStatisticsReport() {
-    final stats = getTranslationStats();
-    debugPrint('');
-    debugPrint('╔═══════════════════════════════════════════╗');
-    debugPrint('║   TRANSLATION STATISTICS                 ║');
-    debugPrint('╠═══════════════════════════════════════════╣');
-    debugPrint('║ Language: ${stats['current_language']}');
-    debugPrint('║ Cached: ${stats['total_cached_phrases']} phrases');
-    debugPrint('║ Hit Rate: ${stats['cache_hit_rate_percent']}');
-    debugPrint(
-      '║ Duplicates Prevented: ${stats['duplicate_requests_prevented']}',
-    );
-    debugPrint('║ Pending: ${stats['pending_translations_count']}');
-    debugPrint('╚═══════════════════════════════════════════╝');
-    debugPrint('');
   }
 }

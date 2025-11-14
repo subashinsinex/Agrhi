@@ -1,12 +1,14 @@
+// lib/screens/features/disease_detection_screen.dart
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:convert'; // for JWT fallback
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../src/services/disease_analysis_service.dart';
+import '../../src/services/sync_service.dart'; // ADD THIS LINE
 import '../../src/models/model_service.dart';
 import '../../src/models/crop_preprocessors.dart';
 import '../../src/models/disease_labels.dart';
@@ -51,7 +53,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   Map<String, String> translatedTexts = {};
   String _currentLanguage = '';
 
-  // Same secure storage options as Dashboard
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
@@ -90,7 +91,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  // Retry helper (mirrors Dashboard)
   Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
     for (int i = 0; i < maxRetries; i++) {
       try {
@@ -123,7 +123,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  // Unified user id read: user_id -> user_profile -> access_token JWT
   Future<String?> _readUserId() async {
     final direct = await _readWithRetry('user_id');
     if (direct != null && direct.isNotEmpty) return direct;
@@ -181,6 +180,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'analysisFailed': 'Analysis failed',
       'dismiss': 'Dismiss',
       'progress': 'Progress',
+      'diseaseDetection': 'Disease Detection',
     };
 
     for (final crop in diseaseLabels.keys) {
@@ -266,8 +266,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  // Persist using secure storage userId + plant -> usercrop mapping
-Future<void> _persistResultUsingPlant({
+  // ========== UPDATED: SAVE LOCAL + TRIGGER FORCED SYNC ==========
+  /// Persist result using plant name - saves locally and triggers forced sync
+  Future<void> _persistResultUsingPlant({
     required String plantName,
     required String detectedLabel,
     required double confidence0to1,
@@ -275,7 +276,7 @@ Future<void> _persistResultUsingPlant({
   }) async {
     const double healthyMinConfidence = 0.80;
     final isHealthy = detectedLabel.toLowerCase().contains('healthy');
-    if (isHealthy && confidence0to1 < healthyMinConfidence) return;
+    if (isHealthy && confidence0to1 >= healthyMinConfidence) return;
 
     final userId = await _readUserId();
     if (userId == null || userId.isEmpty) {
@@ -284,21 +285,114 @@ Future<void> _persistResultUsingPlant({
     }
 
     try {
-      // ✅ Use DiseaseAnalysisService instead of DatabaseHelper
-      await DiseaseAnalysisService.instance.saveDetectionByPlantName(
-        userId: userId,
-        plantName: plantName,
-        detectedLabel: detectedLabel,
-        confidence: confidence0to1,
-        localImagePath: localImagePath,
-      );
+      // 1. Save to local database
+      final saveResult = await DiseaseAnalysisService.instance
+          .saveDetectionByPlantName(
+            userId: userId,
+            plantName: plantName,
+            detectedLabel: detectedLabel,
+            confidence: confidence0to1,
+            localImagePath: localImagePath,
+          );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('✅ Saved analysis locally')));
-    } on StateError catch (e) {
-      _showErrorSnackBar('Save failed: ${e.message}');
+
+      if (saveResult['success'] == true) {
+        // Show save success
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.save, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Analysis saved - syncing to server...'),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.infoColor,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+
+        // 2. Trigger forced sync immediately (ADD AWAIT HERE)
+        await _triggerForcedSync();
+      } else {
+        _showErrorSnackBar('Save failed: ${saveResult['error']}');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Save failed: ${e.toString()}');
+    }
+  }
+
+  /// Trigger forced sync to upload immediately
+  Future<void> _triggerForcedSync() async {
+    try {
+      // Get access token
+      final accessToken = await _storage.read(key: 'access_token');
+
+      if (accessToken == null || accessToken.isEmpty) {
+        debugPrint('⚠️ No access token - sync will happen later');
+        return;
+      }
+
+      debugPrint('🔄 Triggering forced sync...');
+
+      // Call dashboard's sync service directly (forced sync - no time check)
+      final syncResult = await SyncService.instance.performFullSync(
+        accessToken,
+      );
+
+      final bool success = (syncResult['success'] as bool?) ?? false;
+
+      if (success) {
+        final twoWayResult =
+            syncResult['two_way_sync'] as Map<String, dynamic>?;
+        final uploaded = (twoWayResult?['upload']?['uploaded'] as int?) ?? 0;
+        final imagesUploaded =
+            (twoWayResult?['images']?['uploaded'] as int?) ?? 0;
+
+        if (uploaded > 0 || imagesUploaded > 0) {
+          debugPrint(
+            '✅ Forced sync: uploaded $uploaded analyses, $imagesUploaded images',
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.cloud_done, color: Colors.white, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Synced to server: $uploaded analysis, $imagesUploaded images',
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: AppColors.successColor,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 3),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+          }
+        } else {
+          debugPrint('ℹ️ No new data to upload');
+        }
+      } else {
+        debugPrint('⚠️ Forced sync had issues: ${syncResult['error']}');
+      }
+    } catch (e) {
+      debugPrint('❌ Forced sync error: $e');
+      // Don't show error to user - data is saved locally and will sync later
     }
   }
 

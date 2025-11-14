@@ -518,7 +518,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
       backgroundColor: AppColors.backgroundColor,
       appBar: AppBar(
         title: SmartReTranslator(
-          text: 'Feedback',
+          text: 'Help & Support',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: AppColors.primaryGreen,
@@ -538,7 +538,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
           tabs: [
             Tab(
               child: SmartReTranslator(
-                text: 'Send Feedback',
+                text: 'Feedback',
                 style: const TextStyle(),
               ),
             ),
