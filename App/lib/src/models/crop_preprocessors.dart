@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 
 // Utility: Proper normalization for display purposes only
 img.Image _normalize01(img.Image image) {
@@ -136,18 +137,40 @@ final Map<String, Future<String> Function(String)> preprocessMap = {
   'Tomato': tomatoPreprocessor,
 };
 
-// Model file paths
-final Map<String, String> modelMap = {
-  'Rice': 'assets/models/rice_model.tflite',
-  'Sugarcane': 'assets/models/sugarcane_model.tflite',
-  'Cotton': 'assets/models/cotton_model.tflite',
-  'Corn': 'assets/models/corn_model.tflite',
-  'Coconut': 'assets/models/coconut_model.tflite',
-  'Groundnut': 'assets/models/groundnut_model.tflite',
-  'Banana': 'assets/models/banana_model.tflite',
-  'Coffee': 'assets/models/coffee_model.tflite',
-  'Wheat': 'assets/models/wheat_model.tflite',
-  'Tomato': 'assets/models/tomato_model.tflite',
+// NEW: Helper function to get downloaded model path
+Future<String> _getModelPath(String cropName) async {
+  final dir = await getApplicationDocumentsDirectory();
+  final modelDir = Directory('${dir.path}/models');
+
+  // Map crop names to actual file names
+  final fileNameMap = {
+    'Rice': 'rice_model.tflite',
+    'Sugarcane': 'sugarcane_model.tflite',
+    'Cotton': 'cotton_model.tflite',
+    'Corn': 'corn_model.tflite',
+    'Coconut': 'coconut_model.tflite',
+    'Groundnut': 'groundnut_model.tflite',
+    'Banana': 'banana_model.tflite',
+    'Coffee': 'coffee_model.tflite',
+    'Wheat': 'wheat_model.tflite',
+    'Tomato': 'tomato_model.tflite',
+  };
+
+  return '${modelDir.path}/${fileNameMap[cropName]}';
+}
+
+// CHANGED: Model file paths now point to downloaded models
+final Map<String, Future<String> Function()> modelMap = {
+  'Rice': () => _getModelPath('Rice'),
+  'Sugarcane': () => _getModelPath('Sugarcane'),
+  'Cotton': () => _getModelPath('Cotton'),
+  'Corn': () => _getModelPath('Corn'),
+  'Coconut': () => _getModelPath('Coconut'),
+  'Groundnut': () => _getModelPath('Groundnut'),
+  'Banana': () => _getModelPath('Banana'),
+  'Coffee': () => _getModelPath('Coffee'),
+  'Wheat': () => _getModelPath('Wheat'),
+  'Tomato': () => _getModelPath('Tomato'),
 };
 
 // Expected input shapes for each model
@@ -157,7 +180,7 @@ final Map<String, List<int>> inputShapeMap = {
   'Groundnut': [1, 256, 256, 3],
   'Corn': [1, 224, 224, 3],
   'Cotton': [1, 128, 128, 3],
-  'Banana': [1, 256,256, 3],
+  'Banana': [1, 256, 256, 3],
   'Coconut': [1, 128, 128, 3],
   'Coffee': [1, 224, 224, 3],
   'Wheat': [1, 224, 224, 3],

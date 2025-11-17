@@ -3,6 +3,7 @@ import '../screens/shared/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/signup_screen.dart';
 import '../screens/features/dashboard_screen.dart';
+import '../screens/features/model_manager_screen.dart'; // ADD THIS
 
 class Routes {
   // Route names
@@ -10,6 +11,7 @@ class Routes {
   static const String login = '/login';
   static const String signup = '/signup';
   static const String dashboard = '/dashboard';
+  static const String modelManager = '/model-manager'; // ADD THIS
   static const String home = '/'; // Alternative home route
 
   // Route definitions
@@ -18,6 +20,7 @@ class Routes {
     login: (context) => const LoginScreen(),
     signup: (context) => const SignupScreen(),
     dashboard: (context) => const DashboardScreen(),
+    modelManager: (context) => const ModelManagerScreen(), // ADD THIS
     home: (context) => const SplashScreen(), // Default to splash
   };
 
@@ -48,6 +51,11 @@ class Routes {
 
   static void navigateToSignup(BuildContext context) {
     Navigator.pushNamed(context, signup);
+  }
+
+  // ADD THIS: Navigation helper for Model Manager
+  static void navigateToModelManager(BuildContext context) {
+    Navigator.pushNamed(context, modelManager);
   }
 
   // Push replacement methods

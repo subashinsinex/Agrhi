@@ -8,7 +8,14 @@ class ModelService {
 
   static Future<void> loadModel(String modelPath) async {
     try {
-      _interpreter = await Interpreter.fromAsset(modelPath);
+      // Check if model file exists
+      final modelFile = File(modelPath);
+      if (!await modelFile.exists()) {
+        throw Exception('Model file not found at: $modelPath');
+      }
+
+      // Load from file instead of asset
+      _interpreter = await Interpreter.fromFile(modelFile);
       _inputShape = _interpreter.getInputTensor(0).shape;
       print('✅ Model loaded: $modelPath');
       print('📐 Shape: $_inputShape');
@@ -17,6 +24,7 @@ class ModelService {
       rethrow;
     }
   }
+
 
   static Future<List<Map<String, dynamic>>> runInference(
     String imagePath,

@@ -8,11 +8,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../src/services/disease_analysis_service.dart';
-import '../../src/services/sync_service.dart'; // ADD THIS LINE
+import '../../src/services/sync_service.dart';
 import '../../src/models/model_service.dart';
 import '../../src/models/crop_preprocessors.dart';
 import '../../src/models/disease_labels.dart';
 import '../../src/services/language_service.dart';
+import '../../src/services/model_download_service.dart'; // ADD THIS
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
 
@@ -25,18 +26,9 @@ class DetectDiseaseScreen extends StatefulWidget {
 
 class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     with TickerProviderStateMixin {
-  final List<String> availableCrops = [
-    'Corn',
-    'Rice',
-    'Sugarcane',
-    'Cotton',
-    'Coconut',
-    'Groundnut',
-    'Banana',
-    'Coffee',
-    'Wheat',
-    'Tomato',
-  ];
+  // CHANGED: Now populated dynamically from downloaded models
+  List<String> availableCrops = [];
+  bool _isCheckingModels = true; // ADD THIS
 
   String? selectedCrop;
   String? imagePath;
@@ -73,12 +65,88 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       vsync: this,
     );
 
-    if (availableCrops.isNotEmpty) {
-      selectedCrop = availableCrops.first;
-      _loadModelForCrop(selectedCrop!);
+    // CHANGED: Check downloaded models first
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDownloadedModels();
+      _loadTranslations();
+    });
+  }
+
+  // NEW: Check which models are downloaded
+  Future<void> _checkDownloadedModels() async {
+    setState(() => _isCheckingModels = true);
+
+    final downloadedModels = <String>[];
+
+    for (final cropName in ModelDownloadService.modelInfo.keys) {
+      final isDownloaded = await ModelDownloadService.instance
+          .isModelDownloaded(cropName);
+      if (isDownloaded) {
+        downloadedModels.add(cropName);
+      }
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTranslations());
+    if (!mounted) return;
+
+    if (downloadedModels.isEmpty) {
+      _showNoModelsDialog();
+      return;
+    }
+
+    setState(() {
+      availableCrops = downloadedModels;
+      _isCheckingModels = false;
+
+      if (availableCrops.isNotEmpty) {
+        selectedCrop = availableCrops.first;
+        _loadModelForCrop(selectedCrop!);
+      }
+    });
+  }
+
+  // NEW: Show dialog and redirect to Model Manager
+  void _showNoModelsDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.download_outlined, color: AppColors.errorColor),
+            const SizedBox(width: 12),
+            const Text('No Models Downloaded'),
+          ],
+        ),
+        content: const Text(
+          'You need to download at least one AI model to use disease detection. '
+          'Would you like to download models now?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/model-manager');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryGreen,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Download Models'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -217,7 +285,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     setState(() => _isModelLoading = true);
     try {
       if (modelMap.containsKey(cropName)) {
-        await ModelService.loadModel(modelMap[cropName]!);
+        final modelPath = await modelMap[cropName]!();
+        await ModelService.loadModel(modelPath);
       }
     } catch (_) {
       if (!mounted) return;
@@ -266,8 +335,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  // ========== UPDATED: SAVE LOCAL + TRIGGER FORCED SYNC ==========
-  /// Persist result using plant name - saves locally and triggers forced sync
   Future<void> _persistResultUsingPlant({
     required String plantName,
     required String detectedLabel,
@@ -285,7 +352,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
 
     try {
-      // 1. Save to local database
       final saveResult = await DiseaseAnalysisService.instance
           .saveDetectionByPlantName(
             userId: userId,
@@ -298,7 +364,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       if (!mounted) return;
 
       if (saveResult['success'] == true) {
-        // Show save success
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -319,7 +384,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
           ),
         );
 
-        // 2. Trigger forced sync immediately (ADD AWAIT HERE)
         await _triggerForcedSync();
       } else {
         _showErrorSnackBar('Save failed: ${saveResult['error']}');
@@ -329,10 +393,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  /// Trigger forced sync to upload immediately
   Future<void> _triggerForcedSync() async {
     try {
-      // Get access token
       final accessToken = await _storage.read(key: 'access_token');
 
       if (accessToken == null || accessToken.isEmpty) {
@@ -342,7 +404,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
       debugPrint('🔄 Triggering forced sync...');
 
-      // Call dashboard's sync service directly (forced sync - no time check)
       final syncResult = await SyncService.instance.performFullSync(
         accessToken,
       );
@@ -392,7 +453,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       }
     } catch (e) {
       debugPrint('❌ Forced sync error: $e');
-      // Don't show error to user - data is saved locally and will sync later
     }
   }
 
@@ -522,6 +582,33 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   }
 
   Widget _buildCropAndCameraSection() {
+    // NEW: Show loading while checking models
+    if (_isCheckingModels) {
+      return Card(
+        elevation: 3,
+        shadowColor: AppColors.primaryGreen.withOpacity(0.1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Center(
+            child: Column(
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(
+                  'Checking downloaded models...',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final isEnabled = selectedCrop != null && !_isLoading && !_isModelLoading;
 
     return Card(
@@ -541,12 +628,30 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   size: 20,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  translatedTexts['selectCrop'] ?? 'Select Crop',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                Expanded(
+                  child: Text(
+                    translatedTexts['selectCrop'] ?? 'Select Crop',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                // NEW: Add button to manage models
+                TextButton.icon(
+                  onPressed: () => Navigator.pushNamed(
+                    context,
+                    '/model-manager',
+                  ).then((_) => _checkDownloadedModels()),
+                  icon: const Icon(Icons.download, size: 16),
+                  label: const Text('Manage', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primaryGreen,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                   ),
                 ),
               ],
@@ -569,7 +674,10 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 child: DropdownButton<String>(
                   value: selectedCrop,
                   hint: Text(
-                    translatedTexts['selectACrop'] ?? 'Select a crop',
+                    // CHANGED: Show message if no models
+                    availableCrops.isEmpty
+                        ? 'No models downloaded'
+                        : translatedTexts['selectACrop'] ?? 'Select a crop',
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                   isExpanded: true,
@@ -598,7 +706,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         ),
                       )
                       .toList(),
-                  onChanged: _isModelLoading
+                  // CHANGED: Disable if checking or no models
+                  onChanged: _isModelLoading || availableCrops.isEmpty
                       ? null
                       : (val) async {
                           if (val != null && val != selectedCrop) {
@@ -750,6 +859,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       ),
     );
   }
+
+  // Keep all your remaining widget builders (_buildImagePreview, _buildLoadingIndicator, _buildResults, etc.)
+  // ... (continue with the rest of your original file)
 
   Widget _buildImagePreview() {
     return Card(

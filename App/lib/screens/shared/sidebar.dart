@@ -1,5 +1,6 @@
 import 'package:agrhi/screens/features/disease_detection_screen.dart';
-
+import 'package:agrhi/screens/features/disease_history_screen.dart';
+import 'package:agrhi/screens/features/subsidy_screen.dart';
 import '../../src/database/database_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -159,7 +160,32 @@ class AppSidebar extends StatelessWidget {
                     );
                   },
                 ),
-
+                _buildMenuTile(
+                  context,
+                  icon: Icons.history,
+                  title: 'Detection History',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const DiseaseHistoryScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _buildMenuTile(
+                  context,
+                  icon: Icons.monetization_on,
+                  title: 'Subsidy',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SubsidyScreen(),
+                      ),
+                    );
+                  },
+                ),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Divider(thickness: 1),
@@ -178,7 +204,9 @@ class AppSidebar extends StatelessWidget {
                   icon: Icons.help_outline,
                   title: 'Help & Support',
                   onTap: () {
-                    Navigator.push(context, MaterialPageRoute(
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
                         builder: (context) => const FeedbackScreen(),
                       ),
                     );
