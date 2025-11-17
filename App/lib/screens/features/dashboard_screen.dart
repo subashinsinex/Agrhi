@@ -1,5 +1,5 @@
 // lib/screens/features/dashboard_screen.dart
-import 'package:agrhi/screens/features/feedback_screen.dart';
+import 'package:agrhi/screens/features/model_manager_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
@@ -146,6 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'subsidy': 'Subsidy',
       'cropHistory': 'Crop History',
       'help&support': 'Help & Support',
+      'modelManager': 'Model Manager',
       'detectionHistory': 'Detection History',
       'notifications': 'Notifications',
       'notificationsComingSoon': 'Notifications feature coming soon!',
@@ -576,11 +577,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       FeatureItem(
-        icon: Icons.help_outline,
-        title: translatedTexts['help&support'] ?? 'Help & Support',
+        icon: Icons.download,
+        title: translatedTexts['modelManager'] ?? 'Model Manager',
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const FeedbackScreen()),
+          MaterialPageRoute(builder: (context) => const ModelManagerScreen()),
         ),
       ),
     ];

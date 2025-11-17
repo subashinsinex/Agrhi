@@ -21,6 +21,7 @@ app.use("/api/farmcrop", farmCropRoutes);
 app.use("/api/diseaseRemedies", diseaseRemediesRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/uploads", express.static("uploads"));
+app.use("/models", express.static("models"));
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/sync", syncRoutes);
 

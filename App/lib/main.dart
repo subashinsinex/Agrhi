@@ -5,13 +5,12 @@ import 'screens/shared/splash_screen.dart';
 import 'utils/colors.dart';
 import 'utils/routes.dart';
 import 'src/services/language_service.dart';
+import 'src/services/model_manager_provider.dart';
 import 'src/database/database_helper.dart';
 
 void main() async {
-  // Ensure Flutter widgets are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock orientation to portrait mode permanently
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -28,15 +27,16 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => LanguageService(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => LanguageService()),
+        ChangeNotifierProvider(create: (context) => ModelManagerProvider()),
+      ],
       child: Consumer<LanguageService>(
         builder: (context, languageService, child) {
           return MaterialApp(
             title: 'AGRHI - Smart Farming Solutions',
             debugShowCheckedModeBanner: false,
-
-            // App Theme
             theme: ThemeData(
               primarySwatch:
                   MaterialColor(AppColors.primaryGreen.value, <int, Color>{
@@ -52,8 +52,6 @@ class MyApp extends StatelessWidget {
                     900: AppColors.primaryGreen,
                   }),
               fontFamily: 'Roboto',
-
-              // AppBar Theme
               appBarTheme: AppBarTheme(
                 backgroundColor: AppColors.primaryGreen,
                 foregroundColor: AppColors.textWhite,
@@ -66,8 +64,6 @@ class MyApp extends StatelessWidget {
                   color: AppColors.textWhite,
                 ),
               ),
-
-              // Elevated Button Theme
               elevatedButtonTheme: ElevatedButtonThemeData(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
@@ -78,8 +74,6 @@ class MyApp extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // Input Decoration Theme
               inputDecorationTheme: InputDecorationTheme(
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -107,8 +101,6 @@ class MyApp extends StatelessWidget {
                   vertical: 16,
                 ),
               ),
-
-              // Card Theme
               cardTheme: CardThemeData(
                 elevation: 4,
                 shape: RoundedRectangleBorder(
@@ -117,14 +109,8 @@ class MyApp extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
             ),
-
-            // Initial route - Changed to splash
             initialRoute: Routes.splash,
-
-            // App routes
             routes: Routes.routes,
-
-            // Handle unknown routes
             onUnknownRoute: (settings) {
               return MaterialPageRoute(
                 builder: (context) => const SplashScreen(),
