@@ -1,4 +1,3 @@
-// lib/screens/features/dashboard_screen.dart
 import 'package:agrhi/screens/features/model_manager_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +8,7 @@ import '../shared/placeholder_screen.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
+import '../../screens/shared/widgets/smart_retranslator.dart';
 import '../components/weather_card.dart';
 import '../components/profile_card.dart';
 import '../components/feature_grid.dart';
@@ -41,15 +41,10 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? userData;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  Map<String, String> translatedTexts = {};
-  String _currentLanguage = '';
   bool _isLoadingProfile = true;
   final AuthService _authService = AuthService();
-
-  // Sync state
   bool _isSyncing = false;
 
-  // Secure storage with options
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
@@ -62,23 +57,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadTranslations();
       _loadUserData();
       _performSmartSync(force: false);
+      _preloadDashboardPhrases();
     });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final languageService = Provider.of<LanguageService>(context);
-    if (_currentLanguage != languageService.currentLocale.languageCode) {
-      _currentLanguage = languageService.currentLocale.languageCode;
-      _loadTranslations();
-    }
+  Future<void> _preloadDashboardPhrases() async {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    await languageService.preloadTexts([
+      'Profile',
+      'Guest User',
+      'Features',
+      'Crop Care',
+      'Plant Doctor',
+      'Subsidy',
+      'Crop History',
+      'Help & Support',
+      'Model Manager',
+      'Detection History',
+      'Notifications',
+      'Notifications feature coming soon!',
+      'Sync',
+      'Syncing',
+      'Sync in progress...',
+      '✅ Sync complete!',
+      'Sync complete',
+      'Sync finished with some issues',
+      'Sync failed. Please try again.',
+      'Session expired. Please log in again.',
+      'Authentication required. Please log in.',
+      'Syncing data...',
+      'Upload',
+      'Downloaded',
+      'Images',
+      'analyses',
+      'Catalogs',
+      'updated',
+    ], highPriority: true);
   }
 
-  /// Generic storage read with retry
   Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
     for (int i = 0; i < maxRetries; i++) {
       try {
@@ -99,7 +121,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return null;
   }
 
-  /// Load user profile data from secure storage with retry
   Future<void> _loadUserData() async {
     if (!mounted) return;
     setState(() => _isLoadingProfile = true);
@@ -131,53 +152,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _loadTranslations() async {
-    final languageService = Provider.of<LanguageService>(
-      context,
-      listen: false,
-    );
-
-    final keys = {
-      'profile': 'Profile',
-      'guestUser': 'Guest User',
-      'features': 'Features',
-      'cropManagement': 'Crop Management',
-      'diseaseDetection': 'Disease Detection',
-      'subsidy': 'Subsidy',
-      'cropHistory': 'Crop History',
-      'help&support': 'Help & Support',
-      'modelManager': 'Model Manager',
-      'detectionHistory': 'Detection History',
-      'notifications': 'Notifications',
-      'notificationsComingSoon': 'Notifications feature coming soon!',
-      'sync': 'Sync',
-      'syncing': 'Sync in progress...',
-      'syncComplete': 'Sync complete',
-      'syncPartial': 'Sync finished with some issues',
-      'syncFailed': 'Sync failed. Please try again.',
-      'sessionExpired': 'Session expired. Please log in again.',
-      'noToken': 'Authentication required. Please log in.',
-      'syncingData': 'Syncing data...',
-      'uploaded': 'Uploaded',
-      'downloaded': 'Downloaded',
-      'images': 'Images',
-      'analyses': 'analyses',
-      'Catalogs': 'Catalogs',
-      'updated': 'Updated',
-    };
-
-    final newTranslated = <String, String>{};
-    for (var entry in keys.entries) {
-      newTranslated[entry.key] = await languageService.translate(entry.value);
-    }
-
-    if (mounted) {
-      setState(() {
-        translatedTexts = newTranslated;
-      });
-    }
-  }
-
   void _navigateToFeature(String displayTitle, IconData icon) {
     Navigator.push(
       context,
@@ -192,15 +166,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _scaffoldKey.currentState?.openDrawer();
   }
 
-  // ==== JWT helpers ====
-
   Map<String, dynamic>? _decodeJwtPayload(String token) {
     try {
       final parts = token.split('.');
       if (parts.length != 3) return null;
       String payload = parts[1];
 
-      // Fix base64url padding
       int mod4 = payload.length % 4;
       if (mod4 > 0) {
         payload += '=' * (4 - mod4);
@@ -235,7 +206,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return null;
   }
 
-  // Get valid access token with JWT expiry check and refresh
   Future<String?> _getValidAccessTokenForSync() async {
     String? accessToken =
         await _readWithRetry('access_token') ??
@@ -307,13 +277,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ========== SMART SYNC WITH FORCE PARAMETER ==========
-  /// Smart sync with optional force parameter
-  /// @param force - if true, bypasses the last sync time check
   Future<void> _performSmartSync({bool force = false}) async {
     if (_isSyncing) return;
 
-    // If not forcing, check last sync time
     if (!force) {
       try {
         final lastSyncStr = await _storage.read(key: 'last_sync_time');
@@ -336,10 +302,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
 
-    // Perform silent sync
     await _performSilentSync();
 
-    // Store last sync time
     try {
       await _storage.write(
         key: 'last_sync_time',
@@ -350,38 +314,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ========== SILENT SYNC WITHOUT UI FEEDBACK ==========
-  /// Silent automatic sync without UI feedback
   Future<void> _performSilentSync() async {
     if (_isSyncing) return;
 
     setState(() => _isSyncing = true);
 
     try {
-      // Ensure token is valid
       final validToken = await _getValidAccessTokenForSync();
       if (validToken == null || validToken.isEmpty) {
         if (mounted) setState(() => _isSyncing = false);
         return;
       }
 
-      // Perform full sync (catalogs + two-way disease analyses + images)
       final syncResult = await SyncService.instance.performFullSync(validToken);
 
       final bool success = (syncResult['success'] as bool?) ?? false;
 
       if (success) {
-        // Extract results
         final catalogsResult = syncResult['catalogs'] as Map<String, dynamic>?;
         final twoWayResult =
             syncResult['two_way_sync'] as Map<String, dynamic>?;
 
         final catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
-        final uploaded = (twoWayResult?['upload']?['uploaded'] as int?) ?? 0;
+        final uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
         final downloaded =
             (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
         final imagesUploaded =
-            (twoWayResult?['images']?['uploaded'] as int?) ?? 0;
+            (twoWayResult?['images']?['upload'] as int?) ?? 0;
 
         debugPrint(
           'Silent sync: catalogs=$catalogsUpdated, up=$uploaded, down=$downloaded, img=$imagesUploaded',
@@ -398,8 +357,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ========== MANUAL SYNC WITH UI FEEDBACK (ALWAYS FORCES) ==========
-  /// Manual sync - always forces sync with UI feedback
   Future<void> _performFullSync() async {
     if (_isSyncing) return;
 
@@ -407,14 +364,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
 
-    // Ensure token is valid
     final validToken = await _getValidAccessTokenForSync();
     if (validToken == null || validToken.isEmpty) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text(
-            translatedTexts['sessionExpired'] ??
-                'Session expired. Please log in again.',
+          content: const SmartReTranslator(
+            text: 'Session expired. Please log in again.',
+            style: TextStyle(color: Colors.white),
           ),
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.errorColor,
@@ -428,12 +384,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    // Show syncing feedback
     messenger.showSnackBar(
       SnackBar(
-        content: Row(
+        content: const Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(
@@ -441,9 +396,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: Colors.white,
               ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: 10),
             Expanded(
-              child: Text(translatedTexts['syncingData'] ?? 'Syncing data...'),
+              child: SmartReTranslator(
+                text: 'Syncing data...',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -455,43 +413,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     try {
-      // Perform full sync (catalogs + two-way disease analyses + images)
       final syncResult = await SyncService.instance.performFullSync(validToken);
 
       final bool success = (syncResult['success'] as bool?) ?? false;
 
       if (success) {
-        // Extract results
         final catalogsResult = syncResult['catalogs'] as Map<String, dynamic>?;
         final twoWayResult =
             syncResult['two_way_sync'] as Map<String, dynamic>?;
 
         final catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
-        final uploaded = (twoWayResult?['upload']?['uploaded'] as int?) ?? 0;
+        final uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
         final downloaded =
             (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
         final imagesUploaded =
-            (twoWayResult?['images']?['uploaded'] as int?) ?? 0;
+            (twoWayResult?['images']?['upload'] as int?) ?? 0;
 
+        // ✅ FIXED: Translatable sync success message
         messenger.showSnackBar(
           SnackBar(
-            content: Text(
-              '✅ ${translatedTexts['syncComplete'] ?? 'Sync complete'}!\n'
-              '📚 ${translatedTexts['Catalogs'] ?? 'Catalogs'}: $catalogsUpdated ${translatedTexts['updated'] ?? 'Updated'}\n'
-              '📤 ${translatedTexts['uploaded'] ?? 'Uploaded'}: $uploaded ${translatedTexts['analyses'] ?? 'analyses'}\n'
-              '📥 ${translatedTexts['downloaded'] ?? 'Downloaded'}: $downloaded ${translatedTexts['analyses'] ?? 'analyses'}\n'
-              '🖼️ ${translatedTexts['images'] ?? 'Images'}: $imagesUploaded ${translatedTexts['uploaded'] ?? 'Uploaded'}',
-            ),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppColors.successColor,
-            duration: const Duration(seconds: 5),
-            shape: RoundedRectangleBorder(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SmartReTranslator(
+                  text: '✅ Sync complete!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SmartReTranslator(
+                  text:
+                      'Upload $uploaded, Downloaded $downloaded, Images $imagesUploaded, Catalogs updated $catalogsUpdated',
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ],            ),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: AppColors.successColor,
+              duration: const Duration(seconds: 2),
+              shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
           ),
         );
-
-        // Update last sync time after successful manual sync
         await _storage.write(
           key: 'last_sync_time',
           value: DateTime.now().toIso8601String(),
@@ -499,9 +466,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       } else {
         messenger.showSnackBar(
           SnackBar(
-            content: Text(
-              translatedTexts['syncPartial'] ??
-                  'Sync finished with some issues',
+            content: const SmartReTranslator(
+              text: 'Sync finished with some issues',
+              style: TextStyle(color: Colors.white),
             ),
             behavior: SnackBarBehavior.floating,
             backgroundColor: AppColors.warningColor,
@@ -516,8 +483,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text(
-            translatedTexts['syncFailed'] ?? 'Sync failed. Please try again.',
+          content: const SmartReTranslator(
+            text: 'Sync failed. Please try again.',
+            style: TextStyle(color: Colors.white),
           ),
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.errorColor,
@@ -535,17 +503,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ FIXED: Features list created inside build method
     final features = [
       FeatureItem(
-        title: translatedTexts['cropManagement'] ?? 'Crop Management',
+        title: 'Crop Care',
         icon: Icons.agriculture,
-        onTap: () => _navigateToFeature(
-          translatedTexts['cropManagement'] ?? 'Crop Management',
-          Icons.agriculture,
-        ),
+        onTap: () => _navigateToFeature('Crop Care', Icons.agriculture),
       ),
       FeatureItem(
-        title: translatedTexts['diseaseDetection'] ?? 'Disease Detection',
+        title: 'Plant Doctor',
         icon: Icons.biotech,
         onTap: () => Navigator.push(
           context,
@@ -553,7 +519,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       FeatureItem(
-        title: translatedTexts['subsidy'] ?? 'Subsidy',
+        title: 'Subsidy',
         icon: Icons.monetization_on,
         onTap: () => Navigator.push(
           context,
@@ -561,15 +527,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       FeatureItem(
-        title: translatedTexts['cropHistory'] ?? 'Crop History',
+        title: 'Crop History',
         icon: Icons.history_edu,
-        onTap: () => _navigateToFeature(
-          translatedTexts['cropHistory'] ?? 'Crop History',
-          Icons.history_edu,
-        ),
+        onTap: () => _navigateToFeature('Crop History', Icons.history_edu),
       ),
       FeatureItem(
-        title: translatedTexts['detectionHistory'] ?? 'Detection History',
+        title: 'Detection History',
         icon: Icons.history,
         onTap: () => Navigator.push(
           context,
@@ -578,7 +541,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       FeatureItem(
         icon: Icons.download,
-        title: translatedTexts['modelManager'] ?? 'Model Manager',
+        title: 'Model Library',
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const ModelManagerScreen()),
@@ -594,7 +557,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 12),
             child: IconButton(
-              tooltip: translatedTexts['sync'] ?? 'Sync',
+              tooltip: 'Sync',
               onPressed: _isSyncing ? null : _performFullSync,
               icon: _isSyncing
                   ? const SizedBox(
@@ -622,15 +585,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(vertical: 25.0),
             child: Column(
               children: [
-                WeatherCard(useDeviceLocation: true),
+                WeatherCard(
+                  key: ValueKey(
+                    'weather_${Provider.of<LanguageService>(context).currentLocale.languageCode}',
+                  ),
+                  useDeviceLocation: true),
                 const SizedBox(height: 10),
-                Align(
+                const Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text(
-                      translatedTexts['profile'] ?? 'Profile',
-                      style: const TextStyle(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    child: SmartReTranslator(
+                      text: 'Profile',
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w400,
                         color: AppColors.textPrimary,
@@ -646,10 +613,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ? _buildProfileSkeleton()
                       : ProfileCard(
                           key: const ValueKey('profile_card'),
-                          name:
-                              userData?['name'] ??
-                              translatedTexts['guestUser'] ??
-                              'Guest User',
+                          name: userData?['name'] ?? 'Guest User',
                           email: userData?['email'],
                           phone: userData?['phone'],
                           category: userData?['category'],
@@ -658,13 +622,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
 
                 const SizedBox(height: 20),
-                Align(
+                const Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text(
-                      translatedTexts['features'] ?? 'Features',
-                      style: const TextStyle(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    child: SmartReTranslator(
+                      text: 'Features',
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w400,
                         color: AppColors.textPrimary,
@@ -673,7 +637,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
+                // ✅ FIXED: Grid with proper key for language changes
                 DirectFeatureGrid(
+                  key: ValueKey(
+                    Provider.of<LanguageService>(
+                      context,
+                    ).currentLocale.languageCode,
+                  ),
                   features: features,
                   crossAxisCount: 3,
                   childAspectRatio: 0.85,
@@ -688,7 +658,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Profile skeleton
   Widget _buildProfileSkeleton() {
     return Container(
       key: const ValueKey('profile_skeleton'),
@@ -755,6 +724,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
+// ✅ FIXED: DirectFeatureGrid with proper translation support
 class DirectFeatureGrid extends StatelessWidget {
   final List<FeatureItem> features;
   final int crossAxisCount;
@@ -811,15 +781,16 @@ class DirectFeatureGrid extends StatelessWidget {
                 const SizedBox(height: 6),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    feature.title,
+                  child: SmartReTranslator(
+                    // ✅ FIXED: Unique key for each feature title
+                    key: ValueKey('feature_${feature.title}_$index'),
+                    text: feature.title,
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
                     ),
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                   ),
                 ),

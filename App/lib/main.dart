@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // ✅ ADD THIS
 import 'screens/shared/splash_screen.dart';
 import 'utils/colors.dart';
 import 'utils/routes.dart';
@@ -15,6 +16,11 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // ✅ Initialize Hive for fast translation caching
+  await Hive.initFlutter();
+  await Hive.openBox('translation_cache');
+  print('✅ Hive cache initialized successfully.');
 
   await DatabaseHelper.instance.database;
   print('✅ Database initialized successfully.');

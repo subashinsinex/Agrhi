@@ -4,6 +4,8 @@ import 'package:agrhi/screens/features/subsidy_screen.dart';
 import '../../src/database/database_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import '../auth/login_screen.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
@@ -13,53 +15,85 @@ import '../features/feedback_screen.dart';
 class AppSidebar extends StatelessWidget {
   const AppSidebar({super.key});
 
-  // Add handleLogout function
-  Future<void> handleLogout(BuildContext context) async {
-    const storage = FlutterSecureStorage();
+  // ⭐ MODIFIED: Background cleanup (runs after navigation)
+  Future<void> _performBackgroundCleanup() async {
+    const storage = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+      iOptions: IOSOptions(
+        accessibility: KeychainAccessibility.first_unlock,
+        synchronizable: false,
+      ),
+    );
 
-    // Delete all secure storage data (tokens, user profile, etc.)
-    await storage.deleteAll();
+    try {
+      debugPrint('🗑️ Starting background cleanup...');
 
-    final db = await DatabaseHelper.instance.database;
+      // 1. Delete secure storage
+      debugPrint('🗑️ Clearing secure storage...');
+      await storage.deleteAll();
+      debugPrint('✅ Secure storage cleared');
 
-    await db.delete('disease_analysis_results');
-    await db.delete('images');
+      // 2. Clear user-specific database tables
+      debugPrint('🗑️ Clearing database tables...');
+      final db = await DatabaseHelper.instance.database;
 
-    if (context.mounted) {
-      final languageService = Provider.of<LanguageService>(
-        context,
-        listen: false,
-      );
+      await db.transaction((txn) async {
+        await txn.delete('disease_analysis_results');
+        await txn.delete('images');
+      });
 
-      final successMessage = await languageService.translate(
-        'Logged out successfully',
-      );
+      debugPrint('✅ Database tables cleared');
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(child: Text(successMessage)),
-            ],
-          ),
-          backgroundColor: AppColors.successColor,
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      // 3. Delete disease_images directory
+      debugPrint('🗑️ Deleting disease images...');
+      try {
+        final appDocDir = await getApplicationDocumentsDirectory();
+        final docImagesDir = Directory('${appDocDir.path}/disease_images');
 
-      // Navigate to login screen and clear navigation stack
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (Route<dynamic> route) => false,
-      );
+        if (await docImagesDir.exists()) {
+          await docImagesDir.delete(recursive: true);
+          debugPrint('✅ Documents disease images deleted');
+        }
+
+        final appSupportDir = await getApplicationSupportDirectory();
+        final supportImagesDir = Directory(
+          '${appSupportDir.path}/disease_images',
+        );
+
+        if (await supportImagesDir.exists()) {
+          await supportImagesDir.delete(recursive: true);
+          debugPrint('✅ Support disease images deleted');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error deleting disease images: $e');
+      }
+
+      // 4. Clear cache contents
+      debugPrint('🗑️ Clearing app cache...');
+      try {
+        final cacheDir = await getTemporaryDirectory();
+        if (await cacheDir.exists()) {
+          await for (var entity in cacheDir.list()) {
+            try {
+              if (entity is File) {
+                await entity.delete();
+              } else if (entity is Directory) {
+                await entity.delete(recursive: true);
+              }
+            } catch (e) {
+              debugPrint('⚠️ Failed to delete: ${entity.path}');
+            }
+          }
+          debugPrint('✅ App cache cleared');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error clearing cache: $e');
+      }
+
+      debugPrint('🎉 Background cleanup complete');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error during background cleanup: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
   }
 
@@ -150,7 +184,7 @@ class AppSidebar extends StatelessWidget {
                 _buildMenuTile(
                   context,
                   icon: Icons.biotech_outlined,
-                  title: 'Disease Detection',
+                  title: 'Plant Doctor',
                   onTap: () {
                     Navigator.push(
                       context,
@@ -375,8 +409,23 @@ class AppSidebar extends StatelessWidget {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
-                          Navigator.pop(dialogContext); // Close dialog
-                          handleLogout(context); // Call handleLogout
+                          // ⭐ STEP 1: Close dialog
+                          Navigator.pop(dialogContext);
+
+                          // ⭐ STEP 2: Close drawer
+                          Navigator.pop(context);
+
+                          // ⭐ STEP 3: Navigate to login IMMEDIATELY
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const LoginScreen(),
+                            ),
+                            (Route<dynamic> route) => false,
+                          );
+
+                          // ⭐ STEP 4: Run cleanup in background (non-blocking)
+                          _performBackgroundCleanup();
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.errorColor,

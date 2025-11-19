@@ -1,8 +1,10 @@
+// lib/src/services/sync_service.dart
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../database/database_helper.dart';
 import '../../utils/constants.dart';
 
@@ -14,12 +16,21 @@ class SyncService {
   final DatabaseHelper _db = DatabaseHelper.instance;
   static const String baseUrl = AppConstants.baseUrl;
 
+  // ⭐ ADD: Secure storage for sync timestamps
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+      synchronizable: false,
+    ),
+  );
+
   // ================= FULL SYNC =================
 
   /// Perform full sync: catalogs + analyses + images
   Future<Map<String, dynamic>> performFullSync(String accessToken) async {
     try {
-      print('🔄 Starting full sync...');
+      debugPrint('🔄 Starting full sync...');
 
       // Step 1: Sync catalogs (diseases, remedies, plants, etc.)
       final catalogResult = await _db.smartSyncCatalogs(accessToken);
@@ -34,7 +45,7 @@ class SyncService {
         'timestamp': DateTime.now().toIso8601String(),
       };
     } catch (e) {
-      print('❌ Full sync error: $e');
+      debugPrint('❌ Full sync error: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -44,7 +55,7 @@ class SyncService {
   /// Complete two-way sync: push local changes, then pull server updates
   Future<Map<String, dynamic>> performTwoWaySync(String accessToken) async {
     try {
-      print('🔄 Starting two-way sync...');
+      debugPrint('🔄 Starting two-way sync...');
 
       // Step 1: Push local changes to server (upload pending analyses)
       final uploadResult = await uploadPendingAnalyses(accessToken);
@@ -73,7 +84,7 @@ class SyncService {
         'timestamp': DateTime.now().toIso8601String(),
       };
     } catch (e) {
-      print('❌ Two-way sync error: $e');
+      debugPrint('❌ Two-way sync error: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -84,7 +95,7 @@ class SyncService {
   Future<Map<String, dynamic>> uploadPendingAnalyses(String accessToken) async {
     try {
       final pending = await _db.getPendingAnalyses();
-      print('📤 Uploading ${pending.length} pending analyses...');
+      debugPrint('📤 Uploading ${pending.length} pending analyses...');
 
       if (pending.isEmpty) {
         return {
@@ -120,7 +131,7 @@ class SyncService {
           )
           .timeout(const Duration(seconds: 30));
 
-      print('📡 Upload response: ${response.statusCode}');
+      debugPrint('📡 Upload response: ${response.statusCode}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
@@ -135,7 +146,7 @@ class SyncService {
           await _db.markAsUploaded(id, null);
         }
 
-        print('✅ Uploaded ${uploadedIds.length} analyses');
+        debugPrint('✅ Uploaded ${uploadedIds.length} analyses');
 
         return {
           'success': true,
@@ -144,15 +155,15 @@ class SyncService {
         };
       }
 
-      print('❌ Upload failed: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      debugPrint('❌ Upload failed: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
       return {
         'success': false,
         'message': 'Upload failed: ${response.statusCode}',
         'uploaded': 0,
       };
     } catch (e) {
-      print('❌ Upload error: $e');
+      debugPrint('❌ Upload error: $e');
       return {'success': false, 'error': e.toString(), 'uploaded': 0};
     }
   }
@@ -165,20 +176,20 @@ class SyncService {
     String? since,
   }) async {
     try {
-      // Get last sync timestamp
+      // ⭐ CHANGED: Get last sync timestamp from secure storage
       final lastSync = since ?? await _getLastSyncTimestamp();
 
       final uri = lastSync != null
           ? Uri.parse('$baseUrl/sync/changes?since=$lastSync')
           : Uri.parse('$baseUrl/sync/changes');
 
-      print('📥 Downloading analyses since: ${lastSync ?? "beginning"}');
+      debugPrint('📥 Downloading analyses since: ${lastSync ?? "beginning"}');
 
       final response = await http
           .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
           .timeout(const Duration(seconds: 30));
 
-      print('📡 Download response: ${response.statusCode}');
+      debugPrint('📡 Download response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -190,14 +201,14 @@ class SyncService {
                 .toList() ??
             [];
 
-        print(
+        debugPrint(
           '📦 Received ${analyses.length} analyses, ${deletedIds.length} deletions',
         );
 
         // Apply server changes locally
         await _applyServerChanges(analyses, deletedIds);
 
-        // Update sync timestamp
+        // ⭐ CHANGED: Update sync timestamp in secure storage
         await _updateLastSyncTimestamp(data['server_timestamp']);
 
         return {
@@ -207,8 +218,8 @@ class SyncService {
         };
       }
 
-      print('❌ Download failed: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      debugPrint('❌ Download failed: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
       return {
         'success': false,
         'message': 'Download failed: ${response.statusCode}',
@@ -216,7 +227,7 @@ class SyncService {
         'deleted': 0,
       };
     } catch (e) {
-      print('❌ Download error: $e');
+      debugPrint('❌ Download error: $e');
       return {
         'success': false,
         'error': e.toString(),
@@ -264,7 +275,7 @@ class SyncService {
                   ? 0
                   : 1, // ⭐ Only mark as uploaded if real URL
             });
-            print(
+            debugPrint(
               '📥 Created image record: ${analysis['image_id']} (uploaded: ${!isPlaceholder})',
             );
           } else {
@@ -286,7 +297,7 @@ class SyncService {
               where: 'image_id = ?',
               whereArgs: [analysis['image_id']],
             );
-            print(
+            debugPrint(
               '📥 Updated image record: ${analysis['image_id']} (uploaded: ${!isPlaceholder})',
             );
           }
@@ -340,7 +351,7 @@ class SyncService {
       }
     });
 
-    print(
+    debugPrint(
       '✅ Applied ${analyses.length} updates and ${deletedIds.length} deletions',
     );
   }
@@ -367,7 +378,7 @@ class SyncService {
         """,
       );
 
-      print('🖼️ Syncing ${pendingImages.length} images...');
+      debugPrint('🖼️ Syncing ${pendingImages.length} images...');
 
       int uploaded = 0;
 
@@ -376,16 +387,16 @@ class SyncService {
         final imageId = image['image_id'] as String;
 
         if (File(localPath).existsSync()) {
-          print('📤 Uploading image: $imageId from $localPath');
+          debugPrint('📤 Uploading image: $imageId from $localPath');
           final result = await _uploadImage(imageId, localPath, accessToken);
           if (result['success']) {
             uploaded++;
-            print('✅ Image uploaded: $imageId');
+            debugPrint('✅ Image uploaded: $imageId');
           } else {
-            print('❌ Failed to upload image $imageId: ${result['error']}');
+            debugPrint('❌ Failed to upload image $imageId: ${result['error']}');
           }
         } else {
-          print('⚠️ Image file not found: $localPath');
+          debugPrint('⚠️ Image file not found: $localPath');
         }
       }
 
@@ -395,7 +406,7 @@ class SyncService {
         'total': pendingImages.length,
       };
     } catch (e) {
-      print('❌ Image sync error: $e');
+      debugPrint('❌ Image sync error: $e');
       return {'success': false, 'error': e.toString(), 'uploaded': 0};
     }
   }
@@ -421,7 +432,7 @@ class SyncService {
       );
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('📡 Image upload response: ${response.statusCode}');
+      debugPrint('📡 Image upload response: ${response.statusCode}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
@@ -436,15 +447,17 @@ class SyncService {
           whereArgs: [imageId],
         );
 
-        print('✅ Image uploaded and metadata updated: $imageId -> $serverUrl');
+        debugPrint(
+          '✅ Image uploaded and metadata updated: $imageId -> $serverUrl',
+        );
         return {'success': true, 'server_url': serverUrl};
       }
 
-      print('❌ Image upload failed: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      debugPrint('❌ Image upload failed: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
       return {'success': false, 'message': 'HTTP ${response.statusCode}'};
     } catch (e) {
-      print('❌ Image upload error: $e');
+      debugPrint('❌ Image upload error: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -468,7 +481,9 @@ class SyncService {
         """,
       );
 
-      print('📥 Downloading ${imagesToDownload.length} images from server...');
+      debugPrint(
+        '📥 Downloading ${imagesToDownload.length} images from server...',
+      );
 
       int downloaded = 0;
       final errors = <String>[];
@@ -485,10 +500,10 @@ class SyncService {
           );
           if (localPath != null) {
             downloaded++;
-            print('✅ Image downloaded: $imageId -> $localPath');
+            debugPrint('✅ Image downloaded: $imageId -> $localPath');
           }
         } catch (e) {
-          print('❌ Failed to download image $imageId: $e');
+          debugPrint('❌ Failed to download image $imageId: $e');
           errors.add(imageId);
         }
       }
@@ -500,7 +515,7 @@ class SyncService {
         'errors': errors,
       };
     } catch (e) {
-      print('❌ Image download error: $e');
+      debugPrint('❌ Image download error: $e');
       return {'success': false, 'error': e.toString(), 'downloaded': 0};
     }
   }
@@ -520,13 +535,11 @@ class SyncService {
         fullUrl = serverUrl;
       } else {
         // ⭐ FIX: Remove '/api' from baseUrl for image downloads
-        // baseUrl = http://10.21.79.141:5000/api
-        // imageBaseUrl = http://10.21.79.141:5000
         final imageBaseUrl = baseUrl.replaceAll('/api', '');
         fullUrl = '$imageBaseUrl$serverUrl';
       }
 
-      print('📥 Downloading image from: $fullUrl');
+      debugPrint('📥 Downloading image from: $fullUrl');
 
       // Download image
       final response = await http
@@ -537,7 +550,7 @@ class SyncService {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
-        print('❌ Download failed: ${response.statusCode}');
+        debugPrint('❌ Download failed: ${response.statusCode}');
         return null;
       }
 
@@ -559,7 +572,7 @@ class SyncService {
       final file = File(localPath);
       await file.writeAsBytes(response.bodyBytes);
 
-      print('💾 Image saved to: $localPath');
+      debugPrint('💾 Image saved to: $localPath');
 
       // Update database with local path
       final db = await _db.database;
@@ -572,33 +585,36 @@ class SyncService {
 
       return localPath;
     } catch (e) {
-      print('❌ Image download error: $e');
+      debugPrint('❌ Image download error: $e');
       return null;
     }
   }
 
   // ================= SYNC TIMESTAMP MANAGEMENT =================
+  // ⭐ CHANGED: Use Flutter Secure Storage instead of database
 
+  /// Get last sync timestamp from secure storage
   Future<String?> _getLastSyncTimestamp() async {
-    final db = await _db.database;
-    final result = await db.query(
-      'reference_table_versions',
-      where: 'ref_table_name = ?',
-      whereArgs: ['disease_analysis_sync'],
-      limit: 1,
-    );
-
-    return result.isNotEmpty ? result.first['updated_at'] as String : null;
+    try {
+      final timestamp = await _storage.read(key: 'disease_analysis_last_sync');
+      debugPrint('📅 Last sync timestamp from storage: $timestamp');
+      return timestamp;
+    } catch (e) {
+      debugPrint('⚠️ Error reading last sync timestamp: $e');
+      return null;
+    }
   }
 
+  /// Update last sync timestamp in secure storage
   Future<void> _updateLastSyncTimestamp(String? timestamp) async {
     if (timestamp == null) return;
 
-    final db = await _db.database;
-    await db.insert('reference_table_versions', {
-      'ref_table_name': 'disease_analysis_sync',
-      'updated_at': timestamp,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    try {
+      await _storage.write(key: 'disease_analysis_last_sync', value: timestamp);
+      debugPrint('✅ Saved last sync timestamp to storage: $timestamp');
+    } catch (e) {
+      debugPrint('⚠️ Error saving last sync timestamp: $e');
+    }
   }
 
   // ================= UTILITIES =================

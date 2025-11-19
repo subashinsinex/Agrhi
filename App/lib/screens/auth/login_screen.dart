@@ -1,16 +1,17 @@
+// lib/screens/auth/login_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:jwt_decoder/jwt_decoder.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../shared/widgets/language_switcher.dart';
+import '../shared/widgets/smart_retranslator.dart';
 import '../../utils/colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
-import '../../../src/services/language_service.dart';
+import '../../src/services/language_service.dart';
 import '../../src/database/database_helper.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -30,102 +31,44 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  Map<String, String> translatedTexts = {
-    'signIn': 'Sign In',
-    'loginSuccessful': 'Login Successful',
-    'phoneNumber': 'Phone Number',
-    'password': 'Password',
-    'dontHaveAccount': "Don't have an account?",
-    'signUp': 'Sign Up',
-    'skipForDemo': 'Skip for demo',
-  };
-
-  String _currentLanguage = '';
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadTranslations();
+      _preloadTranslations();
     });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final languageService = Provider.of<LanguageService>(context);
-    if (_currentLanguage != languageService.currentLocale.languageCode) {
-      _currentLanguage = languageService.currentLocale.languageCode;
-      _loadTranslations();
-    }
-  }
-
-  Future<void> _loadTranslations() async {
-    if (!mounted) return;
-
+  // ✅ Preload translations for instant display
+  Future<void> _preloadTranslations() async {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
-    final languageCode = languageService.currentLocale.languageCode;
 
-    // Try to load from cache first
-    final cached = await _getCachedTranslations(languageCode);
-    if (cached != null) {
-      setState(() => translatedTexts = cached);
-    }
-
-    // Fetch fresh translations in background
-    final keys = {
-      'signIn': 'Sign In',
-      'loginSuccessful': 'Login Successful',
-      'phoneNumber': 'Phone Number',
-      'password': 'Password',
-      'dontHaveAccount': "Don't have an account?",
-      'signUp': 'Sign Up',
-    };
-
-    Map<String, String> newTranslated = {};
-    for (var entry in keys.entries) {
-      newTranslated[entry.key] = await languageService.translate(entry.value);
-    }
-
-    // Cache and update
-    await _cacheTranslations(languageCode, newTranslated);
-    if (mounted) {
-      setState(() => translatedTexts = newTranslated);
-    }
+    await languageService.preloadTexts([
+      'Sign In',
+      'Login Successful',
+      'Phone Number',
+      'Password',
+      "Don't have an account?",
+      'Sign Up',
+      'Smart Farm App',
+      'Invalid phone number or password',
+      'Server error. Please try again later',
+      'Login failed',
+      'No internet connection',
+      'Request timeout. Please try again',
+      'Enter a valid phone number',
+      'Password must be at least 6 characters',
+    ], highPriority: true);
   }
 
-  Future<Map<String, String>?> _getCachedTranslations(
-    String languageCode,
-  ) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString('translations_$languageCode');
-      if (cached != null) {
-        final Map<String, dynamic> decoded = jsonDecode(cached);
-        return decoded.map((key, value) => MapEntry(key, value.toString()));
-      }
-    } catch (e) {
-      debugPrint('Cache read error: $e');
-    }
-    return null;
-  }
-
-  Future<void> _cacheTranslations(
-    String languageCode,
-    Map<String, String> translations,
-  ) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        'translations_$languageCode',
-        jsonEncode(translations),
-      );
-    } catch (e) {
-      debugPrint('Cache write error: $e');
-    }
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   // Fetch user profile from server
@@ -153,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       return null;
     } catch (e) {
-      debugPrint('Error fetching profile: $e');
+      debugPrint('❌ Error fetching profile: $e');
       return null;
     }
   }
@@ -164,23 +107,9 @@ class _LoginScreenState extends State<LoginScreen> {
     await storage.write(key: 'user_profile', value: jsonEncode(profileData));
   }
 
-  Future<void> clearAllSecureStorage() async {
-    const storage = FlutterSecureStorage();
-
-    await storage.deleteAll();
-
-    print('✅ All secure storage data deleted');
-  }
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
   Future<void> _handleLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
     setState(() => _isLoading = true);
 
     try {
@@ -206,20 +135,22 @@ class _LoginScreenState extends State<LoginScreen> {
         final accessToken = responseData['access_token'] as String;
         final refreshToken = responseData['refresh_token'] as String;
 
-        // Store tokens with expiration check
-        final storage = const FlutterSecureStorage();
+        // Store tokens
+        const storage = FlutterSecureStorage();
         await storage.write(key: 'access_token', value: accessToken);
         await storage.write(key: 'refresh_token', value: refreshToken);
 
+        // Decode and store user ID
         String? userId;
         try {
           final decodedToken = JwtDecoder.decode(accessToken);
           userId = decodedToken['user_id']?.toString();
           await storage.write(key: 'user_id', value: userId);
         } catch (e) {
-          debugPrint('Token decode error: $e');
+          debugPrint('❌ Token decode error: $e');
         }
-        // Fetch and store user profile if userId is available
+
+        // Fetch and store user profile
         if (userId != null) {
           final profileData = await _fetchUserProfile(accessToken, userId);
           if (profileData != null) {
@@ -227,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         }
 
-        // Store expiration time
+        // Store token expiration
         try {
           final expiryDate = JwtDecoder.getExpirationDate(accessToken);
           await storage.write(
@@ -235,24 +166,23 @@ class _LoginScreenState extends State<LoginScreen> {
             value: expiryDate.toIso8601String(),
           );
         } catch (e) {
-          debugPrint('Token decode error: $e');
+          debugPrint('❌ Token expiry decode error: $e');
         }
 
+        // Sync catalogs
         final syncResult = await DatabaseHelper.instance.smartSyncCatalogs(
-          accessToken);
-          
+          accessToken,
+        );
+
         if (syncResult['success']) {
-          print('✅ Synced ${syncResult['updated']} tables');
+          debugPrint('✅ Synced ${syncResult['updated']} tables');
         } else {
-          print('⚠️ ${syncResult['message']}');
+          debugPrint('⚠️ ${syncResult['message']}');
         }
 
         if (!mounted) return;
-        _showSnackBar(
-          translatedTexts['loginSuccessful'] ?? 'Login Successful',
-          AppColors.successColor,
-          Icons.check_circle,
-        );
+
+        _showSuccessSnackBar('Login Successful');
         Routes.navigateToDashboard(context);
       } else if (response.statusCode == 401) {
         throw 'Invalid phone number or password';
@@ -271,26 +201,54 @@ class _LoginScreenState extends State<LoginScreen> {
         errorMessage = 'Request timeout. Please try again';
       }
 
-      _showSnackBar(errorMessage, AppColors.errorColor, Icons.error);
+      _showErrorSnackBar(errorMessage);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showSnackBar(String message, Color color, IconData icon) {
+  void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(icon, color: Colors.white),
+            const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
-            Expanded(child: Text(message)),
+            Expanded(
+              child: SmartReTranslator(
+                text: message,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
           ],
         ),
-        backgroundColor: color,
+        backgroundColor: AppColors.successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: Duration(seconds: color == AppColors.errorColor ? 4 : 2),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SmartReTranslator(
+                text: message,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.errorColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -319,6 +277,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             const SizedBox(height: 60),
+
+                            // Logo Section
                             Column(
                               children: [
                                 CircleAvatar(
@@ -341,8 +301,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
-                                  'Smart Farm App',
+                                const SmartReTranslator(
+                                  text: 'Smart Farm App',
                                   style: TextStyle(
                                     fontSize: 16,
                                     color: AppColors.textSecondary,
@@ -351,56 +311,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
+
+                            // Form Section
                             Column(
                               children: [
-                                TextFormField(
+                                _PhoneNumberField(
                                   controller: _phoneController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['phoneNumber'] ??
-                                        'Phone Number',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.phone,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.phone,
-                                  validator: Validators.validatePhone,
                                   enabled: !_isLoading,
                                 ),
                                 const SizedBox(height: 16),
-                                TextFormField(
+                                _PasswordField(
                                   controller: _passwordController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['password'] ??
-                                        'Password',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.lock,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscurePassword
-                                            ? Icons.visibility
-                                            : Icons.visibility_off,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                      onPressed: () => setState(
-                                        () => _obscurePassword =
-                                            !_obscurePassword,
-                                      ),
-                                    ),
-                                  ),
-                                  obscureText: _obscurePassword,
-                                  validator: Validators.validatePassword,
+                                  obscurePassword: _obscurePassword,
                                   enabled: !_isLoading,
+                                  onToggleVisibility: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
                                 ),
                                 const SizedBox(height: 24),
                                 SizedBox(
@@ -408,6 +336,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                   height: 56,
                                   child: ElevatedButton(
                                     onPressed: _isLoading ? null : _handleLogin,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primaryGreen,
+                                      foregroundColor: Colors.white,
+                                      disabledBackgroundColor: AppColors
+                                          .primaryGreen
+                                          .withOpacity(0.6),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 2,
+                                    ),
                                     child: _isLoading
                                         ? const SizedBox(
                                             width: 24,
@@ -420,10 +359,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                                   ),
                                             ),
                                           )
-                                        : Text(
-                                            translatedTexts['signIn'] ??
-                                                'Sign In',
-                                            style: const TextStyle(
+                                        : const SmartReTranslator(
+                                            text: 'Sign In',
+                                            style: TextStyle(
                                               fontSize: 18,
                                               fontWeight: FontWeight.bold,
                                               letterSpacing: 1,
@@ -433,28 +371,38 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
+
+                            // Sign Up Link
                             GestureDetector(
                               onTap: _isLoading
                                   ? null
                                   : () => Routes.navigateToSignup(context),
                               child: RichText(
                                 text: TextSpan(
-                                  text:
-                                      translatedTexts['dontHaveAccount'] ??
-                                      "Don't have an account? ",
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     color: AppColors.textSecondary,
                                     fontSize: 16,
                                   ),
                                   children: [
-                                    TextSpan(
-                                      text:
-                                          translatedTexts['signUp'] ??
-                                          'Sign Up',
-                                      style: TextStyle(
-                                        color: AppColors.primaryGreen,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
+                                    const WidgetSpan(
+                                      alignment: PlaceholderAlignment.baseline,
+                                      baseline: TextBaseline.alphabetic,
+                                      child: SmartReTranslator(
+                                        text: "Don't have an account?",
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                    ),
+                                    const TextSpan(text: ' '),
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.baseline,
+                                      baseline: TextBaseline.alphabetic,
+                                      child: SmartReTranslator(
+                                        text: 'Sign Up',
+                                        style: TextStyle(
+                                          color: AppColors.primaryGreen,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -469,6 +417,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               },
             ),
+
+            // Language Switcher
             Positioned(
               top: 16,
               right: 16,
@@ -490,6 +440,126 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ✅ Separate widgets for better organization and performance
+class _PhoneNumberField extends StatelessWidget {
+  final TextEditingController controller;
+  final bool enabled;
+
+  const _PhoneNumberField({required this.controller, required this.enabled});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: null,
+        hintText: null,
+        label: const SmartReTranslator(
+          text: 'Phone Number',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        prefixIcon: Icon(Icons.phone, color: AppColors.primaryGreen),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.primaryGreen.withOpacity(0.3),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.primaryGreen.withOpacity(0.3),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.errorColor),
+        ),
+      ),
+      keyboardType: TextInputType.phone,
+      validator: (value) {
+        final error = Validators.validatePhone(value);
+        if (error != null) {
+          // Validation errors are already in English, will be translated by error display
+          return error;
+        }
+        return null;
+      },
+      enabled: enabled,
+    );
+  }
+}
+
+class _PasswordField extends StatelessWidget {
+  final TextEditingController controller;
+  final bool obscurePassword;
+  final bool enabled;
+  final VoidCallback onToggleVisibility;
+
+  const _PasswordField({
+    required this.controller,
+    required this.obscurePassword,
+    required this.enabled,
+    required this.onToggleVisibility,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: null,
+        hintText: null,
+        label: const SmartReTranslator(
+          text: 'Password',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        prefixIcon: Icon(Icons.lock, color: AppColors.primaryGreen),
+        suffixIcon: IconButton(
+          icon: Icon(
+            obscurePassword ? Icons.visibility : Icons.visibility_off,
+            color: AppColors.textSecondary,
+          ),
+          onPressed: onToggleVisibility,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.primaryGreen.withOpacity(0.3),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.primaryGreen.withOpacity(0.3),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.errorColor),
+        ),
+      ),
+      obscureText: obscurePassword,
+      validator: (value) {
+        final error = Validators.validatePassword(value);
+        if (error != null) {
+          return error;
+        }
+        return null;
+      },
+      enabled: enabled,
     );
   }
 }

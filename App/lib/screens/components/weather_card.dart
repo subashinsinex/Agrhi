@@ -5,8 +5,8 @@ import '../../src/services/weather_service.dart';
 import '../../src/services/language_service.dart';
 
 class WeatherCard extends StatefulWidget {
-  final String? location; // Make this optional
-  final bool useDeviceLocation; // New parameter
+  final String? location;
+  final bool useDeviceLocation;
   final Color? backgroundColor;
 
   const WeatherCard({
@@ -34,7 +34,9 @@ class _WeatherCardState extends State<WeatherCard> {
   @override
   void initState() {
     super.initState();
-    _loadTranslations().then((_) => _fetchWeather());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadTranslationsAndFetchWeather();
+    });
   }
 
   @override
@@ -43,8 +45,15 @@ class _WeatherCardState extends State<WeatherCard> {
     final langService = Provider.of<LanguageService>(context);
     if (_currentLanguage != langService.currentLocale.languageCode) {
       _currentLanguage = langService.currentLocale.languageCode;
-      _loadTranslations().then((_) => _fetchWeather());
+      // ✅ FIXED: Reload translations and refresh weather display
+      _loadTranslationsAndFetchWeather();
     }
+  }
+
+  // ✅ NEW: Combined method to load translations and fetch weather
+  Future<void> _loadTranslationsAndFetchWeather() async {
+    await _loadTranslations();
+    await _fetchWeather();
   }
 
   Future<void> _loadTranslations() async {
@@ -80,7 +89,7 @@ class _WeatherCardState extends State<WeatherCard> {
       setState(() => isLoading = true);
     }
 
-    if (isRefresh) {
+    if (isRefresh && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -106,10 +115,8 @@ class _WeatherCardState extends State<WeatherCard> {
       Weather weather;
 
       if (widget.useDeviceLocation) {
-        // Use device's current location
         weather = await WeatherService().getWeatherByCurrentLocation();
       } else if (widget.location != null) {
-        // Use provided location name
         weather = await WeatherService().getWeatherByPlace(widget.location!);
       } else {
         throw Exception('No location provided');

@@ -1,10 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../utils/colors.dart';
 import '../../src/database/database_helper.dart';
 import '../../utils/storage_helper.dart';
-import '../../src/services/language_service.dart';
+import '../shared/widgets/smart_retranslator.dart';
 
 /// Model for Disease History Item
 class DiseaseHistoryItem {
@@ -93,77 +92,6 @@ class DiseaseHistoryItem {
     } catch (_) {
       return createdAt;
     }
-  }
-}
-
-/// Smart widget for translation
-class SmartReTranslator extends StatefulWidget {
-  final String text;
-  final TextStyle? style;
-  final TextAlign? textAlign;
-
-  const SmartReTranslator({
-    super.key,
-    required this.text,
-    this.style,
-    this.textAlign,
-  });
-
-  @override
-  _SmartReTranslatorState createState() => _SmartReTranslatorState();
-}
-
-class _SmartReTranslatorState extends State<SmartReTranslator> {
-  late LanguageService languageService;
-  String displayedText = '';
-  bool _cacheLoaded = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    languageService = Provider.of<LanguageService>(context);
-
-    _getInitialTranslation();
-
-    if (!languageService.isInitialized) {
-      languageService.addListener(() {
-        if (languageService.isInitialized && !_cacheLoaded) {
-          _cacheLoaded = true;
-          _refreshTranslation();
-        }
-      });
-    } else {
-      _cacheLoaded = true;
-      _refreshTranslation();
-    }
-  }
-
-  void _getInitialTranslation() async {
-    final cacheKey = languageService.currentLocale.languageCode;
-    final cached = languageService.translationCache[cacheKey]?[widget.text];
-    if (mounted) {
-      setState(() {
-        displayedText = cached ?? widget.text;
-      });
-    }
-  }
-
-  void _refreshTranslation() async {
-    final translation = await languageService.translate(widget.text);
-    if (mounted) {
-      setState(() {
-        displayedText = translation;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      displayedText.isEmpty ? widget.text : displayedText,
-      style: widget.style,
-      textAlign: widget.textAlign,
-    );
   }
 }
 
@@ -520,7 +448,7 @@ class _DiseaseHistoryCard extends StatelessWidget {
                           AppColors.primaryGreen,
                         ),
                       ],
-                    )
+                    ),
                   ],
                 ),
               ),
@@ -531,7 +459,6 @@ class _DiseaseHistoryCard extends StatelessWidget {
     );
   }
 
-  
   String _formatDate(String dateString) {
     try {
       final date = DateTime.parse(dateString);

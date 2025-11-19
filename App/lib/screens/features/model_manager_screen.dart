@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../src/services/model_manager_provider.dart';
 import '../../src/services/model_download_service.dart';
+import '../../src/services/language_service.dart';
+import '../../screens/shared/widgets/smart_retranslator.dart'; // ✅ ADD THIS
 import '../../utils/colors.dart';
 
 class ModelManagerScreen extends StatefulWidget {
@@ -31,7 +33,51 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ModelManagerProvider>().initialize();
+      _preloadPhrases();
     });
+  }
+
+  // ✅ NEW: Preload all translations
+  Future<void> _preloadPhrases() async {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    await languageService.preloadTexts([
+      'Model Library',
+      'Loading models...',
+      'Available Models',
+      'crops',
+      'AI Models Library',
+      'MB',
+      'Download in Progress',
+      'Models are currently downloading. Leaving now will cancel all ongoing downloads. You can re-download them anytime.\n\nDo you want to exit?',
+      'Stay',
+      'Cancel Downloads & Exit',
+      'Downloading...',
+      'Ready',
+      'Delete Model',
+      'Are you sure you want to delete the',
+      'model? This will free up',
+      'of storage.',
+      'Cancel',
+      'Delete',
+      'model deleted successfully',
+      'model downloaded successfully',
+      'Download failed',
+      // Add all crop names
+      'Corn',
+      'Rice',
+      'Cotton',
+      'Banana',
+      'Coffee',
+      'Tomato',
+      'Coconut',
+      'Sugarcane',
+      'Wheat',
+      'Groundnut',
+    ], highPriority: true);
   }
 
   @override
@@ -71,17 +117,21 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             children: [
               Icon(Icons.warning_amber_rounded, color: AppColors.errorColor),
               const SizedBox(width: 12),
-              const Text('Download in Progress'),
+              const SmartReTranslator(
+                text: 'Download in Progress',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
             ],
           ),
-          content: const Text(
-            'Models are currently downloading. Leaving now will cancel all ongoing downloads. '
-            'You can re-download them anytime.\n\nDo you want to exit?',
+          content: const SmartReTranslator(
+            text:
+                'Models are currently downloading. Leaving now will cancel all ongoing downloads. You can re-download them anytime.\n\nDo you want to exit?',
+            style: TextStyle(fontSize: 14),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Stay'),
+              child: const SmartReTranslator(text: 'Stay', style: TextStyle()),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
@@ -91,7 +141,10 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text('Cancel Downloads & Exit'),
+              child: const SmartReTranslator(
+                text: 'Cancel Downloads & Exit',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -128,11 +181,19 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
           },
           child: Scaffold(
             appBar: AppBar(
-              title: const Text('AI Model Manager'),
+              title: SmartReTranslator(
+                key: ValueKey(
+                  'appbar_title_${Provider.of<LanguageService>(context).currentLocale.languageCode}',
+                ),
+                text: 'Model Library',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => _handleBackNavigation(provider),
               ),
+              backgroundColor: AppColors.primaryGreen,
+              foregroundColor: Colors.white,
             ),
             backgroundColor: AppColors.backgroundColor,
             body: _buildBody(provider),
@@ -150,8 +211,8 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
           children: [
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
-            Text(
-              'Loading models...',
+            SmartReTranslator(
+              text: 'Loading models...',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
             ),
           ],
@@ -194,8 +255,8 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
               child: Row(
                 children: [
-                  Text(
-                    'Available Models',
+                  const SmartReTranslator(
+                    text: 'Available Models',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -203,12 +264,23 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                     ),
                   ),
                   const Spacer(),
-                  Text(
-                    '$totalCount crops',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        '$totalCount ',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SmartReTranslator(
+                        text: 'crops',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -300,8 +372,8 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'AI Models Library',
+                    const SmartReTranslator(
+                      text: 'AI Models Library',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 20,
@@ -461,8 +533,8 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        cropName,
+                      SmartReTranslator(
+                        text: cropName,
                         style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w600,
@@ -484,7 +556,7 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                                       minHeight: 6,
                                       backgroundColor: AppColors.primaryGreen
                                           .withOpacity(0.15),
-                                      valueColor: AlwaysStoppedAnimation(
+                                      valueColor: const AlwaysStoppedAnimation(
                                         AppColors.primaryGreen,
                                       ),
                                     ),
@@ -493,7 +565,7 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                                 const SizedBox(width: 12),
                                 Text(
                                   '${(progress * 100).toInt()}%',
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                     color: AppColors.primaryGreen,
@@ -502,8 +574,8 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                               ],
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              'Downloading...',
+                            const SmartReTranslator(
+                              text: 'Downloading...',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: AppColors.textSecondary,
@@ -514,14 +586,22 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                       else
                         Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.storage_outlined,
                               size: 14,
                               color: AppColors.textSecondary,
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '${info.size.toStringAsFixed(1)} MB',
+                              '${info.size.toStringAsFixed(1)} ',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SmartReTranslator(
+                              text: 'MB',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: AppColors.textSecondary,
@@ -541,7 +621,7 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                                   ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: Row(
+                                child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
@@ -549,9 +629,9 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                                       size: 12,
                                       color: AppColors.successColor,
                                     ),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      'Ready',
+                                    SizedBox(width: 3),
+                                    SmartReTranslator(
+                                      text: 'Ready',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
@@ -666,18 +746,49 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             children: [
               Icon(Icons.delete_outline, color: AppColors.errorColor),
               const SizedBox(width: 12),
-              const Text('Delete Model'),
+              const SmartReTranslator(
+                text: 'Delete Model',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
             ],
           ),
-          content: Text(
-            'Are you sure you want to delete the $cropName model? '
-            'This will free up ${ModelDownloadService.modelInfo[cropName]!.size.toStringAsFixed(1)} MB of storage.',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SmartReTranslator(
+                text: 'Are you sure you want to delete the',
+                style: TextStyle(fontSize: 14),
+              ),
+              Text(
+                ' $cropName ',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SmartReTranslator(
+                text: 'model? This will free up',
+                style: TextStyle(fontSize: 14),
+              ),
+              Text(
+                ' ${ModelDownloadService.modelInfo[cropName]!.size.toStringAsFixed(1)} MB ',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SmartReTranslator(
+                text: 'of storage.',
+                style: TextStyle(fontSize: 14),
+              ),
+            ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: Text(
-                'Cancel',
+              child: const SmartReTranslator(
+                text: 'Cancel',
                 style: TextStyle(color: AppColors.textSecondary),
               ),
             ),
@@ -689,7 +800,10 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text('Delete'),
+              child: const SmartReTranslator(
+                text: 'Delete',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -704,7 +818,21 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                 children: [
                   const Icon(Icons.check_circle, color: Colors.white),
                   const SizedBox(width: 12),
-                  Text('$cropName model deleted successfully'),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        SmartReTranslator(
+                          text: cropName,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        const Text(' ', style: TextStyle(color: Colors.white)),
+                        const SmartReTranslator(
+                          text: 'model deleted successfully',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               backgroundColor: AppColors.infoColor,
@@ -726,7 +854,21 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                 children: [
                   const Icon(Icons.check_circle, color: Colors.white),
                   const SizedBox(width: 12),
-                  Text('$cropName model downloaded successfully'),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        SmartReTranslator(
+                          text: cropName,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        const Text(' ', style: TextStyle(color: Colors.white)),
+                        const SmartReTranslator(
+                          text: 'model downloaded successfully',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               backgroundColor: AppColors.successColor,
@@ -745,7 +887,20 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                 children: [
                   const Icon(Icons.error_outline, color: Colors.white),
                   const SizedBox(width: 12),
-                  Expanded(child: Text('Download failed: $e')),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const SmartReTranslator(
+                          text: 'Download failed',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        Text(
+                          ': $e',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               backgroundColor: AppColors.errorColor,

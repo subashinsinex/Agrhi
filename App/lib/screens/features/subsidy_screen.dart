@@ -1,12 +1,11 @@
 // lib/src/screens/features/subsidy_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/colors.dart';
+import '../shared/widgets/smart_retranslator.dart';
 import '../../utils/storage_helper.dart';
-import '../../src/services/language_service.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/connectivity_service.dart';
 import '../../utils/constants.dart';
@@ -33,77 +32,6 @@ class Subsidy {
       description: json['description'] ?? '',
       link: json['link'] ?? '',
       stateName: json['state_name'] ?? '',
-    );
-  }
-}
-
-// Smart widget for translation that uses cache then re-translates once cache is ready
-class SmartReTranslator extends StatefulWidget {
-  final String text;
-  final TextStyle? style;
-  final TextAlign? textAlign;
-
-  const SmartReTranslator({
-    super.key,
-    required this.text,
-    this.style,
-    this.textAlign,
-  });
-
-  @override
-  _SmartReTranslatorState createState() => _SmartReTranslatorState();
-}
-
-class _SmartReTranslatorState extends State<SmartReTranslator> {
-  late LanguageService languageService;
-  String displayedText = '';
-  bool _cacheLoaded = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    languageService = Provider.of<LanguageService>(context);
-
-    _getInitialTranslation();
-
-    if (!languageService.isInitialized) {
-      languageService.addListener(() {
-        if (languageService.isInitialized && !_cacheLoaded) {
-          _cacheLoaded = true;
-          _refreshTranslation();
-        }
-      });
-    } else {
-      _cacheLoaded = true;
-      _refreshTranslation();
-    }
-  }
-
-  void _getInitialTranslation() async {
-    final cacheKey = languageService.currentLocale.languageCode;
-    final cached = languageService.translationCache[cacheKey]?[widget.text];
-    if (mounted) {
-      setState(() {
-        displayedText = cached ?? widget.text;
-      });
-    }
-  }
-
-  void _refreshTranslation() async {
-    final translation = await languageService.translate(widget.text);
-    if (mounted) {
-      setState(() {
-        displayedText = translation;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      displayedText.isEmpty ? widget.text : displayedText,
-      style: widget.style,
-      textAlign: widget.textAlign,
     );
   }
 }

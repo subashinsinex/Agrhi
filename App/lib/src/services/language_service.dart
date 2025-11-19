@@ -1,13 +1,15 @@
+// language_service.dart
+import 'dart:async' show Completer, Timer, unawaited;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_translation/google_mlkit_translation.dart';
-import 'dart:convert';
-import 'dart:async' show unawaited, Completer;
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:quiver/cache.dart';
 
 class LanguageService extends ChangeNotifier {
   static const String _languageKey = 'selected_language';
   static const String _downloadedModelsKey = 'downloaded_models';
-  static const String _cacheKey = 'translation_cache';
+  static const String _hiveBoxName = 'translation_cache';
   static const Locale defaultLocale = Locale('en');
 
   Locale _currentLocale = defaultLocale;
@@ -21,18 +23,78 @@ class LanguageService extends ChangeNotifier {
   final Map<String, double> _downloadProgress = {};
   final Map<String, bool> _isDownloading = {};
 
-  // Translation cache
-  final Map<String, Map<String, String>> _translationCache = {};
-  Map<String, Map<String, String>> get translationCache => _translationCache;
+  final Map<String, MapCache<String, String>> _translationCache = {};
+  final Map<String, Set<String>> _cachedKeys = {};
 
-  // Race condition prevention
+  // NOTE: the synchronous getter can't await async cache.get() calls.
+  // Keep a light-weight synchronous snapshot (keys list) for quick inspections.
+  Map<String, Map<String, String>> get translationCache {
+    final result = <String, Map<String, String>>{};
+    _cachedKeys.forEach((langCode, keys) {
+      final map = <String, String>{};
+      for (final key in keys) {
+        // We don't await here (getter must be sync). Provide key => key placeholder.
+        // Use getTranslationCacheAsync() to obtain actual translations.
+        map[key] = key;
+      }
+      result[langCode] = map;
+    });
+    return result;
+  }
+
+  /// Use this when you need the actual cached translated values (async).
+  Future<Map<String, Map<String, String>>> getTranslationCacheAsync() async {
+    final result = <String, Map<String, String>>{};
+    for (final lang in _cachedKeys.keys) {
+      final map = <String, String>{};
+      final cache = _translationCache[lang];
+      if (cache == null) {
+        result[lang] = map;
+        continue;
+      }
+      for (final key in _cachedKeys[lang]!) {
+        try {
+          final v = await cache.get(key);
+          if (v != null) map[key] = v;
+        } catch (_) {
+          // ignore per-item errors
+        }
+      }
+      result[lang] = map;
+    }
+    return result;
+  }
+
+  MapCache<String, String> _getCacheForLanguage(String langCode) {
+    if (!_translationCache.containsKey(langCode)) {
+      _translationCache[langCode] = MapCache<String, String>.lru(
+        maximumSize: 1000,
+      );
+      _cachedKeys[langCode] = {};
+    }
+    return _translationCache[langCode]!;
+  }
+
+  Future<String?> _getCachedValue(String langCode, String key) async {
+    final cache = _translationCache[langCode];
+    if (cache == null) return null;
+    return await cache.get(key);
+  }
+
+  Future<void> _setCachedValue(
+    String langCode,
+    String key,
+    String value,
+  ) async {
+    final cache = _getCacheForLanguage(langCode);
+    await cache.set(key, value);
+    _cachedKeys[langCode]!.add(key);
+  }
+
   final Map<String, Completer<String>> _inFlightTranslations = {};
-
-  // Track untranslated texts
   final Set<String> _untranslatedTexts = {};
   Set<String> get untranslatedTexts => Set.from(_untranslatedTexts);
 
-  // Cache performance
   int _cacheHits = 0;
   int _cacheMisses = 0;
   int _duplicateRequestsPrevented = 0;
@@ -53,11 +115,9 @@ class LanguageService extends ChangeNotifier {
   bool get hasError => _hasError;
   Key get rebuildKey => _rebuildKey;
 
-  // ============ OPTIMIZED: Parallel translation limit ============
   static const int _maxParallelTranslations = 5;
   int _activeTranslations = 0;
 
-  // Critical phrases for instant switching
   static const List<String> criticalPhrases = [
     'Welcome',
     'Dashboard',
@@ -79,7 +139,6 @@ class LanguageService extends ChangeNotifier {
     'OK',
   ];
 
-  // Full list for background loading
   static const List<String> commonPhrases = [
     'Welcome',
     'Enjoy our Services',
@@ -138,6 +197,8 @@ class LanguageService extends ChangeNotifier {
   final OnDeviceTranslatorModelManager _modelManager =
       OnDeviceTranslatorModelManager();
 
+  Timer? _saveTimer;
+
   LanguageService() {
     _loadLanguage();
   }
@@ -156,8 +217,6 @@ class LanguageService extends ChangeNotifier {
       }
 
       _hasError = false;
-
-      // Load cache from disk
       await _loadCacheFromDisk();
 
       if (!_isDisposed) {
@@ -172,71 +231,99 @@ class LanguageService extends ChangeNotifier {
 
   Future<void> _loadCacheFromDisk() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheJson = prefs.getString(_cacheKey);
+      final box = Hive.box(_hiveBoxName);
 
-      if (cacheJson != null && cacheJson.isNotEmpty) {
-        final Map<String, dynamic> decoded = json.decode(cacheJson);
-        _translationCache.clear();
+      for (final langCode in supportedLocales.map((l) => l.languageCode)) {
+        final cached = box.get(langCode);
+        if (cached != null && cached is Map) {
+          final cache = _getCacheForLanguage(langCode);
+          final keys = <String>{};
 
-        decoded.forEach((langCode, translations) {
-          _translationCache[langCode] = Map<String, String>.from(
-            translations as Map,
-          );
-        });
+          for (final entry in (cached).entries) {
+            if (entry.key is String && entry.value is String) {
+              await cache.set(entry.key as String, entry.value as String);
+              keys.add(entry.key as String);
+            }
+          }
 
-        debugPrint(
-          '✅ Loaded cache: ${_translationCache.keys.length} languages, '
-          '${_translationCache.values.fold(0, (sum, map) => sum + map.length)} total phrases',
-        );
+          _cachedKeys[langCode] = keys;
+        }
       }
+
+      final totalPhrases = _cachedKeys.values.fold(
+        0,
+        (sum, set) => sum + set.length,
+      );
+      debugPrint(
+        '✅ Loaded from Hive: ${_translationCache.keys.length} languages, $totalPhrases phrases',
+      );
     } catch (e) {
-      debugPrint('⚠️ Failed to load cache: $e');
+      debugPrint('⚠️ Failed to load cache from Hive: $e');
       _translationCache.clear();
+      _cachedKeys.clear();
     }
   }
 
   Future<void> _saveCacheToDisk() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheJson = json.encode(_translationCache);
-      await prefs.setString(_cacheKey, cacheJson);
+      final box = Hive.box(_hiveBoxName);
 
-      final totalPhrases = _translationCache.values.fold(
+      for (final entry in _translationCache.entries) {
+        final langCode = entry.key;
+        final cache = entry.value;
+        final keys = _cachedKeys[langCode] ?? {};
+
+        final cacheMap = <String, String>{};
+        for (final key in keys) {
+          final value = await cache.get(key);
+          if (value != null) {
+            cacheMap[key] = value;
+          }
+        }
+
+        await box.put(langCode, cacheMap);
+      }
+
+      final totalPhrases = _cachedKeys.values.fold(
         0,
-        (sum, map) => sum + map.length,
+        (sum, set) => sum + set.length,
       );
-      debugPrint('💾 Cache saved: $totalPhrases phrases');
+      debugPrint('💾 Saved to Hive: $totalPhrases phrases');
     } catch (e) {
-      debugPrint('⚠️ Failed to save cache: $e');
+      debugPrint('⚠️ Failed to save to Hive: $e');
     }
   }
 
-  // ============ OPTIMIZED: Batch preloading with throttling ============
+  void _scheduleSave({Duration debounce = const Duration(seconds: 2)}) {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(debounce, () {
+      unawaited(_saveCacheToDisk());
+    });
+  }
+
   Future<void> preloadTranslations({bool fullLoad = false}) async {
     if (_currentLocale.languageCode == 'en') {
       debugPrint('✓ English - no preload needed');
       return;
     }
 
-    final cacheKey = _currentLocale.languageCode;
+    final langCode = _currentLocale.languageCode;
     final phrasesToLoad = fullLoad ? commonPhrases : criticalPhrases;
 
-    if (_translationCache.containsKey(cacheKey) &&
-        _translationCache[cacheKey]!.length >= phrasesToLoad.length * 0.8) {
+    final keys = _cachedKeys[langCode] ?? {};
+    if (keys.length >= phrasesToLoad.length * 0.8) {
       debugPrint('✅ Already preloaded from cache');
       return;
     }
 
     debugPrint('⚡ Fast preloading ${phrasesToLoad.length} phrases...');
 
-    _translationCache[cacheKey] = _translationCache[cacheKey] ?? {};
+    _getCacheForLanguage(langCode);
 
     int loaded = 0;
     int fromCache = 0;
     int newTranslations = 0;
 
-    // Process in batches of 5 for optimal speed
     for (int i = 0; i < phrasesToLoad.length; i += _maxParallelTranslations) {
       final batch = phrasesToLoad
           .skip(i)
@@ -244,26 +331,26 @@ class LanguageService extends ChangeNotifier {
           .toList();
 
       final futures = batch.map((phrase) async {
-        if (_translationCache[cacheKey]!.containsKey(phrase)) {
+        final cached = await _getCachedValue(langCode, phrase);
+        if (cached != null) {
           fromCache++;
           return;
         }
 
         try {
           final translated = await _translateText(phrase);
-          _translationCache[cacheKey]![phrase] = translated;
+          await _setCachedValue(langCode, phrase, translated);
           newTranslations++;
         } catch (e) {
-          debugPrint('⚠️ Failed: $phrase');
+          debugPrint('⚠️ Failed: $phrase -> $e');
         }
       }).toList();
 
       await Future.wait(futures);
       loaded = fromCache + newTranslations;
 
-      // Save periodically
       if (loaded % 10 == 0) {
-        await _saveCacheToDisk();
+        _scheduleSave();
       }
     }
 
@@ -272,7 +359,7 @@ class LanguageService extends ChangeNotifier {
       '($fromCache cached, $newTranslations new)',
     );
 
-    await _saveCacheToDisk();
+    _scheduleSave();
     notifyListeners();
 
     if (!fullLoad) {
@@ -287,31 +374,258 @@ class LanguageService extends ChangeNotifier {
     debugPrint('✅ Background complete');
   }
 
-  // ============ NEW: Preload specific texts (for dynamic content) ============
+  // Add to language_service.dart
+
+  // ✅ NEW: Translate with validation - only cache if successful
+  Future<String> translateWithValidation(String text) async {
+    if (_isDisposed || _hasError || text.trim().isEmpty) return text;
+
+    if (_currentLocale.languageCode == 'en') {
+      return text;
+    }
+
+    final langCode = _currentLocale.languageCode;
+
+    // Check cache first
+    final cached = await _getCachedValue(langCode, text);
+    if (cached != null && _isValidCachedTranslation(cached, text)) {
+      _cacheHits++;
+      debugPrint('✅ Cache hit: $text → $cached');
+      return cached;
+    }
+
+    // Check if already translating
+    if (_inFlightTranslations.containsKey(text)) {
+      _duplicateRequestsPrevented++;
+      try {
+        return await _inFlightTranslations[text]!.future;
+      } catch (e) {
+        return text;
+      }
+    }
+
+    _cacheMisses++;
+    _untranslatedTexts.add(text);
+
+    final completer = Completer<String>();
+    _inFlightTranslations[text] = completer;
+
+    _activeTranslations++;
+
+    try {
+      // ✅ CRITICAL: Translate with validation
+      final translated = await _translateTextWithValidation(text);
+
+      // ✅ Only cache if translation is valid
+      if (_isValidTranslation(translated, text)) {
+        await _setCachedValue(langCode, text, translated);
+        debugPrint('✅ Translation cached: $text → $translated');
+
+        _untranslatedTexts.remove(text);
+
+        if (!completer.isCompleted) {
+          completer.complete(translated);
+        }
+
+        // Schedule save
+        if ((_cachedKeys[langCode]?.length ?? 0) % 10 == 0) {
+          _scheduleSave();
+        }
+
+        return translated;
+      } else {
+        debugPrint('⚠️ Translation invalid, not caching: $text → $translated');
+
+        if (!completer.isCompleted) {
+          completer.complete(text); // Return original text
+        }
+
+        return text;
+      }
+    } catch (e) {
+      debugPrint('❌ Translation failed: $text - $e');
+
+      if (!completer.isCompleted) {
+        completer.complete(text);
+      }
+
+      return text;
+    } finally {
+      _activeTranslations--;
+      _inFlightTranslations.remove(text);
+    }
+  }
+
+  // ✅ NEW: Validate cached translation
+  bool _isValidCachedTranslation(String cached, String original) {
+    if (cached.isEmpty) return false;
+    if (cached == original && original.length > 5) return false;
+    if (cached.contains('ERROR') || cached.contains('null')) return false;
+    return true;
+  }
+
+  // ✅ NEW: Validate translation result
+  bool _isValidTranslation(String translation, String original) {
+    // Empty translation is invalid
+    if (translation.isEmpty) return false;
+
+    // Same as original might indicate failed translation (except short words)
+    if (translation == original && original.length > 5) {
+      debugPrint('⚠️ Translation same as original: $original');
+      return false;
+    }
+
+    // Check for error patterns
+    if (translation.contains('ERROR') ||
+        translation.contains('FAILED') ||
+        translation.contains('null') ||
+        translation.toLowerCase().contains('error')) {
+      debugPrint('⚠️ Translation contains error pattern: $translation');
+      return false;
+    }
+
+    // Translation should have reasonable length
+    if (translation.length < original.length * 0.3 && original.length > 10) {
+      debugPrint(
+        '⚠️ Translation too short: $original (${original.length}) → $translation (${translation.length})',
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  // ✅ IMPROVED: Translate with validation and retry
+  Future<String> _translateTextWithValidation(String text) async {
+    const maxAttempts = 3;
+    int attempt = 0;
+
+    while (attempt < maxAttempts) {
+      attempt++;
+
+      try {
+        if (_englishToTargetTranslator == null) {
+          await _prepareTranslators();
+          // Wait for translator to be ready
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+
+        if (_isDisposed || _englishToTargetTranslator == null) {
+          debugPrint('⚠️ Translator not available (attempt $attempt)');
+          if (attempt < maxAttempts) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+            continue;
+          }
+          return text;
+        }
+
+        // Direct en -> target
+        if (_sourceToEnglishTranslator == null) {
+          final translated = await _englishToTargetTranslator!
+              .translateText(text)
+              .timeout(
+                Duration(
+                  seconds: 15 + (attempt * 5),
+                ), // Longer timeout on retries
+                onTimeout: () {
+                  debugPrint(
+                    '⏱️ Translation timeout (attempt $attempt): $text',
+                  );
+                  return text;
+                },
+              );
+
+          // Validate before returning
+          if (_isValidTranslation(translated, text)) {
+            return translated;
+          }
+
+          debugPrint(
+            '⚠️ Invalid translation (attempt $attempt): $text → $translated',
+          );
+          if (attempt < maxAttempts) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+            continue;
+          }
+          return text;
+        }
+
+        // source -> en -> target
+        if (_sourceToEnglishTranslator != null &&
+            _englishToTargetTranslator != null) {
+          final englishText = await _sourceToEnglishTranslator!
+              .translateText(text)
+              .timeout(
+                Duration(seconds: 15 + (attempt * 5)),
+                onTimeout: () => text,
+              );
+
+          final translated = await _englishToTargetTranslator!
+              .translateText(englishText)
+              .timeout(
+                Duration(seconds: 15 + (attempt * 5)),
+                onTimeout: () => englishText,
+              );
+
+          if (_isValidTranslation(translated, text)) {
+            return translated;
+          }
+
+          debugPrint('⚠️ Invalid two-step translation (attempt $attempt)');
+          if (attempt < maxAttempts) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+            continue;
+          }
+          return text;
+        }
+
+        return text;
+      } catch (e) {
+        debugPrint('❌ Translation error (attempt $attempt): $e');
+
+        if (attempt < maxAttempts) {
+          await Future.delayed(Duration(milliseconds: 500 * attempt));
+          continue;
+        }
+
+        return text;
+      }
+    }
+
+    debugPrint('❌ Translation failed after $maxAttempts attempts: $text');
+    return text;
+  }
+
+  // ✅ UPDATE: Use validation in preloadTexts
   Future<void> preloadTexts(
     List<String> texts, {
     bool highPriority = false,
   }) async {
     if (_currentLocale.languageCode == 'en' || texts.isEmpty) return;
 
-    final cacheKey = _currentLocale.languageCode;
-    _translationCache[cacheKey] = _translationCache[cacheKey] ?? {};
+    final langCode = _currentLocale.languageCode;
+    _getCacheForLanguage(langCode);
 
-    // Filter out already cached texts
-    final uncachedTexts = texts
-        .where((text) => !_translationCache[cacheKey]!.containsKey(text))
-        .toList();
+    final uncachedTexts = <String>[];
+    for (final text in texts) {
+      final cached = await _getCachedValue(langCode, text);
+      if (cached == null || !_isValidCachedTranslation(cached, text)) {
+        uncachedTexts.add(text);
+      }
+    }
 
     if (uncachedTexts.isEmpty) {
-      debugPrint('✅ All ${texts.length} texts already cached');
+      debugPrint(
+        '✅ All ${texts.length} texts already cached with valid translations',
+      );
       return;
     }
 
-    debugPrint('⚡ Preloading ${uncachedTexts.length} texts...');
+    debugPrint('⚡ Preloading ${uncachedTexts.length}/${texts.length} texts...');
 
-    int translated = 0;
+    int successCount = 0;
+    int failCount = 0;
 
-    // Process in parallel batches
     for (int i = 0; i < uncachedTexts.length; i += _maxParallelTranslations) {
       final batch = uncachedTexts
           .skip(i)
@@ -320,32 +634,39 @@ class LanguageService extends ChangeNotifier {
 
       final futures = batch.map((text) async {
         try {
-          final result = await _translateText(text);
-          _translationCache[cacheKey]![text] = result;
-          translated++;
+          // Use validation method
+          final result = await translateWithValidation(text);
 
-          if (translated % 5 == 0) {
-            debugPrint('  ⏳ Progress: $translated/${uncachedTexts.length}');
+          if (_isValidTranslation(result, text)) {
+            successCount++;
+            if (successCount % 5 == 0) {
+              debugPrint(
+                '  ⏳ Progress: $successCount/${uncachedTexts.length} ✓ | $failCount ✗',
+              );
+            }
+          } else {
+            failCount++;
           }
         } catch (e) {
-          debugPrint('  ❌ Failed: ${text.substring(0, 30)}...');
+          failCount++;
+          debugPrint(
+            '  ❌ Failed: ${text.substring(0, text.length < 30 ? text.length : 30)}...',
+          );
         }
       }).toList();
 
       await Future.wait(futures);
 
-      // Save after each batch
-      if (highPriority || translated % 10 == 0) {
-        await _saveCacheToDisk();
+      if (highPriority || successCount % 10 == 0) {
+        _scheduleSave();
       }
     }
 
-    await _saveCacheToDisk();
-    debugPrint('✅ Preloaded $translated/${uncachedTexts.length} texts');
+    _scheduleSave();
+    debugPrint('✅ Preload complete: $successCount success, $failCount failed');
     notifyListeners();
   }
 
-  // ============ OPTIMIZED: Instant language switch ============
   Future<void> changeLanguage(Locale locale, {Locale? previousLocale}) async {
     if (_isDisposed) return;
 
@@ -378,10 +699,7 @@ class LanguageService extends ChangeNotifier {
         notifyListeners();
       }
 
-      // Critical phrases first (blocking)
       await preloadTranslations(fullLoad: false);
-
-      // Full list in background (non-blocking)
       unawaited(preloadTranslations(fullLoad: true));
     } catch (e) {
       debugPrint('Error changing language: $e');
@@ -411,14 +729,20 @@ class LanguageService extends ChangeNotifier {
         return;
       }
 
+      // If previous was english: create english->target
       if (_previousLocale.languageCode == 'en') {
         debugPrint('Creating: en -> ${_currentLocale.languageCode}');
 
         if (!_isDisposed) {
-          _englishToTargetTranslator = OnDeviceTranslator(
-            sourceLanguage: TranslateLanguage.english,
-            targetLanguage: currentLang,
-          );
+          try {
+            _englishToTargetTranslator = OnDeviceTranslator(
+              sourceLanguage: TranslateLanguage.english,
+              targetLanguage: currentLang,
+            );
+          } catch (e) {
+            debugPrint('Error creating english->target translator: $e');
+            _englishToTargetTranslator = null;
+          }
         }
         return;
       }
@@ -428,19 +752,25 @@ class LanguageService extends ChangeNotifier {
       );
 
       if (!_isDisposed) {
-        _sourceToEnglishTranslator = OnDeviceTranslator(
-          sourceLanguage: previousLang,
-          targetLanguage: TranslateLanguage.english,
-        );
+        try {
+          _sourceToEnglishTranslator = OnDeviceTranslator(
+            sourceLanguage: previousLang,
+            targetLanguage: TranslateLanguage.english,
+          );
 
-        _englishToTargetTranslator = OnDeviceTranslator(
-          sourceLanguage: TranslateLanguage.english,
-          targetLanguage: currentLang,
-        );
+          _englishToTargetTranslator = OnDeviceTranslator(
+            sourceLanguage: TranslateLanguage.english,
+            targetLanguage: currentLang,
+          );
+        } catch (e) {
+          debugPrint('Error creating translators: $e');
+          _sourceToEnglishTranslator = null;
+          _englishToTargetTranslator = null;
+        }
       }
     } catch (e) {
       debugPrint('Error preparing translators: $e');
-      rethrow;
+      // Do not rethrow - handle gracefully
     }
   }
 
@@ -463,7 +793,6 @@ class LanguageService extends ChangeNotifier {
     }
   }
 
-  // ============ OPTIMIZED: Translation with throttling ============
   Future<String> translate(String text) async {
     if (_isDisposed || _hasError || text.trim().isEmpty) return text;
 
@@ -471,16 +800,14 @@ class LanguageService extends ChangeNotifier {
       return text;
     }
 
-    final cacheKey = _currentLocale.languageCode;
+    final langCode = _currentLocale.languageCode;
 
-    // Check cache first
-    if (_translationCache.containsKey(cacheKey) &&
-        _translationCache[cacheKey]!.containsKey(text)) {
+    final cached = await _getCachedValue(langCode, text);
+    if (cached != null) {
       _cacheHits++;
-      return _translationCache[cacheKey]![text]!;
+      return cached;
     }
 
-    // Check if already being translated
     if (_inFlightTranslations.containsKey(text)) {
       _duplicateRequestsPrevented++;
       try {
@@ -490,7 +817,6 @@ class LanguageService extends ChangeNotifier {
       }
     }
 
-    // Cache miss
     _cacheMisses++;
     _untranslatedTexts.add(text);
 
@@ -502,10 +828,7 @@ class LanguageService extends ChangeNotifier {
     try {
       final translated = await _translateText(text);
 
-      if (!_translationCache.containsKey(cacheKey)) {
-        _translationCache[cacheKey] = {};
-      }
-      _translationCache[cacheKey]![text] = translated;
+      await _setCachedValue(langCode, text, translated);
 
       _untranslatedTexts.remove(text);
 
@@ -513,9 +836,9 @@ class LanguageService extends ChangeNotifier {
         completer.complete(translated);
       }
 
-      // Save every 10 translations
-      if (_translationCache[cacheKey]!.length % 10 == 0) {
-        await _saveCacheToDisk();
+      // schedule save debounced
+      if ((_cachedKeys[langCode]?.length ?? 0) % 10 == 0) {
+        _scheduleSave();
       }
 
       return translated;
@@ -537,7 +860,7 @@ class LanguageService extends ChangeNotifier {
 
     if (_isDisposed) return text;
 
-    // Single-step translation
+    // If target translator only (no source->en)
     if (_sourceToEnglishTranslator == null &&
         _englishToTargetTranslator != null) {
       try {
@@ -545,11 +868,12 @@ class LanguageService extends ChangeNotifier {
             .translateText(text)
             .timeout(const Duration(seconds: 15), onTimeout: () => text);
       } catch (e) {
+        debugPrint('_translateText direct english->target failed: $e');
         return text;
       }
     }
 
-    // Two-step translation
+    // If need to go previous->en->target
     if (_sourceToEnglishTranslator != null &&
         _englishToTargetTranslator != null) {
       try {
@@ -561,6 +885,7 @@ class LanguageService extends ChangeNotifier {
             .translateText(englishText)
             .timeout(const Duration(seconds: 15), onTimeout: () => englishText);
       } catch (e) {
+        debugPrint('_translateText via english failed: $e');
         return text;
       }
     }
@@ -582,23 +907,25 @@ class LanguageService extends ChangeNotifier {
   Future<void> clearCache([String? languageCode]) async {
     if (languageCode != null) {
       _translationCache.remove(languageCode);
+      _cachedKeys.remove(languageCode);
       debugPrint('🗑️ Cleared: $languageCode');
     } else {
       _translationCache.clear();
+      _cachedKeys.clear();
       _cacheHits = 0;
       _cacheMisses = 0;
       _duplicateRequestsPrevented = 0;
       debugPrint('🗑️ Cleared all cache');
     }
 
-    await _saveCacheToDisk();
+    _scheduleSave();
     notifyListeners();
   }
 
   Map<String, int> getCacheStats() {
     final stats = <String, int>{};
-    _translationCache.forEach((lang, translations) {
-      stats[lang] = translations.length;
+    _cachedKeys.forEach((lang, keys) {
+      stats[lang] = keys.length;
     });
     return stats;
   }
@@ -607,9 +934,9 @@ class LanguageService extends ChangeNotifier {
     return {
       'current_language': _currentLocale.languageCode,
       'cached_languages': _translationCache.keys.length,
-      'total_cached_phrases': _translationCache.values.fold(
+      'total_cached_phrases': _cachedKeys.values.fold(
         0,
-        (sum, map) => sum + map.length,
+        (sum, set) => sum + set.length,
       ),
       'cache_stats_by_language': getCacheStats(),
       'cache_hits': _cacheHits,
@@ -634,10 +961,10 @@ class LanguageService extends ChangeNotifier {
 
   List<String> getUntranslatedTexts() => _untranslatedTexts.toList();
 
-  bool isTextCached(String text) {
-    final cacheKey = _currentLocale.languageCode;
-    return _translationCache.containsKey(cacheKey) &&
-        _translationCache[cacheKey]!.containsKey(text);
+  Future<bool> isTextCached(String text) async {
+    final langCode = _currentLocale.languageCode;
+    final value = await _getCachedValue(langCode, text);
+    return value != null;
   }
 
   Future<void> _resetToEnglishOnError() async {
@@ -689,11 +1016,9 @@ class LanguageService extends ChangeNotifier {
       } catch (e) {}
     });
 
+    _saveTimer?.cancel();
     super.dispose();
   }
-
-  // [Include all model management methods from previous code]
-  // (isLanguageModelDownloaded, downloadLanguageModel, deleteLanguageModel, etc.)
 
   Future<bool> isLanguageModelDownloaded(String languageCode) async {
     try {

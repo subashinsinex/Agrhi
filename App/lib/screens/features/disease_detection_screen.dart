@@ -13,8 +13,9 @@ import '../../src/models/model_service.dart';
 import '../../src/models/crop_preprocessors.dart';
 import '../../src/models/disease_labels.dart';
 import '../../src/services/language_service.dart';
-import '../../src/services/model_download_service.dart'; // ADD THIS
+import '../../src/services/model_download_service.dart';
 import '../shared/widgets/custom_app_bar.dart';
+import '../shared/widgets/smart_retranslator.dart'; // ✅ ADD THIS
 import '../../utils/colors.dart';
 
 class DetectDiseaseScreen extends StatefulWidget {
@@ -26,9 +27,8 @@ class DetectDiseaseScreen extends StatefulWidget {
 
 class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     with TickerProviderStateMixin {
-  // CHANGED: Now populated dynamically from downloaded models
   List<String> availableCrops = [];
-  bool _isCheckingModels = true; // ADD THIS
+  bool _isCheckingModels = true;
 
   String? selectedCrop;
   String? imagePath;
@@ -41,9 +41,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   final ImagePicker _picker = ImagePicker();
   late AnimationController _progressController;
   late AnimationController _resultController;
-
-  Map<String, String> translatedTexts = {};
-  String _currentLanguage = '';
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -65,14 +62,67 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       vsync: this,
     );
 
-    // CHANGED: Check downloaded models first
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkDownloadedModels();
-      _loadTranslations();
+      _preloadPhrases(); // ✅ NEW: Preload translations
     });
   }
 
-  // NEW: Check which models are downloaded
+  // ✅ NEW: Preload all phrases for instant translation
+  Future<void> _preloadPhrases() async {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    final phrases = <String>[
+      'Select Crop',
+      'Select a crop',
+      'Capture Image',
+      'Take Photo',
+      'Choose From Gallery',
+      'Loading AI model...',
+      'Remove image',
+      'Processing image data...',
+      'Running  Disease Scanner...',
+      'Analyzing crop health...',
+      'Generating results...',
+      'Finalizing diagnosis...',
+      'Detection Results',
+      'Disease Label',
+      'Confidence',
+      'Error',
+      'Failed to load model for',
+      'Failed to pick image',
+      'Analysis failed',
+      'Dismiss',
+      'Progress',
+      'Plant Doctor',
+      'No Models Downloaded',
+      'You need to download at least one AI model to use Plant Doctor. Would you like to download models now?',
+      'Cancel',
+      'Download Models',
+      'Checking downloaded models...',
+      'No models downloaded',
+      'Manage',
+      'Analysis saved - syncing to server...',
+      'Save failed',
+      'Synced to server',
+      'analysis',
+      'images',
+    ];
+
+    // Add all crop names and disease labels
+    for (final crop in diseaseLabels.keys) {
+      phrases.add(crop);
+      for (final label in diseaseLabels[crop] ?? []) {
+        phrases.add(label.replaceAll('_', ' '));
+      }
+    }
+
+    await languageService.preloadTexts(phrases, highPriority: true);
+  }
+
   Future<void> _checkDownloadedModels() async {
     setState(() => _isCheckingModels = true);
 
@@ -104,7 +154,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     });
   }
 
-  // NEW: Show dialog and redirect to Model Manager
   void _showNoModelsDialog() {
     showDialog(
       context: context,
@@ -115,12 +164,16 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
           children: [
             Icon(Icons.download_outlined, color: AppColors.errorColor),
             const SizedBox(width: 12),
-            const Text('No Models Downloaded'),
+            const SmartReTranslator(
+              text: 'No Models Downloaded',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
-        content: const Text(
-          'You need to download at least one AI model to use disease detection. '
-          'Would you like to download models now?',
+        content: const SmartReTranslator(
+          text:
+              'You need to download at least one AI model to use Plant Doctor. Would you like to download models now?',
+          style: TextStyle(fontSize: 14),
         ),
         actions: [
           TextButton(
@@ -128,7 +181,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               Navigator.pop(context);
               Navigator.pop(context);
             },
-            child: const Text('Cancel'),
+            child: const SmartReTranslator(text: 'Cancel', style: TextStyle()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -142,21 +195,14 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: const Text('Download Models'),
+            child: const SmartReTranslator(
+              text: 'Download Models',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
     );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final languageService = Provider.of<LanguageService>(context);
-    if (_currentLanguage != languageService.currentLocale.languageCode) {
-      _currentLanguage = languageService.currentLocale.languageCode;
-      _loadTranslations();
-    }
   }
 
   Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
@@ -220,60 +266,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     return null;
   }
 
-  Future<void> _loadTranslations() async {
-    final languageService = Provider.of<LanguageService>(
-      context,
-      listen: false,
-    );
-
-    final Map<String, String> keys = {
-      'selectCrop': 'Select Crop',
-      'selectACrop': 'Select a crop',
-      'captureImage': 'Capture Image',
-      'takePhoto': 'Take Photo',
-      'chooseFromGallery': 'Choose From Gallery',
-      'loadingAIModel': 'Loading AI model...',
-      'removeImage': 'Remove image',
-      'processingImage': 'Processing image data...',
-      'runningDetection': 'Running disease detection...',
-      'analyzingHealth': 'Analyzing crop health...',
-      'generatingResults': 'Generating results...',
-      'finalizingDiagnosis': 'Finalizing diagnosis...',
-      'detectionResults': 'Detection Results',
-      'diseaseLabel': 'Disease Label',
-      'confidence': 'Confidence',
-      'error': 'Error',
-      'failedToLoadModel': 'Failed to load model for',
-      'failedToPickImage': 'Failed to pick image',
-      'analysisFailed': 'Analysis failed',
-      'dismiss': 'Dismiss',
-      'progress': 'Progress',
-      'diseaseDetection': 'Disease Detection',
-    };
-
-    for (final crop in diseaseLabels.keys) {
-      keys[crop.toLowerCase()] = crop;
-      for (final label in diseaseLabels[crop] ?? []) {
-        final key = label.replaceAll('_', ' ').toLowerCase();
-        keys[key] = label.replaceAll('_', ' ');
-      }
-    }
-
-    final translated = <String, String>{};
-    final futures = <Future>[];
-    for (final entry in keys.entries) {
-      futures.add(
-        languageService.translate(entry.value).then((tr) {
-          translated[entry.key] = tr;
-        }),
-      );
-    }
-    await Future.wait(futures);
-
-    if (!mounted) return;
-    setState(() => translatedTexts = translated);
-  }
-
   @override
   void dispose() {
     _progressController.dispose();
@@ -291,7 +283,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     } catch (_) {
       if (!mounted) return;
       _showErrorSnackBar(
-        '${translatedTexts['failedToLoadModel'] ?? 'Failed to load model for'} $cropName',
+        'Failed to load model for $cropName', // Will be translated by SmartReTranslator
       );
     } finally {
       if (!mounted) return;
@@ -329,9 +321,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         _isLoading = false;
         result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
       });
-      _showErrorSnackBar(
-        '${translatedTexts['failedToPickImage'] ?? 'Failed to pick image'}: ${e.toString()}',
-      );
+      _showErrorSnackBar('Failed to pick image: ${e.toString()}');
     }
   }
 
@@ -341,9 +331,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     required double confidence0to1,
     required String localImagePath,
   }) async {
-    const double healthyMinConfidence = 0.80;
-    final isHealthy = detectedLabel.toLowerCase().contains('healthy');
-    if (isHealthy && confidence0to1 >= healthyMinConfidence) return;
+    // const double healthyMinConfidence = 0.80;
+    // final isHealthy = detectedLabel.toLowerCase().contains('healthy');
+    // if (isHealthy && confidence0to1 >= healthyMinConfidence) return;
 
     final userId = await _readUserId();
     if (userId == null || userId.isEmpty) {
@@ -366,12 +356,15 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       if (saveResult['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
+            content: const Row(
               children: [
-                const Icon(Icons.save, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('Analysis saved - syncing to server...'),
+                Icon(Icons.save, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Expanded(
+                  child: SmartReTranslator(
+                    text: 'Analysis saved - syncing to server...',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             ),
@@ -413,13 +406,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       if (success) {
         final twoWayResult =
             syncResult['two_way_sync'] as Map<String, dynamic>?;
-        final uploaded = (twoWayResult?['upload']?['uploaded'] as int?) ?? 0;
+        final uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
         final imagesUploaded =
-            (twoWayResult?['images']?['uploaded'] as int?) ?? 0;
+            (twoWayResult?['images']?['upload'] as int?) ?? 0;
 
         if (uploaded > 0 || imagesUploaded > 0) {
           debugPrint(
-            '✅ Forced sync: uploaded $uploaded analyses, $imagesUploaded images',
+            '✅ Forced sync: upload $uploaded analyses, $imagesUploaded images',
           );
 
           if (mounted) {
@@ -430,8 +423,38 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     const Icon(Icons.cloud_done, color: Colors.white, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        'Synced to server: $uploaded analysis, $imagesUploaded images',
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SmartReTranslator(
+                            text: 'Synced to server',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Text(
+                                '$uploaded ',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              const SmartReTranslator(
+                                text: 'analysis',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              Text(
+                                ', $imagesUploaded ',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              const SmartReTranslator(
+                                text: 'images',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -445,11 +468,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               ),
             );
           }
-        } else {
-          debugPrint('ℹ️ No new data to upload');
         }
-      } else {
-        debugPrint('⚠️ Forced sync had issues: ${syncResult['error']}');
       }
     } catch (e) {
       debugPrint('❌ Forced sync error: $e');
@@ -506,9 +525,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       setState(() {
         result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
       });
-      _showErrorSnackBar(
-        '${translatedTexts['analysisFailed'] ?? 'Analysis failed'}: ${e.toString()}',
-      );
+      _showErrorSnackBar('Analysis failed: ${e.toString()}');
     } finally {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -533,7 +550,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
-          label: translatedTexts['dismiss'] ?? 'Dismiss',
+          label: 'Dismiss', // Can wrap with SmartReTranslator if needed
           textColor: Colors.white,
           onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
         ),
@@ -571,32 +588,49 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  String _getTranslatedCropName(String crop) {
-    final key = crop.toLowerCase();
-    return translatedTexts[key] ?? crop;
+  // ✅ NEW: Helper to get translated crop name
+  String _getCropName(String crop) {
+    return crop; // SmartReTranslator will handle translation
   }
 
-  String _getTranslatedLabel(String label) {
-    final key = label.replaceAll('_', ' ').toLowerCase();
-    return translatedTexts[key] ?? label.replaceAll('_', ' ');
+  // ✅ NEW: Helper to get disease label (formatted)
+  String _getDiseaseLabel(String label) {
+    return label.replaceAll(
+      '_',
+      ' ',
+    ); // SmartReTranslator will handle translation
   }
 
+  String _getStatusMessage(double progress) {
+    if (progress < 0.2) {
+      return 'Processing image data...';
+    } else if (progress < 0.4) {
+      return 'Running disease scanner...';
+    } else if (progress < 0.6) {
+      return 'Analyzing crop health...';
+    } else if (progress < 0.8) {
+      return 'Generating results...';
+    } else {
+      return 'Finalizing diagnosis...';
+    }
+  }
+
+  // Continue with widget builders...
   Widget _buildCropAndCameraSection() {
-    // NEW: Show loading while checking models
     if (_isCheckingModels) {
       return Card(
         elevation: 3,
         shadowColor: AppColors.primaryGreen.withOpacity(0.1),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(40),
+        child: const Padding(
+          padding: EdgeInsets.all(40),
           child: Center(
             child: Column(
               children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(
-                  'Checking downloaded models...',
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                SmartReTranslator(
+                  text: 'Checking downloaded models...',
                   style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 14,
@@ -628,24 +662,26 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   size: 20,
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    translatedTexts['selectCrop'] ?? 'Select Crop',
-                    style: const TextStyle(
+                const Expanded(
+                  child: SmartReTranslator(
+                    text: 'Select Crop',
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
                     ),
                   ),
                 ),
-                // NEW: Add button to manage models
                 TextButton.icon(
                   onPressed: () => Navigator.pushNamed(
                     context,
                     '/model-manager',
                   ).then((_) => _checkDownloadedModels()),
                   icon: const Icon(Icons.download, size: 16),
-                  label: const Text('Manage', style: TextStyle(fontSize: 12)),
+                  label: const SmartReTranslator(
+                    text: 'Manage',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.primaryGreen,
                     padding: const EdgeInsets.symmetric(
@@ -673,12 +709,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: selectedCrop,
-                  hint: Text(
-                    // CHANGED: Show message if no models
-                    availableCrops.isEmpty
+                  hint: SmartReTranslator(
+                    text: availableCrops.isEmpty
                         ? 'No models downloaded'
-                        : translatedTexts['selectACrop'] ?? 'Select a crop',
-                    style: TextStyle(color: AppColors.textSecondary),
+                        : 'Select a crop',
+                    style: const TextStyle(color: AppColors.textSecondary),
                   ),
                   isExpanded: true,
                   items: availableCrops
@@ -693,8 +728,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                                 size: 20,
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                _getTranslatedCropName(crop),
+                              SmartReTranslator(
+                                text: _getCropName(crop),
                                 style: const TextStyle(
                                   color: AppColors.textPrimary,
                                   fontSize: 16,
@@ -706,7 +741,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         ),
                       )
                       .toList(),
-                  // CHANGED: Disable if checking or no models
                   onChanged: _isModelLoading || availableCrops.isEmpty
                       ? null
                       : (val) async {
@@ -724,17 +758,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               thickness: 1,
             ),
             const SizedBox(height: 16),
-            Row(
+            const Row(
               children: [
-                const Icon(
-                  Icons.camera_alt,
-                  color: AppColors.primaryGreen,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  translatedTexts['captureImage'] ?? 'Capture Image',
-                  style: const TextStyle(
+                Icon(Icons.camera_alt, color: AppColors.primaryGreen, size: 20),
+                SizedBox(width: 8),
+                SmartReTranslator(
+                  text: 'Capture Image',
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
@@ -749,10 +779,10 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.photo_camera, size: 20),
-                      label: Flexible(
-                        child: Text(
-                          translatedTexts['takePhoto'] ?? 'Take Photo',
-                          style: const TextStyle(
+                      label: const Flexible(
+                        child: SmartReTranslator(
+                          text: 'Take Photo',
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -785,11 +815,10 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.photo_library, size: 20),
-                      label: Flexible(
-                        child: Text(
-                          translatedTexts['chooseFromGallery'] ??
-                              'Choose From Gallery',
-                          style: const TextStyle(
+                      label: const Flexible(
+                        child: SmartReTranslator(
+                          text: 'Choose From Gallery',
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -828,11 +857,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               ),
             ),
             if (!isEnabled && _isModelLoading)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
                 child: Row(
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -842,10 +871,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      translatedTexts['loadingAIModel'] ??
-                          'Loading AI model...',
+                    SizedBox(width: 8),
+                    SmartReTranslator(
+                      text: 'Loading AI model...',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
@@ -859,9 +887,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       ),
     );
   }
-
-  // Keep all your remaining widget builders (_buildImagePreview, _buildLoadingIndicator, _buildResults, etc.)
-  // ... (continue with the rest of your original file)
 
   Widget _buildImagePreview() {
     return Card(
@@ -919,7 +944,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 onPressed: _resetAnalysis,
                 padding: const EdgeInsets.all(8),
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                tooltip: translatedTexts['removeImage'] ?? 'Remove image',
+                tooltip: 'Remove image',
               ),
             ),
           ),
@@ -1002,8 +1027,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               const SizedBox(height: 24),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 600),
-                child: Text(
-                  _getStatusMessage(_analysisProgress),
+                child: SmartReTranslator(
+                  text: _getStatusMessage(_analysisProgress),
                   key: ValueKey(_getStatusMessage(_analysisProgress)),
                   style: const TextStyle(
                     fontSize: 16,
@@ -1033,8 +1058,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          translatedTexts['progress'] ?? 'Progress',
+                        const SmartReTranslator(
+                          text: 'Progress',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -1082,25 +1107,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     );
   }
 
-  String _getStatusMessage(double progress) {
-    if (progress < 0.2) {
-      return translatedTexts['processingImage'] ?? 'Processing image data...';
-    } else if (progress < 0.4) {
-      return translatedTexts['runningDetection'] ??
-          'Running disease detection...';
-    } else if (progress < 0.6) {
-      return translatedTexts['analyzingHealth'] ?? 'Analyzing crop health...';
-    } else if (progress < 0.8) {
-      return translatedTexts['generatingResults'] ?? 'Generating results...';
-    } else {
-      return translatedTexts['finalizingDiagnosis'] ??
-          'Finalizing diagnosis...';
-    }
-  }
-
   Widget _buildResults() {
     final isError = result!.containsKey('error');
-    final labelText = _getTranslatedLabel(result!['label'].toString());
+    final labelText = _getDiseaseLabel(result!['label'].toString());
     final isHealthy =
         !isError &&
         result!['label'].toString().toLowerCase().contains('healthy');
@@ -1175,11 +1184,10 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                             ),
                           ),
                           const SizedBox(width: 16),
-                          Expanded(
-                            child: Text(
-                              translatedTexts['detectionResults'] ??
-                                  'Detection Results',
-                              style: const TextStyle(
+                          const Expanded(
+                            child: SmartReTranslator(
+                              text: 'Detection Results',
+                              style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.textPrimary,
@@ -1193,8 +1201,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       const SizedBox(height: 20),
                       _buildResultRow(
                         icon: Icons.biotech,
-                        label:
-                            translatedTexts['diseaseLabel'] ?? 'Disease Label',
+                        labelKey: 'Disease Label',
                         value: labelText,
                         valueColor: isError
                             ? AppColors.errorColor
@@ -1206,7 +1213,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       if (!isError)
                         _buildResultRow(
                           icon: Icons.analytics,
-                          label: translatedTexts['confidence'] ?? 'Confidence',
+                          labelKey: 'Confidence',
                           value: '${confidence.toStringAsFixed(1)}%',
                           valueColor: AppColors.textPrimary,
                         ),
@@ -1231,12 +1238,24 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  child: Text(
-                                    '${translatedTexts['error'] ?? 'Error'}: ${result!['error']}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.errorColor,
-                                    ),
+                                  child: Row(
+                                    children: [
+                                      const SmartReTranslator(
+                                        text: 'Error',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.errorColor,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        ': ${result!['error']}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.errorColor,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -1256,7 +1275,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
   Widget _buildResultRow({
     required IconData icon,
-    required String label,
+    required String labelKey,
     required String value,
     required Color valueColor,
   }) {
@@ -1276,8 +1295,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
+              SmartReTranslator(
+                text: labelKey,
                 style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,
@@ -1285,8 +1304,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                value,
+              SmartReTranslator(
+                text: value,
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -1303,8 +1322,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(
-        title: translatedTexts['diseaseDetection'] ?? 'Disease Detection',
+      appBar: const CustomAppBar(
+        title:
+            'Plant Doctor', // Will be translated by SmartReTranslator in CustomAppBar
       ),
       backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(

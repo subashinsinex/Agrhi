@@ -9,6 +9,7 @@ import '../../src/services/language_service.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/connectivity_service.dart';
 import '../../utils/constants.dart';
+import '../../screens/shared/widgets/smart_retranslator.dart'; // ✅ ADD THIS
 
 class FeedbackItem {
   final String id;
@@ -38,81 +39,6 @@ class FeedbackItem {
       createdAt: json['created_at'] ?? '',
       reply: json['reply'],
       status: json['status'],
-    );
-  }
-}
-
-// Smart widget for translation that uses cache then re-translates once cache is ready
-class SmartReTranslator extends StatefulWidget {
-  final String text;
-  final TextStyle? style;
-  final TextAlign? textAlign;
-  final int? maxLines;
-
-  const SmartReTranslator({
-    super.key,
-    required this.text,
-    this.style,
-    this.textAlign,
-    this.maxLines,
-  });
-
-  @override
-  _SmartReTranslatorState createState() => _SmartReTranslatorState();
-}
-
-class _SmartReTranslatorState extends State<SmartReTranslator> {
-  late LanguageService languageService;
-  String displayedText = '';
-  bool _cacheLoaded = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    languageService = Provider.of<LanguageService>(context);
-
-    _getInitialTranslation();
-
-    if (!languageService.isInitialized) {
-      languageService.addListener(() {
-        if (languageService.isInitialized && !_cacheLoaded) {
-          _cacheLoaded = true;
-          _refreshTranslation();
-        }
-      });
-    } else {
-      _cacheLoaded = true;
-      _refreshTranslation();
-    }
-  }
-
-  void _getInitialTranslation() async {
-    final cacheKey = languageService.currentLocale.languageCode;
-    final cached = languageService.translationCache[cacheKey]?[widget.text];
-    if (mounted) {
-      setState(() {
-        displayedText = cached ?? widget.text;
-      });
-    }
-  }
-
-  void _refreshTranslation() async {
-    final translation = await languageService.translate(widget.text);
-    if (mounted) {
-      setState(() {
-        displayedText = translation;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      displayedText.isEmpty ? widget.text : displayedText,
-      style: widget.style,
-      textAlign: widget.textAlign,
-      maxLines: widget.maxLines,
-      overflow: widget.maxLines != null ? TextOverflow.ellipsis : null,
     );
   }
 }
@@ -150,6 +76,58 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _futureFeedbackHistory = fetchFeedbackHistory();
+
+    // ✅ NEW: Preload translations
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preloadPhrases();
+    });
+  }
+
+  // ✅ NEW: Preload all phrases
+  Future<void> _preloadPhrases() async {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    await languageService.preloadTexts([
+      'Help & Support',
+      'Feedback',
+      'History',
+      'We value your feedback!',
+      'Please share your thoughts, suggestions, or report any issues you encounter.',
+      'Your Message',
+      'Type your feedback here...',
+      'Please enter your feedback',
+      'Feedback must be at least 10 characters',
+      'Report a Problem',
+      'General Feedback',
+      'Toggle off for suggestions',
+      'Toggle on to report a bug',
+      'Submit Feedback',
+      'Feedback submitted successfully!',
+      'Failed to submit feedback. Please try again.',
+      'No internet connection. Please check your network.',
+      'Authentication required',
+      'Session expired. Please log in again.',
+      'Server is unavailable. Please try again later.',
+      'Checking connection...',
+      'Refreshing access token...',
+      'Please connect to the internet and try again.',
+      'Retrying...',
+      'Retry',
+      'No feedback history yet',
+      'Your submitted feedback will appear here',
+      'Problem',
+      'Not Viewed',
+      'Viewed',
+      'Responded',
+      'Solved',
+      'Unknown',
+      'Today',
+      'Yesterday',
+      'days ago',
+    ], highPriority: true);
   }
 
   @override
@@ -161,7 +139,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
   void _onTabChanged() {
     if (_tabController.index == 1 && !_hasHistoryError) {
-      // Refresh history when switching to history tab
       _fetchFeedbackHistory();
     }
   }
@@ -172,7 +149,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     });
   }
 
-  /// Submit feedback to server
   Future<void> _submitFeedback() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -182,7 +158,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
       _isSubmitting = true;
     });
 
-    // Check internet connectivity
     final hasInternet = await _connectivityService.hasInternetConnection();
 
     if (!hasInternet) {
@@ -211,20 +186,14 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
       final url = Uri.parse('${AppConstants.baseUrl}/feedback/addfeedback');
 
-      // Prepare the JSON body
       final requestBody = {
         'user_id': userId,
         'message': _messageController.text.trim(),
         'isproblem': _isProblem,
       };
 
-      // Print the JSON before sending
       print('🔗 Request URL: $url');
       print('📤 Request Body (JSON): ${jsonEncode(requestBody)}');
-      print('📤 Breakdown:');
-      print('   - user_id: $userId');
-      print('   - message: "${_messageController.text.trim()}"');
-      print('   - isproblem: $_isProblem');
 
       final response = await http.post(
         url,
@@ -242,20 +211,16 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         print('✅ Feedback submitted successfully');
         _showSnackBar('Feedback submitted successfully!', isError: false);
 
-        // Clear form
         _messageController.clear();
         setState(() {
           _isProblem = false;
           _isSubmitting = false;
         });
 
-        // Refresh history
         _fetchFeedbackHistory();
       } else if (response.statusCode == 401) {
         print('⚠️ 401 Unauthorized - attempting to refresh token');
-        // Try to refresh token
         await _authService.refreshAccessToken();
-        // Retry submission
         await _submitFeedback();
       } else {
         print('❌ Failed with status code: ${response.statusCode}');
@@ -273,7 +238,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     }
   }
 
-  /// Fetch feedback history from server
   Future<List<FeedbackItem>> fetchFeedbackHistory() async {
     final accessToken = await _storage.getAccessToken();
     final userId = await _storage.getUserId();
@@ -312,7 +276,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
         final responseBody = response.body.trim();
 
-        // Handle empty response
         if (responseBody.isEmpty || responseBody == '[]') {
           print('✅ No feedback history found - returning empty list');
           setState(() {
@@ -323,7 +286,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
         final dynamic jsonData = jsonDecode(responseBody);
 
-        // Handle both array and object responses
         List<dynamic> data;
         if (jsonData is List) {
           data = jsonData;
@@ -338,7 +300,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
             .map((json) => FeedbackItem.fromJson(json))
             .toList()
             .reversed
-            .toList(); // Show newest first
+            .toList();
 
         setState(() {
           _feedbackHistory = feedbackList;
@@ -347,16 +309,11 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         print('✅ Feedback history loaded: ${feedbackList.length} items');
         return feedbackList;
       } else if (response.statusCode == 404) {
-        // 404 could mean no feedback exists OR wrong endpoint
         print('⚠️ 404 Error - endpoint not found or no data');
-        print('📥 Response body: ${response.body}');
-
-        // Return empty list instead of throwing error
         setState(() {
           _hasHistoryError = false;
           _feedbackHistory = [];
         });
-
         return [];
       } else if (response.statusCode == 401) {
         _setHistoryError();
@@ -370,11 +327,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         );
       }
     } catch (e) {
-      if (e is FormatException) {
-        print('❌ JSON parsing error: $e');
-      } else {
-        print('❌ Error fetching feedback history: $e');
-      }
+      print('❌ Error fetching feedback history: $e');
       _setHistoryError();
       rethrow;
     }
@@ -386,7 +339,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     });
   }
 
-  /// Intelligent retry with connectivity check and token refresh
   Future<void> _handleHistoryRetry() async {
     if (_isRetryingHistory) return;
 
@@ -397,7 +349,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
     print('🔄 Retry initiated - checking internet connectivity...');
 
-    // Check internet connectivity
     final hasInternet = await _connectivityService.hasInternetConnection();
 
     if (!hasInternet) {
@@ -416,13 +367,11 @@ class _FeedbackScreenState extends State<FeedbackScreen>
       _historyErrorMessage = 'Refreshing access token...';
     });
 
-    // Try to refresh access token
     try {
       print('🔄 Attempting to refresh access token...');
       await _authService.refreshAccessToken();
       print('✅ Access token refreshed successfully');
 
-      // Reload the history
       setState(() {
         _hasHistoryError = false;
         _isRetryingHistory = false;
@@ -455,7 +404,10 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
+        content: SmartReTranslator(
+          text: message,
+          style: const TextStyle(color: Colors.white),
+        ),
         backgroundColor: isError ? Colors.red[700] : AppColors.primaryGreen,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -464,7 +416,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     );
   }
 
-  /// Get icon based on feedback status
   IconData _getStatusIcon(String? status) {
     switch (status?.toLowerCase()) {
       case 'not viewed':
@@ -480,7 +431,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     }
   }
 
-  /// Get color based on feedback status
   Color _getStatusColor(String? status) {
     switch (status?.toLowerCase()) {
       case 'not viewed':
@@ -496,7 +446,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     }
   }
 
-  /// Get display text based on feedback status
   String _getStatusText(String? status) {
     switch (status?.toLowerCase()) {
       case 'not viewed':
@@ -512,14 +461,34 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     }
   }
 
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays == 0) {
+        return 'Today';
+      } else if (difference.inDays == 1) {
+        return 'Yesterday';
+      } else if (difference.inDays < 7) {
+        return '${difference.inDays} days ago';
+      } else {
+        return '${date.day}/${date.month}/${date.year}';
+      }
+    } catch (e) {
+      return dateString;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
       appBar: AppBar(
-        title: SmartReTranslator(
+        title: const SmartReTranslator(
           text: 'Help & Support',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: AppColors.primaryGreen,
         foregroundColor: AppColors.textWhite,
@@ -535,18 +504,12 @@ class _FeedbackScreenState extends State<FeedbackScreen>
             fontWeight: FontWeight.bold,
             fontSize: 15,
           ),
-          tabs: [
+          tabs: const [
             Tab(
-              child: SmartReTranslator(
-                text: 'Feedback',
-                style: const TextStyle(),
-              ),
+              child: SmartReTranslator(text: 'Feedback', style: TextStyle()),
             ),
             Tab(
-              child: SmartReTranslator(
-                text: 'History',
-                style: const TextStyle(),
-              ),
+              child: SmartReTranslator(text: 'History', style: TextStyle()),
             ),
           ],
         ),
@@ -568,7 +531,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 8),
-              SmartReTranslator(
+              const SmartReTranslator(
                 text: 'We value your feedback!',
                 style: TextStyle(
                   fontSize: 20,
@@ -577,7 +540,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              SmartReTranslator(
+              const SmartReTranslator(
                 text:
                     'Please share your thoughts, suggestions, or report any issues you encounter.',
                 style: TextStyle(
@@ -587,7 +550,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                 ),
               ),
               const SizedBox(height: 28),
-              SmartReTranslator(
+              const SmartReTranslator(
                 text: 'Your Message',
                 style: TextStyle(
                   fontSize: 15,
@@ -615,7 +578,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
+                    borderSide: const BorderSide(
                       color: AppColors.primaryGreen,
                       width: 2,
                     ),
@@ -637,7 +600,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                 },
               ),
               const SizedBox(height: 20),
-              // Switch/Slider instead of Checkbox
               Material(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -680,7 +642,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                               text: _isProblem
                                   ? 'Toggle off for suggestions'
                                   : 'Toggle on to report a bug',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 12,
                                 color: AppColors.textSecondary,
                               ),
@@ -728,9 +690,9 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                           color: Colors.white,
                         ),
                       )
-                    : SmartReTranslator(
+                    : const SmartReTranslator(
                         text: 'Submit Feedback',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
@@ -909,13 +871,12 @@ class _FeedbackScreenState extends State<FeedbackScreen>
             const SizedBox(height: 12),
             Text(
               feedback.message,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: AppColors.textPrimary,
                 height: 1.4,
               ),
             ),
-            // Show status and reply only if isProblem is true
             if (feedback.isProblem) ...[
               const SizedBox(height: 12),
               Container(
@@ -928,7 +889,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Status badge with 4 states
                     Row(
                       children: [
                         Icon(
@@ -947,14 +907,13 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                         ),
                       ],
                     ),
-                    // Reply if exists
                     if (feedback.reply != null &&
                         feedback.reply!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.reply,
                             size: 14,
                             color: AppColors.primaryGreen,
@@ -963,7 +922,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                           Expanded(
                             child: Text(
                               feedback.reply!,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 13,
                                 color: AppColors.textPrimary,
                                 fontStyle: FontStyle.italic,
@@ -982,25 +941,5 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         ),
       ),
     );
-  }
-
-  String _formatDate(String dateString) {
-    try {
-      final date = DateTime.parse(dateString);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays == 0) {
-        return 'Today';
-      } else if (difference.inDays == 1) {
-        return 'Yesterday';
-      } else if (difference.inDays < 7) {
-        return '${difference.inDays} days ago';
-      } else {
-        return '${date.day}/${date.month}/${date.year}';
-      }
-    } catch (e) {
-      return dateString;
-    }
   }
 }

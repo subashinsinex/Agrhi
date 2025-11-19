@@ -1,14 +1,15 @@
+// lib/screens/auth/signup_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../shared/widgets/language_switcher.dart';
+import '../shared/widgets/smart_retranslator.dart';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
-import '../../../src/services/language_service.dart';
+import '../../src/services/language_service.dart';
 import '../../utils/constants.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -39,126 +40,78 @@ class _SignupScreenState extends State<SignupScreen> {
   DateTime? _selectedDate;
   String? _selectedCategoryId;
 
-  // Updated categories: Only Farmer and Expert
   final List<Map<String, dynamic>> _categories = [
-    {'id': '582d0c0c-8bf2-4753-8c6c-1a398930b0e7', 'name': 'Farmer', 'key': 'farmer'},
-    {'id': 'c944ecb8-524d-483f-9610-ed9e2e985e49', 'name': 'Expert', 'key': 'expert'},
+    {
+      'id': '582d0c0c-8bf2-4753-8c6c-1a398930b0e7',
+      'name': 'Farmer',
+      'key': 'farmer',
+    },
+    {
+      'id': 'c944ecb8-524d-483f-9610-ed9e2e985e49',
+      'name': 'Expert',
+      'key': 'expert',
+    },
   ];
-
-  Map<String, String> translatedTexts = {};
-  String _currentLanguage = '';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadTranslations();
+      _preloadTranslations();
     });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final languageService = Provider.of<LanguageService>(context);
-    if (_currentLanguage != languageService.currentLocale.languageCode) {
-      _currentLanguage = languageService.currentLocale.languageCode;
-      _loadTranslations();
-    }
-  }
-
-  Future<void> _loadTranslations() async {
-    if (!mounted) return;
-
+  Future<void> _preloadTranslations() async {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
-    final languageCode = languageService.currentLocale.languageCode;
 
-    // Try to load from cache first
-    final cached = await _getCachedTranslations(languageCode);
-    if (cached != null) {
-      setState(() => translatedTexts = cached);
-    }
-
-    // Fetch fresh translations - ADDED ALL MISSING KEYS
-    final keys = {
-      'createAccount': 'Create Account',
-      'fullName': 'Full Name',
-      'phoneNumber': 'Phone Number',
-      'email': 'Email Address',
-      'password': 'Password',
-      'confirmPassword': 'Confirm Password',
-      'dateOfBirth': 'Date of Birth',
-      'address': 'Address',
-      'pincode': 'pincode',
-      'category': 'Category',
-      'selectCategory': 'Select Category',
-      'accountCreated': 'Account created successfully!',
-      'alreadyHaveAccount': 'Already have an account?',
-      'signIn': 'Sign In',
-      'signUp': 'Sign Up',
-      'selectDate': 'Select Date',
-      // Category names
-      'farmer': 'Farmer',
-      'expert': 'Expert',
-      // Error messages
-      'fillAllFields': 'Please fill all required fields correctly',
-      'selectCategoryError': 'Please select a category',
-      'enterEmail': 'Please enter your email',
-      'validEmail': 'Enter a valid email address',
-      'selectDob': 'Please select your date of birth',
-      'enterAddress': 'Please enter your address',
-      'addressLength': 'Address must be at least 10 characters',
-      'enterPincode': 'Please enter pincode',
-      'pincodeLength': 'Pincode must be 6 digits',
-      'userExists': 'User already exists with this phone number or email',
-      'serverError': 'Server error. Please try again later',
-      'noInternet': 'No internet connection',
-      'requestTimeout': 'Request timeout. Please try again',
-    };
-
-    Map<String, String> newTranslated = {};
-    for (var entry in keys.entries) {
-      newTranslated[entry.key] = await languageService.translate(entry.value);
-    }
-
-    // Cache and update
-    await _cacheTranslations(languageCode, newTranslated);
-    if (mounted) {
-      setState(() => translatedTexts = newTranslated);
-    }
+    await languageService.preloadTexts([
+      'Create Account',
+      'Full Name',
+      'Phone Number',
+      'Email Address',
+      'Password',
+      'Verify Password',
+      'Date of Birth',
+      'Address',
+      'Postal Code',
+      'Category',
+      'Select Category',
+      'Account created successfully!',
+      'Already have an account?',
+      'Sign In',
+      'Sign Up',
+      'Farmer',
+      'Expert',
+      'Please fill all required fields correctly',
+      'Please select a category',
+      'Please enter your email',
+      'Enter a valid email address',
+      'Please select your date of birth',
+      'Please enter your address',
+      'Address must be at least 10 characters',
+      'Please enter Postal Code',
+      'Postal Code must be 6 digits',
+      'User already exists with this phone number or email',
+      'Server error. Please try again later',
+      'No internet connection',
+      'Request timeout. Please try again',
+    ], highPriority: true);
   }
 
-  Future<Map<String, String>?> _getCachedTranslations(
-    String languageCode,
-  ) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString('signup_translations_$languageCode');
-      if (cached != null) {
-        final Map<String, dynamic> decoded = jsonDecode(cached);
-        return decoded.map((key, value) => MapEntry(key, value.toString()));
-      }
-    } catch (e) {
-      debugPrint('Cache read error: $e');
-    }
-    return null;
-  }
-
-  Future<void> _cacheTranslations(
-    String languageCode,
-    Map<String, String> translations,
-  ) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        'signup_translations_$languageCode',
-        jsonEncode(translations),
-      );
-    } catch (e) {
-      debugPrint('Cache write error: $e');
-    }
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _dobController.dispose();
+    _addressController.dispose();
+    _pincodeController.dispose();
+    super.dispose();
   }
 
   Future<void> _selectDate() async {
@@ -189,40 +142,19 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    _dobController.dispose();
-    _addressController.dispose();
-    _pincodeController.dispose();
-    super.dispose();
-  }
-
   Future<void> _handleSignup() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
-      _showSnackBar(
-        translatedTexts['fillAllFields'] ??
-            'Please fill all required fields correctly',
-        AppColors.errorColor,
-        Icons.error,
-      );
+      _showErrorSnackBar('Please fill all required fields correctly');
       return;
     }
 
     if (_selectedCategoryId == null) {
-      _showSnackBar(
-        translatedTexts['selectCategoryError'] ?? 'Please select a category',
-        AppColors.errorColor,
-        Icons.error,
-      );
+      _showErrorSnackBar('Please select a category');
       return;
     }
 
     setState(() => _isLoading = true);
+
     try {
       final url = Uri.parse(AppConstants.signupEndpoint);
 
@@ -245,23 +177,17 @@ class _SignupScreenState extends State<SignupScreen> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         if (!mounted) return;
-        _showSnackBar(
-          translatedTexts['accountCreated'] ?? 'Account created successfully!',
-          AppColors.successColor,
-          Icons.check_circle,
-        );
 
-        // Delay navigation to show success message
+        _showSuccessSnackBar('Account created successfully!');
+
         await Future.delayed(const Duration(seconds: 2));
         if (mounted) {
           Routes.navigateToLogin(context);
         }
       } else if (response.statusCode == 409) {
-        throw translatedTexts['userExists'] ??
-            'User already exists with this phone number or email';
+        throw 'User already exists with this phone number or email';
       } else if (response.statusCode >= 500) {
-        throw translatedTexts['serverError'] ??
-            'Server error. Please try again later';
+        throw 'Server error. Please try again later';
       } else {
         final responseData = jsonDecode(response.body);
         throw responseData['message'] ??
@@ -272,34 +198,59 @@ class _SignupScreenState extends State<SignupScreen> {
 
       String errorMessage = e.toString();
       if (errorMessage.contains('SocketException')) {
-        errorMessage =
-            translatedTexts['noInternet'] ?? 'No internet connection';
+        errorMessage = 'No internet connection';
       } else if (errorMessage.contains('TimeoutException')) {
-        errorMessage =
-            translatedTexts['requestTimeout'] ??
-            'Request timeout. Please try again';
+        errorMessage = 'Request timeout. Please try again';
       }
 
-      _showSnackBar(errorMessage, AppColors.errorColor, Icons.error);
+      _showErrorSnackBar(errorMessage);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showSnackBar(String message, Color color, IconData icon) {
+  void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(icon, color: Colors.white),
+            const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
-            Expanded(child: Text(message)),
+            Expanded(
+              child: SmartReTranslator(
+                text: message,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
           ],
         ),
-        backgroundColor: color,
+        backgroundColor: AppColors.successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: Duration(seconds: color == AppColors.errorColor ? 4 : 2),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SmartReTranslator(
+                text: message,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.errorColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -327,6 +278,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         child: Column(
                           children: [
                             const SizedBox(height: 40),
+
                             // Header
                             Column(
                               children: [
@@ -341,9 +293,8 @@ class _SignupScreenState extends State<SignupScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 10),
-                                Text(
-                                  translatedTexts['createAccount'] ??
-                                      'Create Account',
+                                const SmartReTranslator(
+                                  text: 'Create Account',
                                   style: TextStyle(
                                     fontSize: 28,
                                     fontWeight: FontWeight.bold,
@@ -354,376 +305,192 @@ class _SignupScreenState extends State<SignupScreen> {
                               ],
                             ),
                             const SizedBox(height: 24),
-                            // Form Fields
-                            Column(
-                              children: [
-                                // Full Name
-                                TextFormField(
-                                  controller: _nameController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['fullName'] ??
-                                        'Full Name',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.person,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                  ),
-                                  validator: Validators.validateName,
-                                  enabled: !_isLoading,
-                                ),
-                                const SizedBox(height: 16),
-                                // Phone Number
-                                TextFormField(
-                                  controller: _phoneController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['phoneNumber'] ??
-                                        'Phone Number',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.phone,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.phone,
-                                  validator: Validators.validatePhone,
-                                  enabled: !_isLoading,
-                                ),
-                                const SizedBox(height: 16),
-                                // Email
-                                TextFormField(
-                                  controller: _emailController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['email'] ??
-                                        'Email Address',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.email,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.emailAddress,
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return translatedTexts['enterEmail'] ??
-                                          'Please enter your email';
-                                    }
-                                    final emailRegex = RegExp(
-                                      r'^[^@]+@[^@]+\.[^@]+',
-                                    );
-                                    if (!emailRegex.hasMatch(value)) {
-                                      return translatedTexts['validEmail'] ??
-                                          'Enter a valid email address';
-                                    }
-                                    return null;
-                                  },
-                                  enabled: !_isLoading,
-                                ),
-                                const SizedBox(height: 16),
-                                // Date of Birth
-                                TextFormField(
-                                  controller: _dobController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['dateOfBirth'] ??
-                                        'Date of Birth',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.calendar_today,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                    suffixIcon: Icon(
-                                      Icons.arrow_drop_down,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  readOnly: true,
-                                  onTap: _isLoading ? null : _selectDate,
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return translatedTexts['selectDob'] ??
-                                          'Please select your date of birth';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 16),
-                                // Address
-                                TextFormField(
-                                  controller: _addressController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['address'] ?? 'Address',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.location_on,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                  ),
-                                  maxLines: 2,
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return translatedTexts['enterAddress'] ??
-                                          'Please enter your address';
-                                    }
-                                    if (value.trim().length < 10) {
-                                      return translatedTexts['addressLength'] ??
-                                          'Address must be at least 10 characters';
-                                    }
-                                    return null;
-                                  },
-                                  enabled: !_isLoading,
-                                ),
-                                const SizedBox(height: 16),
-                                // Pincode - FIXED TRANSLATION
-                                TextFormField(
-                                  controller: _pincodeController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['pincode'] ?? 'Pincode',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.pin_drop,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return translatedTexts['enterPincode'] ??
-                                          'Please enter pincode';
-                                    }
-                                    if (value.length != 6) {
-                                      return translatedTexts['pincodeLength'] ??
-                                          'Pincode must be 6 digits';
-                                    }
-                                    return null;
-                                  },
-                                  enabled: !_isLoading,
-                                ),
-                                const SizedBox(height: 16),
-                                // Category Dropdown - FIXED TRANSLATION
-                                DropdownButtonFormField<String>(
-                                  value: _selectedCategoryId,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['selectCategory'] ??
-                                        'Select Category',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.category,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: AppColors.cardBackgroundGrey,
-                                      ),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: AppColors.cardBackgroundGrey,
-                                      ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: AppColors.primaryGreen,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    filled: true,
-                                    fillColor: AppColors.cardBackgroundLight,
-                                  ),
-                                  items: _categories.map((category) {
-                                    // USE TRANSLATED TEXT FROM translatedTexts MAP
-                                    final categoryKey =
-                                        category['key'] as String;
-                                    final translatedName =
-                                        translatedTexts[categoryKey] ??
-                                        category['name'] as String;
 
-                                    return DropdownMenuItem<String>(
-                                      value: category['id'] as String,
-                                      child: Text(
-                                        translatedName,
-                                        style: TextStyle(
-                                          color: AppColors.textPrimary,
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: _isLoading
-                                      ? null
-                                      : (value) {
-                                          setState(() {
-                                            _selectedCategoryId = value;
-                                          });
-                                        },
-                                  validator: (value) {
-                                    if (value == null) {
-                                      return translatedTexts['selectCategoryError'] ??
-                                          'Please select a category';
-                                    }
-                                    return null;
-                                  },
-                                  dropdownColor: AppColors.backgroundColor,
-                                  icon: Icon(
-                                    Icons.arrow_drop_down,
-                                    color: AppColors.primaryGreen,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                // Password
-                                TextFormField(
-                                  controller: _passwordController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['password'] ??
-                                        'Password',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.lock,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscurePassword
-                                            ? Icons.visibility
-                                            : Icons.visibility_off,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                      onPressed: () => setState(
-                                        () => _obscurePassword =
-                                            !_obscurePassword,
-                                      ),
-                                    ),
-                                  ),
-                                  obscureText: _obscurePassword,
-                                  validator: Validators.validatePassword,
-                                  enabled: !_isLoading,
-                                ),
-                                const SizedBox(height: 16),
-                                // Confirm Password
-                                TextFormField(
-                                  controller: _confirmPasswordController,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        translatedTexts['confirmPassword'] ??
-                                        'Confirm Password',
-                                    hintStyle: TextStyle(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.lock_outline,
-                                      color: AppColors.primaryGreen,
-                                    ),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscureConfirmPassword
-                                            ? Icons.visibility
-                                            : Icons.visibility_off,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                      onPressed: () => setState(
-                                        () => _obscureConfirmPassword =
-                                            !_obscureConfirmPassword,
-                                      ),
-                                    ),
-                                  ),
-                                  obscureText: _obscureConfirmPassword,
-                                  validator: (value) =>
-                                      Validators.validateConfirmPassword(
-                                        value,
-                                        _passwordController.text,
-                                      ),
-                                  enabled: !_isLoading,
-                                ),
-                                const SizedBox(height: 32),
-                                // Sign Up Button
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 56,
-                                  child: ElevatedButton(
-                                    onPressed: _isLoading
-                                        ? null
-                                        : _handleSignup,
-                                    child: _isLoading
-                                        ? const SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2.5,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                    Colors.white,
-                                                  ),
-                                            ),
-                                          )
-                                        : Text(
-                                            translatedTexts['signUp'] ??
-                                                'Sign Up',
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 1,
-                                            ),
-                                          ),
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
-                                // Sign In Link
-                                GestureDetector(
-                                  onTap: _isLoading
-                                      ? null
-                                      : () => Routes.navigateToLogin(context),
-                                  child: RichText(
-                                    text: TextSpan(
-                                      text:
-                                          translatedTexts['alreadyHaveAccount'] ??
-                                          'Already have an account? ',
-                                      style: TextStyle(
-                                        color: AppColors.textSecondary,
-                                        fontSize: 16,
-                                      ),
-                                      children: [
-                                        TextSpan(
-                                          text:
-                                              translatedTexts['signIn'] ??
-                                              'Sign In',
-                                          style: TextStyle(
-                                            color: AppColors.primaryGreen,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 40),
-                              ],
+                            // Form Fields
+                            _FormField(
+                              controller: _nameController,
+                              labelText: 'Full Name',
+                              icon: Icons.person,
+                              validator: Validators.validateName,
+                              enabled: !_isLoading,
                             ),
+                            const SizedBox(height: 16),
+
+                            _FormField(
+                              controller: _phoneController,
+                              labelText: 'Phone Number',
+                              icon: Icons.phone,
+                              keyboardType: TextInputType.phone,
+                              validator: Validators.validatePhone,
+                              enabled: !_isLoading,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _FormField(
+                              controller: _emailController,
+                              labelText: 'Email Address',
+                              icon: Icons.email,
+                              keyboardType: TextInputType.emailAddress,
+                              validator: _validateEmail,
+                              enabled: !_isLoading,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _DatePickerField(
+                              controller: _dobController,
+                              labelText: 'Date of Birth',
+                              onTap: _isLoading ? null : _selectDate,
+                              validator: _validateDOB,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _FormField(
+                              controller: _addressController,
+                              labelText: 'Address',
+                              icon: Icons.location_on,
+                              maxLines: 2,
+                              validator: _validateAddress,
+                              enabled: !_isLoading,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _FormField(
+                              controller: _pincodeController,
+                              labelText: 'Postal Code',
+                              icon: Icons.pin_drop,
+                              keyboardType: TextInputType.number,
+                              validator: _validatePincode,
+                              enabled: !_isLoading,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _CategoryDropdown(
+                              value: _selectedCategoryId,
+                              categories: _categories,
+                              onChanged: _isLoading
+                                  ? null
+                                  : (value) {
+                                      setState(() {
+                                        _selectedCategoryId = value;
+                                      });
+                                    },
+                              validator: _validateCategory,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _PasswordField(
+                              controller: _passwordController,
+                              labelText: 'Password',
+                              obscureText: _obscurePassword,
+                              onToggle: () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                              validator: Validators.validatePassword,
+                              enabled: !_isLoading,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _PasswordField(
+                              controller: _confirmPasswordController,
+                              labelText: 'Verify Password',
+                              obscureText: _obscureConfirmPassword,
+                              icon: Icons.lock_outline,
+                              onToggle: () {
+                                setState(() {
+                                  _obscureConfirmPassword =
+                                      !_obscureConfirmPassword;
+                                });
+                              },
+                              validator: (value) =>
+                                  Validators.validateConfirmPassword(
+                                    value,
+                                    _passwordController.text,
+                                  ),
+                              enabled: !_isLoading,
+                            ),
+                            const SizedBox(height: 32),
+
+                            // Sign Up Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: ElevatedButton(
+                                onPressed: _isLoading ? null : _handleSignup,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryGreen,
+                                  foregroundColor: Colors.white,
+                                  disabledBackgroundColor: AppColors
+                                      .primaryGreen
+                                      .withOpacity(0.6),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 2,
+                                ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.white,
+                                              ),
+                                        ),
+                                      )
+                                    : const SmartReTranslator(
+                                        text: 'Sign Up',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 1,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Sign In Link
+                            GestureDetector(
+                              onTap: _isLoading
+                                  ? null
+                                  : () => Routes.navigateToLogin(context),
+                              child: RichText(
+                                text: const TextSpan(
+                                  style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 16,
+                                  ),
+                                  children: [
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.baseline,
+                                      baseline: TextBaseline.alphabetic,
+                                      child: SmartReTranslator(
+                                        text: 'Already have an account?',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                    ),
+                                    TextSpan(text: ' '),
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.baseline,
+                                      baseline: TextBaseline.alphabetic,
+                                      child: SmartReTranslator(
+                                        text: 'Sign In',
+                                        style: TextStyle(
+                                          color: AppColors.primaryGreen,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 40),
                           ],
                         ),
                       ),
@@ -732,6 +499,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 );
               },
             ),
+
             // Language Switcher
             Positioned(
               top: 16,
@@ -754,6 +522,256 @@ class _SignupScreenState extends State<SignupScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  String? _validateEmail(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your email';
+    }
+    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
+    if (!emailRegex.hasMatch(value)) {
+      return 'Enter a valid email address';
+    }
+    return null;
+  }
+
+  String? _validateDOB(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please select your date of birth';
+    }
+    return null;
+  }
+
+  String? _validateAddress(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter your address';
+    }
+    if (value.trim().length < 10) {
+      return 'Address must be at least 10 characters';
+    }
+    return null;
+  }
+
+  String? _validatePincode(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter Postal Code';
+    }
+    if (value.length != 6) {
+      return 'Postal Code must be 6 digits';
+    }
+    return null;
+  }
+
+  String? _validateCategory(String? value) {
+    if (value == null) {
+      return 'Please select a category';
+    }
+    return null;
+  }
+}
+
+// ✅ Reusable form field widget
+class _FormField extends StatelessWidget {
+  final TextEditingController controller;
+  final String labelText;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  final String? Function(String?)? validator;
+  final bool enabled;
+  final int? maxLines;
+
+  const _FormField({
+    required this.controller,
+    required this.labelText,
+    required this.icon,
+    this.keyboardType,
+    this.validator,
+    required this.enabled,
+    this.maxLines = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        label: SmartReTranslator(
+          text: labelText,
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+        prefixIcon: Icon(icon, color: AppColors.primaryGreen),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.errorColor),
+        ),
+      ),
+      keyboardType: keyboardType,
+      validator: validator,
+      enabled: enabled,
+      maxLines: maxLines,
+    );
+  }
+}
+
+// ✅ Date picker field widget
+class _DatePickerField extends StatelessWidget {
+  final TextEditingController controller;
+  final String labelText;
+  final VoidCallback? onTap;
+  final String? Function(String?)? validator;
+
+  const _DatePickerField({
+    required this.controller,
+    required this.labelText,
+    this.onTap,
+    this.validator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        label: SmartReTranslator(
+          text: labelText,
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+        prefixIcon: Icon(Icons.calendar_today, color: AppColors.primaryGreen),
+        suffixIcon: Icon(Icons.arrow_drop_down, color: AppColors.textSecondary),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+        ),
+      ),
+      readOnly: true,
+      onTap: onTap,
+      validator: validator,
+    );
+  }
+}
+
+// ✅ Password field widget
+class _PasswordField extends StatelessWidget {
+  final TextEditingController controller;
+  final String labelText;
+  final bool obscureText;
+  final VoidCallback onToggle;
+  final String? Function(String?)? validator;
+  final bool enabled;
+  final IconData? icon;
+
+  const _PasswordField({
+    required this.controller,
+    required this.labelText,
+    required this.obscureText,
+    required this.onToggle,
+    this.validator,
+    required this.enabled,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        label: SmartReTranslator(
+          text: labelText,
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+        prefixIcon: Icon(icon ?? Icons.lock, color: AppColors.primaryGreen),
+        suffixIcon: IconButton(
+          icon: Icon(
+            obscureText ? Icons.visibility : Icons.visibility_off,
+            color: AppColors.textSecondary,
+          ),
+          onPressed: onToggle,
+        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+        ),
+      ),
+      obscureText: obscureText,
+      validator: validator,
+      enabled: enabled,
+    );
+  }
+}
+
+// ✅ Category dropdown widget
+class _CategoryDropdown extends StatelessWidget {
+  final String? value;
+  final List<Map<String, dynamic>> categories;
+  final void Function(String?)? onChanged;
+  final String? Function(String?)? validator;
+
+  const _CategoryDropdown({
+    this.value,
+    required this.categories,
+    this.onChanged,
+    this.validator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      decoration: InputDecoration(
+        label: const SmartReTranslator(
+          text: 'Select Category',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        prefixIcon: Icon(Icons.category, color: AppColors.primaryGreen),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+        ),
+        filled: true,
+        fillColor: AppColors.cardBackgroundLight,
+      ),
+      items: categories.map((category) {
+        final categoryKey = category['key'] as String;
+        return DropdownMenuItem<String>(
+          value: category['id'] as String,
+          child: SmartReTranslator(
+            text: categoryKey == 'farmer' ? 'Farmer' : 'Expert',
+            style: const TextStyle(color: AppColors.textPrimary),
+          ),
+        );
+      }).toList(),
+      onChanged: onChanged,
+      validator: validator,
+      dropdownColor: AppColors.backgroundColor,
+      icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
     );
   }
 }
