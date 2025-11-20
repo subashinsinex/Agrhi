@@ -17,19 +17,25 @@ async function generateUniqueId(client, tableName, idColumn) {
 exports.getAllFarms = async (req, res) => {
   try {
     const sql = `
-      SELECT f.farm_id, f.farm_size, f.survey_number,
-       s.name AS soil_type, i.method_name AS irrigation, w.source AS water_source,
-       f.pincode, ud.name AS owner_name
-FROM farms f
-LEFT JOIN farms_soil_types fs ON f.farm_id = fs.farm_id
-LEFT JOIN soil_types s ON fs.soil_type_id = s.soil_type_id
-LEFT JOIN farm_irrigation fi ON f.farm_id = fi.farm_id
-LEFT JOIN irrigation_method i ON fi.irrigation_id = i.irrigation_id
-LEFT JOIN farms_water_src fw ON f.farm_id = fw.farm_id
-LEFT JOIN water_src w ON fw.water_src_id = w.water_src_id
-LEFT JOIN user_details ud ON f.user_id = ud.user_id
-ORDER BY f.farm_id;
-
+      SELECT
+        f.farm_id,
+        f.farm_size,
+        f.survey_number,
+        f.pincode,
+        ud.name AS owner_name,
+        array_agg(DISTINCT s.name) FILTER (WHERE s.name IS NOT NULL) AS soil_types,
+        array_agg(DISTINCT i.method_name) FILTER (WHERE i.method_name IS NOT NULL) AS irrigation_methods,
+        array_agg(DISTINCT w.source) FILTER (WHERE w.source IS NOT NULL) AS water_sources
+      FROM farms f
+      LEFT JOIN farms_soil_types fs ON f.farm_id = fs.farm_id
+      LEFT JOIN soil_types s ON fs.soil_type_id = s.soil_type_id
+      LEFT JOIN farm_irrigation fi ON f.farm_id = fi.farm_id
+      LEFT JOIN irrigation_method i ON fi.irrigation_id = i.irrigation_id
+      LEFT JOIN farms_water_src fw ON f.farm_id = fw.farm_id
+      LEFT JOIN water_src w ON fw.water_src_id = w.water_src_id
+      LEFT JOIN user_details ud ON f.user_id = ud.user_id
+      GROUP BY f.farm_id, f.farm_size, f.survey_number, f.pincode, ud.name
+      ORDER BY f.farm_id;
     `;
     const result = await pool.query(sql);
     res.json(result.rows);
@@ -43,8 +49,14 @@ exports.getFarmById = async (req, res) => {
   const { id } = req.params;
   try {
     const sql = `
-      SELECT f.*, s.name AS soil_type, i.method_name AS irrigation, w.source AS water_source,
-             ud.name AS owner_name, ud.dob, ud.address
+      SELECT
+        f.*,
+        ud.name AS owner_name,
+        ud.dob,
+        ud.address,
+        array_agg(DISTINCT s.name) FILTER (WHERE s.name IS NOT NULL) AS soil_types,
+        array_agg(DISTINCT i.method_name) FILTER (WHERE i.method_name IS NOT NULL) AS irrigation_methods,
+        array_agg(DISTINCT w.source) FILTER (WHERE w.source IS NOT NULL) AS water_sources
       FROM farms f
       LEFT JOIN farms_soil_types fs ON f.farm_id = fs.farm_id
       LEFT JOIN soil_types s ON fs.soil_type_id = s.soil_type_id
@@ -53,7 +65,8 @@ exports.getFarmById = async (req, res) => {
       LEFT JOIN farms_water_src fw ON f.farm_id = fw.farm_id
       LEFT JOIN water_src w ON fw.water_src_id = w.water_src_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      WHERE f.farm_id = $1
+      WHERE f.user_id = $1
+      GROUP BY f.farm_id, ud.name, ud.dob, ud.address;
     `;
     const result = await pool.query(sql, [id]);
     if (result.rows.length > 0) res.json(result.rows[0]);
@@ -66,13 +79,13 @@ exports.getFarmById = async (req, res) => {
 
 exports.addFarm = async (req, res) => {
   const {
-    phone_number, // <-- use phone_number in frontend
+    phone_number,
     farm_size,
     survey_number,
     pincode,
-    soil_type_id,
-    irrigation_id,
-    water_src_id,
+    soil_type_ids, // <-- array, not single value
+    irrigation_ids, // <-- array
+    water_src_ids, // <-- array
   } = req.body;
 
   const client = await pool.connect();
@@ -89,7 +102,7 @@ exports.addFarm = async (req, res) => {
     const user_id = userRes.rows[0].user_id;
     const farm_id = await generateUniqueId(client, "farms", "farm_id");
 
-    // rest of your insert logic
+    // Insert farm row
     const farmResult = await client.query(
       `INSERT INTO farms (user_id, farm_id, farm_size, survey_number, pincode)
        VALUES ($1, $2, $3, $4, $5)
@@ -98,28 +111,34 @@ exports.addFarm = async (req, res) => {
     );
     const farm = farmResult.rows[0];
 
-    // Insert associated soil type, if provided
-    if (soil_type_id) {
-      await client.query(
-        `INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)`,
-        [farm_id, soil_type_id]
-      );
+    // Multi-insert soils
+    if (soil_type_ids && Array.isArray(soil_type_ids)) {
+      for (const soil_type_id of soil_type_ids) {
+        await client.query(
+          `INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)`,
+          [farm_id, soil_type_id]
+        );
+      }
     }
 
-    // Insert associated irrigation, if provided
-    if (irrigation_id) {
-      await client.query(
-        `INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)`,
-        [farm_id, irrigation_id]
-      );
+    // Multi-insert irrigations
+    if (irrigation_ids && Array.isArray(irrigation_ids)) {
+      for (const irrigation_id of irrigation_ids) {
+        await client.query(
+          `INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)`,
+          [farm_id, irrigation_id]
+        );
+      }
     }
 
-    // Insert associated water source, if provided
-    if (water_src_id) {
-      await client.query(
-        `INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)`,
-        [farm_id, water_src_id]
-      );
+    // Multi-insert water sources
+    if (water_src_ids && Array.isArray(water_src_ids)) {
+      for (const water_src_id of water_src_ids) {
+        await client.query(
+          `INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)`,
+          [farm_id, water_src_id]
+        );
+      }
     }
 
     await client.query("COMMIT");
@@ -139,9 +158,9 @@ exports.updateFarm = async (req, res) => {
     farm_size,
     survey_number,
     pincode,
-    soil_type_id,
-    irrigation_id,
-    water_src_id,
+    soil_type_ids, // <-- array
+    irrigation_ids, // <-- array
+    water_src_ids, // <-- array
   } = req.body;
 
   const client = await pool.connect();
@@ -152,41 +171,47 @@ exports.updateFarm = async (req, res) => {
     await client.query(
       `UPDATE farms 
        SET farm_size = $2, survey_number = $3, pincode = $4
-       WHERE farm_id = $1`,
+       WHERE user_id = $1`,
       [farm_id, farm_size, survey_number, pincode]
     );
 
-    // Update soil type
-    if (soil_type_id) {
-      await client.query("DELETE FROM farms_soil_types WHERE farm_id = $1", [
-        farm_id,
-      ]);
-      await client.query(
-        "INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)",
-        [farm_id, soil_type_id]
-      );
+    // DELETE + multi-insert soils
+    await client.query("DELETE FROM farms_soil_types WHERE farm_id = $1", [
+      farm_id,
+    ]);
+    if (soil_type_ids && Array.isArray(soil_type_ids)) {
+      for (const soil_type_id of soil_type_ids) {
+        await client.query(
+          "INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)",
+          [farm_id, soil_type_id]
+        );
+      }
     }
 
-    // Update irrigation
-    if (irrigation_id) {
-      await client.query("DELETE FROM farm_irrigation WHERE farm_id = $1", [
-        farm_id,
-      ]);
-      await client.query(
-        "INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)",
-        [farm_id, irrigation_id]
-      );
+    // DELETE + multi-insert irrigations
+    await client.query("DELETE FROM farm_irrigation WHERE farm_id = $1", [
+      farm_id,
+    ]);
+    if (irrigation_ids && Array.isArray(irrigation_ids)) {
+      for (const irrigation_id of irrigation_ids) {
+        await client.query(
+          "INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)",
+          [farm_id, irrigation_id]
+        );
+      }
     }
 
-    // Update water source
-    if (water_src_id) {
-      await client.query("DELETE FROM farms_water_src WHERE farm_id = $1", [
-        farm_id,
-      ]);
-      await client.query(
-        "INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)",
-        [farm_id, water_src_id]
-      );
+    // DELETE + multi-insert water sources
+    await client.query("DELETE FROM farms_water_src WHERE farm_id = $1", [
+      farm_id,
+    ]);
+    if (water_src_ids && Array.isArray(water_src_ids)) {
+      for (const water_src_id of water_src_ids) {
+        await client.query(
+          "INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)",
+          [farm_id, water_src_id]
+        );
+      }
     }
 
     await client.query("COMMIT");
@@ -217,6 +242,7 @@ exports.getAllCrops = async (req, res) => {
   try {
     const sql = `
       SELECT 
+        uc.farm_id,
         uc.user_crop_id, 
         uc.farm_id,
         pl.plant_name, 
@@ -230,15 +256,12 @@ exports.getAllCrops = async (req, res) => {
         f.survey_number, 
         f.farm_size, 
         ud.name AS farmer,
-        st.name AS soil_type,
         pl.water_requirement
       FROM user_crops uc
       LEFT JOIN plants pl ON uc.plant_id = pl.plant_id
       LEFT JOIN crop_types ct ON pl.crop_type_id = ct.crop_type_id
       LEFT JOIN farms f ON uc.farm_id = f.farm_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      LEFT JOIN farms_soil_types fst ON f.farm_id = fst.farm_id
-      LEFT JOIN soil_types st ON fst.soil_type_id = st.soil_type_id
       ORDER BY uc.user_crop_id;
     `;
     const result = await pool.query(sql);
@@ -254,29 +277,26 @@ exports.getCropById = async (req, res) => {
   try {
     const sql = `
       SELECT
-        uc.user_crop_id,
         uc.farm_id,
-        pl.plant_name, 
+        pl.plant_name,
         ct.name AS crop_type,
-        uc.planting_date, 
+        uc.planting_date,
         uc.harvest_date,
         uc.duration,
-        uc.field_size, 
-        uc.status,  
+        uc.field_size,
+        uc.status,
         uc.is_active,
-        f.survey_number, 
-        f.farm_size, 
+        f.survey_number,
+        f.farm_size,
         ud.name AS farmer,
-        st.name AS soil_type,
         pl.water_requirement
       FROM user_crops uc
       LEFT JOIN plants pl ON uc.plant_id = pl.plant_id
       LEFT JOIN crop_types ct ON pl.crop_type_id = ct.crop_type_id
       LEFT JOIN farms f ON uc.farm_id = f.farm_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      LEFT JOIN farms_soil_types fst ON f.farm_id = fst.farm_id
-      LEFT JOIN soil_types st ON fst.soil_type_id = st.soil_type_id
-      WHERE uc.user_crop_id = $1 AND uc.isactive = true;
+      WHERE f.user_id = $1
+      AND uc.is_active = true;
     `;
     const result = await pool.query(sql, [id]);
     res.json(result.rows[0]);
@@ -291,29 +311,25 @@ exports.getCropHistoryById = async (req, res) => {
   try {
     const sql = `
       SELECT
-        uc.user_crop_id,
-        uc.farm_id,
-        pl.plant_name, 
+        pl.plant_name,
         ct.name AS crop_type,
-        uc.planting_date, 
+        uc.planting_date,
         uc.harvest_date,
         uc.duration,
         uc.field_size,
-        uc.status,  
+        uc.status,
         uc.is_active,
-        f.survey_number, 
-        f.farm_size, 
+        f.survey_number,
+        f.farm_size,
         ud.name AS farmer,
-        st.name AS soil_type,
         pl.water_requirement
       FROM user_crops uc
       LEFT JOIN plants pl ON uc.plant_id = pl.plant_id
       LEFT JOIN crop_types ct ON pl.crop_type_id = ct.crop_type_id
       LEFT JOIN farms f ON uc.farm_id = f.farm_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      LEFT JOIN farms_soil_types fst ON f.farm_id = fst.farm_id
-      LEFT JOIN soil_types st ON fst.soil_type_id = st.soil_type_id
-      WHERE uc.user_crop_id = $1 AND uc.isactive = false;
+      WHERE f.user_id = $1
+      AND uc.is_active = false;
     `;
     const result = await pool.query(sql, [id]);
     res.json(result.rows[0]);
@@ -323,60 +339,77 @@ exports.getCropHistoryById = async (req, res) => {
   }
 };
 
+exports.getFarmCropOptions = async (req, res) => {
+  const { id } = req.params; // Must match your router param key
+  try {
+    const sql = `
+      SELECT
+        array_agg(DISTINCT st.soil_type_id) FILTER (WHERE st.soil_type_id IS NOT NULL) AS soil_type_ids,
+        array_agg(DISTINCT st.name) FILTER (WHERE st.name IS NOT NULL) AS soil_type_names,
+        array_agg(DISTINCT im.irrigation_id) FILTER (WHERE im.irrigation_id IS NOT NULL) AS irrigation_ids,
+        array_agg(DISTINCT im.method_name) FILTER (WHERE im.method_name IS NOT NULL) AS irrigation_names,
+        array_agg(DISTINCT ws.water_src_id) FILTER (WHERE ws.water_src_id IS NOT NULL) AS water_src_ids,
+        array_agg(DISTINCT ws.source) FILTER (WHERE ws.source IS NOT NULL) AS water_src_names
+      FROM farms f
+      LEFT JOIN farms_soil_types fst ON f.farm_id = fst.farm_id
+      LEFT JOIN soil_types st ON fst.soil_type_id = st.soil_type_id
+      LEFT JOIN farm_irrigation fi ON f.farm_id = fi.farm_id
+      LEFT JOIN irrigation_method im ON fi.irrigation_id = im.irrigation_id
+      LEFT JOIN farms_water_src fws ON f.farm_id = fws.farm_id
+      LEFT JOIN water_src ws ON fws.water_src_id = ws.water_src_id
+      WHERE f.farm_id = $1
+      GROUP BY f.farm_id
+    `;
+    const result = await pool.query(sql, [id]);
+    // Return empty arrays if not found.
+    res.json(
+      result.rows[0] || {
+        soil_type_ids: [],
+        soil_type_names: [],
+        irrigation_ids: [],
+        irrigation_names: [],
+        water_src_ids: [],
+        water_src_names: [],
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching farm options", error });
+  }
+};
+
 exports.addCrop = async (req, res) => {
   const {
     farm_id,
-    plant_name,
+    plant_id,
     planting_date,
     harvest_date,
     field_size,
     status,
-    isactive,
+    is_active,
   } = req.body;
 
   const client = await pool.connect();
   try {
-    // 1. Look up plant_id using plant_name
-    const plantQuery = await client.query(
-      "SELECT plant_id FROM plants WHERE plant_name = $1 LIMIT 1",
-      [plant_name]
-    );
-    if (plantQuery.rowCount === 0) {
-      throw new Error(`Invalid plant_name: '${plant_name}' not found`);
-    }
-    const plant_id = plantQuery.rows[0].plant_id;
+    await client.query("BEGIN");
 
-    // 2. Calculate duration in days
     const start = new Date(planting_date);
     const end = new Date(harvest_date);
     const duration = Math.round((end - start) / (1000 * 60 * 60 * 24));
 
-    // 3. Generate unique user_crop_id
     const user_crop_id = await generateUniqueId(
       client,
       "user_crops",
       "user_crop_id"
     );
 
-    // 4. Fetch soil_type_id for the farm
-    const soilIdSql = `
-      SELECT soil_type_id 
-      FROM farms_soil_types 
-      WHERE farm_id = $1
-      LIMIT 1
-    `;
-    const soilIdResult = await client.query(soilIdSql, [farm_id]);
-    const soil_type_id = soilIdResult.rows[0]?.soil_type_id || null;
-
-    // 5. Insert into user_crops table
     const insertSql = `
       INSERT INTO user_crops (
         user_crop_id, farm_id, plant_id, planting_date, harvest_date, duration,
-        field_size, soil_type_id, status, is_active
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-      ) RETURNING *;
+        field_size, status, is_active
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      RETURNING *;
     `;
+
     const result = await client.query(insertSql, [
       user_crop_id,
       farm_id,
@@ -385,26 +418,14 @@ exports.addCrop = async (req, res) => {
       harvest_date,
       duration,
       field_size,
-      soil_type_id,
       status,
-      isactive,
+      is_active,
     ]);
-    let userCrop = result.rows[0];
 
-    // 6. Fetch soil type name for the farm
-    const soilSql = `
-      SELECT name
-      FROM farms_soil_types fst
-      JOIN soil_types st ON fst.soil_type_id = st.soil_type_id
-      WHERE fst.farm_id = $1
-      LIMIT 1
-    `;
-    const soilResult = await client.query(soilSql, [farm_id]);
-    const soil_type_name = soilResult.rows[0]?.name || null;
-
-    // 7. Send response with all crop fields and soil_type_name
-    res.json({ message: "Crop added", crop: { ...userCrop, soil_type_name } });
+    await client.query("COMMIT");
+    res.json({ message: "Crop added", crop: result.rows[0] });
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error("addCrop error:", error.message || error);
     res
       .status(500)
@@ -415,83 +436,70 @@ exports.addCrop = async (req, res) => {
 };
 
 exports.updateCrop = async (req, res) => {
-  const { id } = req.params; // user_crop_id
+  const { id } = req.params;
   const {
     farm_id,
-    plant_name,
+    plant_id,
     planting_date,
     harvest_date,
     field_size,
-    soil_type_name,
     status,
-    isactive,
+    is_active,
   } = req.body;
 
+  const client = await pool.connect();
   try {
-    // 1. Look up plant_id from plant_name
-    const plantQuery = await pool.query(
-      "SELECT plant_id FROM plants WHERE plant_name = $1 LIMIT 1",
-      [plant_name]
-    );
-    if (plantQuery.rowCount === 0) {
-      throw new Error(`Invalid plant_name: '${plant_name}' not found`);
-    }
-    const plant_id = plantQuery.rows[0].plant_id;
+    await client.query("BEGIN");
 
-    // 2. Look up soil_type_id from soil_type_name
-    const soilQuery = await pool.query(
-      "SELECT soil_type_id FROM soil_types WHERE name = $1 LIMIT 1",
-      [soil_type_name]
-    );
-    if (soilQuery.rowCount === 0) {
-      throw new Error(`Invalid soil_type_name: '${soil_type_name}' not found`);
-    }
-    const soil_type_id = soilQuery.rows[0].soil_type_id;
-
-    // 3. Calculate duration in days from dates
+    // 1. Calculate duration
     const start = new Date(planting_date);
     const end = new Date(harvest_date);
     const duration = Math.round((end - start) / (1000 * 60 * 60 * 24));
 
-    // 4. Update query for user_crops
+    // 2. Update query for user_crops
     const sql = `
-      UPDATE user_crops SET
-        farm_id = $1,
-        plant_id = $2,
-        planting_date = $3,
-        harvest_date = $4,
-        duration = $5,
-        field_size = $6,
-        soil_type_id = $7,
-        status = $8,
-        is_active = $9
-      WHERE user_crop_id = $10
-      RETURNING *;
+      UPDATE user_crops
+      SET farm_id = $1,
+          plant_id = $2,
+          planting_date = $3,
+          harvest_date = $4,
+          duration = $5,
+          field_size = $6,
+          status = $7,
+          is_active = $8
+      WHERE user_crop_id = $9
+      RETURNING *
     `;
-    const result = await pool.query(sql, [
+
+    const result = await client.query(sql, [
       farm_id,
       plant_id,
       planting_date,
       harvest_date,
       duration,
       field_size,
-      soil_type_id,
       status,
-      isactive,
+      is_active,
       id,
     ]);
-    const userCrop = result.rows[0];
 
-    // 5. Return updated data with soil_type_name
-    res.json({
-      message: "Crop updated",
-      crop: { ...userCrop, soil_type_name },
-    });
+    // 3. Check if update was successful
+    if (result.rowCount === 0) {
+      throw new Error(`Crop with ID ${id} not found`);
+    }
+
+    const user_crop = result.rows[0];
+
+    await client.query("COMMIT");
+    res.json({ message: "Crop updated", crop: user_crop });
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error("updateCrop error:", error.message || error);
     res
       .status(500)
       .json({ message: "Error updating crop", error: error.message || error });
+  } finally {
+    client.release();
   }
 };
 

@@ -19,7 +19,7 @@ async function login(phone_number, password, platform) {
     console.log("Fetched User Auth:", userAuth);
 
     if (!(await bcrypt.compare(password, userAuth.password))) {
-      return { success: false, message: "Invalid credentials" };
+      return { success: false, message: "Invalid password" };
     }
 
     // Fetch category_id from user_details to verify admin role
@@ -89,7 +89,7 @@ async function refreshToken(req, res) {
       expiresIn: "5m",
     });
     res.status(200).json({ access_token: access_token });
-    return ;
+    return;
   } catch (error) {
     console.error("Refresh token error:", error);
     return res.status(500).json({ error: "Internal server error" });

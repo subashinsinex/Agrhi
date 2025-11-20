@@ -29,6 +29,8 @@ router.delete(
   farmCropService.deleteCrop
 );
 
+router.get("/farms/:id/options", farmCropService.getFarmCropOptions);
+
 // Master tables
 router.get("/masters/soiltypes", jwtChecker, farmCropService.getSoilTypes);
 router.get("/masters/irrigations", jwtChecker, farmCropService.getIrrigations);

@@ -271,9 +271,9 @@ const initialFarmForm = {
   farm_size: "",
   survey_number: "",
   pincode: "",
-  soil_type_id: "",
-  irrigation_id: "",
-  water_src_id: "",
+  soil_type_ids: [],
+  irrigation_ids: [],
+  water_src_ids: [],
 };
 
 const initialCropForm = {
@@ -293,6 +293,7 @@ const FarmCrop = () => {
   const [crops, setCrops] = useState([]);
   const [soilTypes, setSoilTypes] = useState([]);
   const [irrigations, setIrrigations] = useState([]);
+  const [plants, setPlants] = useState([]);
   const [waterSources, setWaterSources] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -367,6 +368,7 @@ const FarmCrop = () => {
       fetchMaster("soiltypes", setSoilTypes);
       fetchMaster("irrigations", setIrrigations);
       fetchMaster("watersources", setWaterSources);
+      fetchMaster("plants", setPlants);
     }
   }, [showAddFarm, showEditFarm, showAddCrop, showEditCrop]);
 
@@ -446,6 +448,22 @@ const FarmCrop = () => {
     }
   };
 
+  const handleMultiSelect = (e) => {
+    const { name, options } = e.target;
+    const values = Array.from(options)
+      .filter((o) => o.selected)
+      .map((o) => o.value);
+    setFarmForm({ ...farmForm, [name]: values });
+  };
+
+  const handleEditMultiSelect = (e) => {
+    const { name, options } = e.target;
+    const values = Array.from(options)
+      .filter((o) => o.selected)
+      .map((o) => o.value);
+    setEditFarmForm({ ...editFarmForm, [name]: values });
+  };
+
   // --- EDIT FARMS (unchanged logic) ---
   const openEditFarm = (farm) => {
     // Ensure IDs are strings for select value matching
@@ -454,9 +472,9 @@ const FarmCrop = () => {
       farm_size: farm.farm_size || "",
       survey_number: farm.survey_number || "",
       pincode: farm.pincode || "",
-      soil_type_id: String(farm.soil_type_id || ""),
-      irrigation_id: String(farm.irrigation_id || ""),
-      water_src_id: String(farm.water_src_id || ""),
+      soil_type_ids: farm.soil_type_ids || [], // <-- ensure array
+      irrigation_ids: farm.irrigation_ids || [],
+      water_src_ids: farm.water_src_ids || [],
     });
     setShowEditFarm(farm.farm_id);
     setFarmStatusMsg("");
@@ -490,15 +508,10 @@ const FarmCrop = () => {
   const openEditCrop = (crop) => {
     setCropStatusMsg(""); // Clear status for edit form
     setCropErrorMsg(""); // Clear error for edit form
-    let resolvedSoilTypeId = crop.soil_type_id;
 
-    // Fallback: If soil_type_id is null/undefined but soil_type_name exists, try to find the ID
-    if (!resolvedSoilTypeId && crop.soil_type_name) {
-      const match = soilTypes.find((type) => type.name === crop.soil_type_name);
-      if (match) resolvedSoilTypeId = match.soil_type_id;
-    }
+    // Always start by resetting options to prevent using stale data
 
-    // Ensure date fields are in "YYYY-MM-DD" format for input type="date"
+    // Utility to ensure YYYY-MM-DD (for input type=date)
     const formatDate = (dateString) => {
       if (!dateString) return "";
       try {
@@ -508,17 +521,16 @@ const FarmCrop = () => {
       }
     };
 
+    // Always set selected values as strings for select fields
     setEditCropForm({
       ...crop,
-      // Ensure the value is a string for the select field
-      soil_type_id: String(
-        resolvedSoilTypeId || (soilTypes[0]?.soil_type_id ?? "")
-      ),
+
       planting_date: formatDate(crop.planting_date),
       harvest_date: formatDate(crop.harvest_date),
     });
     setShowEditCrop(crop.user_crop_id);
   };
+
   const closeEditCrop = () => setShowEditCrop(null);
   const handleEditCropInput = (e) =>
     setEditCropForm({ ...editCropForm, [e.target.name]: e.target.value });
@@ -622,13 +634,16 @@ const FarmCrop = () => {
               required
             />
             <select
-              name="soil_type_id"
+              name="soil_type_ids"
+              multiple
               style={style.formField}
-              value={farmForm.soil_type_id}
-              onChange={handleFarmInput}
+              value={farmForm.soil_type_ids}
+              onChange={handleMultiSelect}
               required
             >
-              <option value="">🧪 Select Soil Type</option>
+              <option value="" disabled>
+                Select Soil Types
+              </option>
               {soilTypes.map((type) => (
                 <option key={type.soil_type_id} value={type.soil_type_id}>
                   {type.name}
@@ -636,13 +651,16 @@ const FarmCrop = () => {
               ))}
             </select>
             <select
-              name="irrigation_id"
+              name="irrigation_ids"
+              multiple
               style={style.formField}
-              value={farmForm.irrigation_id}
-              onChange={handleFarmInput}
+              value={farmForm.irrigation_ids}
+              onChange={handleMultiSelect}
               required
             >
-              <option value="">💧 Select Irrigation Method</option>
+              <option value="" disabled>
+                Select Irrigation Methods
+              </option>
               {irrigations.map((irr) => (
                 <option key={irr.irrigation_id} value={irr.irrigation_id}>
                   {irr.method_name}
@@ -650,13 +668,16 @@ const FarmCrop = () => {
               ))}
             </select>
             <select
-              name="water_src_id"
+              name="water_src_ids"
+              multiple
               style={style.formField}
-              value={farmForm.water_src_id}
-              onChange={handleFarmInput}
+              value={farmForm.water_src_ids}
+              onChange={handleMultiSelect}
               required
             >
-              <option value="">🌊 Select Water Source</option>
+              <option value="" disabled>
+                Select Water Sources
+              </option>
               {waterSources.map((ws) => (
                 <option key={ws.water_src_id} value={ws.water_src_id}>
                   {ws.source}
@@ -726,13 +747,16 @@ const FarmCrop = () => {
               required
             />
             <select
-              name="soil_type_id"
+              name="soil_type_ids"
+              multiple
               style={style.formField}
-              value={editFarmForm.soil_type_id}
-              onChange={handleEditFarmInput}
+              value={editFarmForm.soil_type_ids}
+              onChange={handleEditMultiSelect}
               required
             >
-              <option value="">🧪 Select Soil Type</option>
+              <option value="" disabled>
+                Select Soil Types
+              </option>
               {soilTypes.map((type) => (
                 <option key={type.soil_type_id} value={type.soil_type_id}>
                   {type.name}
@@ -740,10 +764,11 @@ const FarmCrop = () => {
               ))}
             </select>
             <select
-              name="irrigation_id"
+              name="irrigation_ids"
+              multiple
               style={style.formField}
-              value={editFarmForm.irrigation_id}
-              onChange={handleEditFarmInput}
+              value={editFarmForm.irrigation_ids}
+              onChange={handleEditMultiSelect}
               required
             >
               <option value="">💧 Select Irrigation Method</option>
@@ -754,10 +779,11 @@ const FarmCrop = () => {
               ))}
             </select>
             <select
-              name="water_src_id"
+              name="water_src_ids"
+              multiple
               style={style.formField}
-              value={editFarmForm.water_src_id}
-              onChange={handleEditFarmInput}
+              value={editFarmForm.water_src_ids}
+              onChange={handleEditMultiSelect}
               required
             >
               <option value="">🌊 Select Water Source</option>
@@ -908,10 +934,13 @@ const FarmCrop = () => {
                     <span style={style.boldDetail}>Survey Number:</span>{" "}
                     {farm.survey_number ?? "NA"}
                   </div>
-                  <div style={style.detailItem}>
+                  <div className={style.detailItem}>
                     <FaFlask style={style.detailIcon} />
-                    <span style={style.boldDetail}>Soil Type:</span>{" "}
-                    {farm.soil_type ?? "NA"}
+                    <span style={style.boldDetail}>Soil Type:</span>
+                    {/* CHANGE HERE */}
+                    {Array.isArray(farm.soil_types)
+                      ? farm.soil_types.join(", ")
+                      : farm.soil_type || "NA"}
                   </div>
                   <div style={style.detailItem}>
                     <FaLandmark style={style.detailIcon} />
@@ -923,15 +952,19 @@ const FarmCrop = () => {
                     <span style={style.boldDetail}>Pincode:</span>{" "}
                     {farm.pincode ?? "NA"}
                   </div>
-                  <div style={style.detailItem}>
+                  <div className={style.detailItem}>
                     <FaTint style={style.detailIcon} />
-                    <span style={style.boldDetail}>Irrigation:</span>{" "}
-                    {farm.irrigation ?? "NA"}
+                    <span style={style.boldDetail}>Irrigation:</span>
+                    {Array.isArray(farm.irrigation_methods)
+                      ? farm.irrigation_methods.join(", ")
+                      : farm.irrigation || "NA"}
                   </div>
-                  <div style={style.detailItem}>
+                  <div className={style.detailItem}>
                     <FaTint style={style.detailIcon} />
-                    <span style={style.boldDetail}>Water Source:</span>{" "}
-                    {farm.water_source ?? "NA"}
+                    <span style={style.boldDetail}>Water Source:</span>
+                    {Array.isArray(farm.water_sources)
+                      ? farm.water_sources.join(", ")
+                      : farm.water_source || "NA"}
                   </div>
                 </div>
 
@@ -994,13 +1027,7 @@ const FarmCrop = () => {
                               </span>{" "}
                               {crop.water_requirement ?? "NA"}
                             </div>
-                            <div style={style.detailItem}>
-                              <FaFlask style={style.detailIcon} />
-                              <span style={style.boldDetail}>
-                                Soil Type:
-                              </span>{" "}
-                              {crop.soil_type ?? "NA"}
-                            </div>
+
                             <div style={style.detailItem}>
                               <span style={style.boldDetail}>Status:</span>{" "}
                               <span
@@ -1015,6 +1042,7 @@ const FarmCrop = () => {
                                 {crop.status ?? "NA"}
                               </span>
                             </div>
+
                             <div
                               style={{
                                 gridColumn: "span 1 / span 1",
@@ -1040,14 +1068,23 @@ const FarmCrop = () => {
                                 marginTop: "15px",
                               }}
                             >
-                              <input
-                                name="plant_name"
+                              <select
+                                name="plant_id"
                                 style={style.formField}
-                                value={editCropForm.plant_name}
-                                placeholder="Plant Name"
+                                value={editCropForm.plant_id}
                                 onChange={handleEditCropInput}
                                 required
-                              />
+                              >
+                                <option value="">Select Plant</option>
+                                {plants.map((type) => (
+                                  <option
+                                    key={type.plant_id}
+                                    value={type.plant_id}
+                                  >
+                                    {type.plant_name}
+                                  </option>
+                                ))}
+                              </select>
                               <input
                                 name="planting_date"
                                 type="date"
@@ -1079,27 +1116,11 @@ const FarmCrop = () => {
                                 name="status"
                                 style={style.formField}
                                 value={editCropForm.status}
-                                placeholder="Crop Status (e.g., Active, Harvested)"
+                                placeholder="Crop Status (e.g., Growing, Planted, Harvested)"
                                 onChange={handleEditCropInput}
                                 required
                               />
-                              <select
-                                name="soil_type_id"
-                                style={style.formField}
-                                value={editCropForm.soil_type_id}
-                                onChange={handleEditCropInput}
-                                required
-                              >
-                                <option value="">Select Soil Type</option>
-                                {soilTypes.map((type) => (
-                                  <option
-                                    key={type.soil_type_id}
-                                    value={type.soil_type_id}
-                                  >
-                                    {type.name}
-                                  </option>
-                                ))}
-                              </select>
+
                               <div
                                 style={{
                                   display: "flex",
@@ -1148,14 +1169,20 @@ const FarmCrop = () => {
                       marginTop: "20px",
                     }}
                   >
-                    <input
-                      name="plant_name"
+                    <select
+                      name="plant_id"
                       style={style.formField}
-                      value={cropForm.plant_name}
-                      placeholder="🌿 Plant Name"
+                      value={cropForm.plant_id} // CRITICAL: Use cropForm for Add Crop
                       onChange={handleCropInput}
                       required
-                    />
+                    >
+                      <option value="">🧪 Select Plant</option>
+                      {plants.map((type) => (
+                        <option key={type.plant_id} value={type.plant_id}>
+                          {type.plant_name}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       name="planting_date"
                       type="date"
@@ -1187,27 +1214,11 @@ const FarmCrop = () => {
                       name="status"
                       style={style.formField}
                       value={cropForm.status}
-                      placeholder="🌱 Status (e.g., Active, Harvested)"
+                      placeholder="🌱 Status (e.g., Growing, Planted, Harvested)"
                       onChange={handleCropInput}
                       required
                     />
-                    <select
-                      name="soil_type_id"
-                      style={style.formField}
-                      value={cropForm.soil_type_id} // CRITICAL: Use cropForm for Add Crop
-                      onChange={handleCropInput}
-                      required
-                    >
-                      <option value="">🧪 Select Soil Type</option>
-                      {soilTypes.map((type) => (
-                        <option
-                          key={type.soil_type_id}
-                          value={type.soil_type_id}
-                        >
-                          {type.name}
-                        </option>
-                      ))}
-                    </select>
+
                     <div
                       style={{
                         display: "flex",
