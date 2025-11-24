@@ -442,6 +442,9 @@ const Subsidies = () => {
       box-sizing: border-box;
       resize: vertical;
     }
+    .modal textarea[name="description"] {
+      min-height: 125px;
+    }
     .modal-actions {
       display: flex;
       justify-content: flex-end;

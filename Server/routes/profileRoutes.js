@@ -30,7 +30,16 @@ router.post("/createUser", async (req, res) => {
     });
   } catch (error) {
     console.error("Route createUser error:", error);
-    res.status(500).json({ message: "Error creating user" });
+    // Check error message for known validation failure
+    if (
+      error.message === "Phone number already exist" ||
+      error.message === "Email already exist" ||
+      error.message === "Phone number and email already exist"
+    ) {
+      res.status(400).json({ message: error.message });
+    } else {
+      res.status(500).json({ message: "Error creating user" });
+    }
   }
 });
 

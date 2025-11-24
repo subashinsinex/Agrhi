@@ -270,7 +270,6 @@ const initialFarmForm = {
   phone_number: "",
   farm_size: "",
   survey_number: "",
-  pincode: "",
   soil_type_ids: [],
   irrigation_ids: [],
   water_src_ids: [],
@@ -471,7 +470,6 @@ const FarmCrop = () => {
       ...farm,
       farm_size: farm.farm_size || "",
       survey_number: farm.survey_number || "",
-      pincode: farm.pincode || "",
       soil_type_ids: farm.soil_type_ids || [], // <-- ensure array
       irrigation_ids: farm.irrigation_ids || [],
       water_src_ids: farm.water_src_ids || [],
@@ -623,16 +621,7 @@ const FarmCrop = () => {
               onChange={handleFarmInput}
               required
             />
-            <input
-              name="pincode"
-              type="text"
-              pattern="\d*" // Basic pattern for numbers
-              style={style.formField}
-              value={farmForm.pincode}
-              placeholder="📍 Pincode"
-              onChange={handleFarmInput}
-              required
-            />
+
             <select
               name="soil_type_ids"
               multiple
@@ -736,16 +725,7 @@ const FarmCrop = () => {
               onChange={handleEditFarmInput}
               required
             />
-            <input
-              name="pincode"
-              type="text"
-              pattern="\d*"
-              style={style.formField}
-              value={editFarmForm.pincode}
-              placeholder="📍 Pincode"
-              onChange={handleEditFarmInput}
-              required
-            />
+
             <select
               name="soil_type_ids"
               multiple
@@ -947,11 +927,7 @@ const FarmCrop = () => {
                     <span style={style.boldDetail}>Size (Acre):</span>{" "}
                     {farm.farm_size ?? "NA"}
                   </div>
-                  <div style={style.detailItem}>
-                    <FaMapMarkerAlt style={style.detailIcon} />
-                    <span style={style.boldDetail}>Pincode:</span>{" "}
-                    {farm.pincode ?? "NA"}
-                  </div>
+
                   <div className={style.detailItem}>
                     <FaTint style={style.detailIcon} />
                     <span style={style.boldDetail}>Irrigation:</span>

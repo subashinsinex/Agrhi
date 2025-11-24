@@ -21,7 +21,6 @@ exports.getAllFarms = async (req, res) => {
         f.farm_id,
         f.farm_size,
         f.survey_number,
-        f.pincode,
         ud.name AS owner_name,
         array_agg(DISTINCT s.name) FILTER (WHERE s.name IS NOT NULL) AS soil_types,
         array_agg(DISTINCT i.method_name) FILTER (WHERE i.method_name IS NOT NULL) AS irrigation_methods,
@@ -34,7 +33,7 @@ exports.getAllFarms = async (req, res) => {
       LEFT JOIN farms_water_src fw ON f.farm_id = fw.farm_id
       LEFT JOIN water_src w ON fw.water_src_id = w.water_src_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      GROUP BY f.farm_id, f.farm_size, f.survey_number, f.pincode, ud.name
+      GROUP BY f.farm_id, f.farm_size, f.survey_number, ud.name
       ORDER BY f.farm_id;
     `;
     const result = await pool.query(sql);
@@ -50,10 +49,9 @@ exports.getFarmById = async (req, res) => {
   try {
     const sql = `
       SELECT
-        f.*,
-        ud.name AS owner_name,
-        ud.dob,
-        ud.address,
+        f.farm_id,
+        f.farm_size,
+        f.survey_number,
         array_agg(DISTINCT s.name) FILTER (WHERE s.name IS NOT NULL) AS soil_types,
         array_agg(DISTINCT i.method_name) FILTER (WHERE i.method_name IS NOT NULL) AS irrigation_methods,
         array_agg(DISTINCT w.source) FILTER (WHERE w.source IS NOT NULL) AS water_sources
@@ -69,7 +67,7 @@ exports.getFarmById = async (req, res) => {
       GROUP BY f.farm_id, ud.name, ud.dob, ud.address;
     `;
     const result = await pool.query(sql, [id]);
-    if (result.rows.length > 0) res.json(result.rows[0]);
+    if (result.rows.length > 0) res.json(result.rows);
     else res.status(404).json({ message: "Farm not found" });
   } catch (error) {
     console.error("getFarmById error:", error);
@@ -82,7 +80,6 @@ exports.addFarm = async (req, res) => {
     phone_number,
     farm_size,
     survey_number,
-    pincode,
     soil_type_ids, // <-- array, not single value
     irrigation_ids, // <-- array
     water_src_ids, // <-- array
@@ -104,10 +101,10 @@ exports.addFarm = async (req, res) => {
 
     // Insert farm row
     const farmResult = await client.query(
-      `INSERT INTO farms (user_id, farm_id, farm_size, survey_number, pincode)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO farms (user_id, farm_id, farm_size, survey_number)
+       VALUES ($1, $2, $3, $4)
        RETURNING *;`,
-      [user_id, farm_id, farm_size, survey_number, pincode]
+      [user_id, farm_id, farm_size, survey_number]
     );
     const farm = farmResult.rows[0];
 
@@ -152,12 +149,87 @@ exports.addFarm = async (req, res) => {
   }
 };
 
+exports.addFarmByUserId = async (req, res) => {
+  const {
+    user_id, // Farmer's user_id after login
+    farm_size,
+    survey_number,
+    soil_type_ids, // array
+    irrigation_ids, // array
+    water_src_ids, // array
+  } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Optional: Validate that user_id exists in users_auth table
+    const userRes = await client.query(
+      "SELECT user_id FROM users_auth WHERE user_id = $1 LIMIT 1",
+      [user_id]
+    );
+    if (userRes.rowCount === 0) {
+      throw new Error("Invalid user_id. User not found.");
+    }
+
+    // Generate unique farm_id
+    const farm_id = await generateUniqueId(client, "farms", "farm_id");
+
+    // Insert farm row
+    const farmResult = await client.query(
+      `INSERT INTO farms (user_id, farm_id, farm_size, survey_number)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *;`,
+      [user_id, farm_id, farm_size, survey_number]
+    );
+    const farm = farmResult.rows[0];
+
+    // Multi-insert soil types
+    if (soil_type_ids && Array.isArray(soil_type_ids)) {
+      for (const soil_type_id of soil_type_ids) {
+        await client.query(
+          `INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)`,
+          [farm_id, soil_type_id]
+        );
+      }
+    }
+
+    // Multi-insert irrigations
+    if (irrigation_ids && Array.isArray(irrigation_ids)) {
+      for (const irrigation_id of irrigation_ids) {
+        await client.query(
+          `INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)`,
+          [farm_id, irrigation_id]
+        );
+      }
+    }
+
+    // Multi-insert water sources
+    if (water_src_ids && Array.isArray(water_src_ids)) {
+      for (const water_src_id of water_src_ids) {
+        await client.query(
+          `INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)`,
+          [farm_id, water_src_id]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    res.json({ message: "Farm added", farm });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("addFarmByUserId error:", error);
+    res.status(500).json({ message: "Error adding farm", error });
+  } finally {
+    client.release();
+  }
+};
+
 exports.updateFarm = async (req, res) => {
   const farm_id = req.params.id;
   const {
     farm_size,
     survey_number,
-    pincode,
     soil_type_ids, // <-- array
     irrigation_ids, // <-- array
     water_src_ids, // <-- array
@@ -170,9 +242,9 @@ exports.updateFarm = async (req, res) => {
     // Update main farm record (do NOT touch user_id)
     await client.query(
       `UPDATE farms 
-       SET farm_size = $2, survey_number = $3, pincode = $4
+       SET farm_size = $2, survey_number = $3
        WHERE user_id = $1`,
-      [farm_id, farm_size, survey_number, pincode]
+      [farm_id, farm_size, survey_number]
     );
 
     // DELETE + multi-insert soils

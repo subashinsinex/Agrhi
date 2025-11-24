@@ -40,6 +40,26 @@ async function getUserById(userId) {
 async function createUser(newUser) {
   const client = await pool.connect();
   try {
+    // Check if phone number or email already exists
+    const existingCheck = await client.query(
+      `SELECT phone_number, email FROM users_auth WHERE phone_number = $1 OR email = $2`,
+      [newUser.phone_number, newUser.email]
+    );
+
+    if (existingCheck.rows.length > 0) {
+      const existing = existingCheck.rows[0];
+      if (
+        existing.phone_number === newUser.phone_number &&
+        existing.email === newUser.email
+      ) {
+        throw new Error("Phone number and email already exist");
+      } else if (existing.phone_number === newUser.phone_number) {
+        throw new Error("Phone number already exist");
+      } else if (existing.email === newUser.email) {
+        throw new Error("Email already exist");
+      }
+    }
+
     await client.query("BEGIN");
     const user_id = await generateUniqueId(client, "users_auth", "user_id");
 

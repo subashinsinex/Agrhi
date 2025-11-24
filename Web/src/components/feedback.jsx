@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { axiosInstance } from "../api/login";
 import { Search, Trash2, Edit, MessageCircle, CheckCircle } from "lucide-react";
-import { SERVER_IP, SERVER_PORT} from "../constant";
+import { SERVER_IP, SERVER_PORT } from "../constant";
 
 const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/feedback`;
 
@@ -721,7 +721,7 @@ const Feedback = () => {
                     name="reply"
                     value={form.reply}
                     onChange={handleChange}
-                    required
+                    //required
                     placeholder="Admin response"
                   />
                 </div>
