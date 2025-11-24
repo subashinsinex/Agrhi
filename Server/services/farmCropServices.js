@@ -367,11 +367,11 @@ exports.getCropById = async (req, res) => {
       LEFT JOIN crop_types ct ON pl.crop_type_id = ct.crop_type_id
       LEFT JOIN farms f ON uc.farm_id = f.farm_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      WHERE f.user_id = $1
+      WHERE f.farm_id = $1
       AND uc.is_active = true;
     `;
     const result = await pool.query(sql, [id]);
-    res.json(result.rows[0]);
+    res.json(result.rows);
   } catch (error) {
     console.error("getCropById error:", error);
     res.status(500).json({ message: "Error fetching crop", error });
@@ -400,11 +400,11 @@ exports.getCropHistoryById = async (req, res) => {
       LEFT JOIN crop_types ct ON pl.crop_type_id = ct.crop_type_id
       LEFT JOIN farms f ON uc.farm_id = f.farm_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      WHERE f.user_id = $1
+      WHERE f.farm_id = $1
       AND uc.is_active = false;
     `;
     const result = await pool.query(sql, [id]);
-    res.json(result.rows[0]);
+    res.json(result.rows);
   } catch (error) {
     console.error("getCropHistoryById error:", error);
     res.status(500).json({ message: "Error fetching crop", error });
