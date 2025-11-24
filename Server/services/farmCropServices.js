@@ -243,7 +243,7 @@ exports.updateFarm = async (req, res) => {
     await client.query(
       `UPDATE farms 
        SET farm_size = $2, survey_number = $3
-       WHERE user_id = $1`,
+       WHERE farm_id = $1`,
       [farm_id, farm_size, survey_number]
     );
 
