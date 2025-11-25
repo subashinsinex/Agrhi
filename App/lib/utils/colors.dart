@@ -69,6 +69,8 @@ class AppColors {
   static const Color cardPrimary = primaryGreen;
   static const Color buttonPrimary = primaryGreen;
   static const Color iconPrimary = primaryGreen;
+
+  static const Color accentBlue = Color(0xFF2196F3);
 }
 
 // Extension for easy color access

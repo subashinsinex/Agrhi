@@ -151,7 +151,8 @@ exports.addFarm = async (req, res) => {
 
 exports.addFarmByUserId = async (req, res) => {
   const {
-    user_id, // Farmer's user_id after login
+    user_id,
+    farm_id,
     farm_size,
     survey_number,
     soil_type_ids, // array
@@ -171,9 +172,6 @@ exports.addFarmByUserId = async (req, res) => {
     if (userRes.rowCount === 0) {
       throw new Error("Invalid user_id. User not found.");
     }
-
-    // Generate unique farm_id
-    const farm_id = await generateUniqueId(client, "farms", "farm_id");
 
     // Insert farm row
     const farmResult = await client.query(
@@ -349,7 +347,7 @@ exports.getCropById = async (req, res) => {
   try {
     const sql = `
       SELECT
-        uc.farm_id,
+        uc.user_crop_id,
         pl.plant_name,
         ct.name AS crop_type,
         uc.planting_date,
@@ -383,6 +381,7 @@ exports.getCropHistoryById = async (req, res) => {
   try {
     const sql = `
       SELECT
+        uc.user_crop_id,
         pl.plant_name,
         ct.name AS crop_type,
         uc.planting_date,
@@ -451,6 +450,7 @@ exports.getFarmCropOptions = async (req, res) => {
 
 exports.addCrop = async (req, res) => {
   const {
+    user_crop_id, // ✅ Accept from client
     farm_id,
     plant_id,
     planting_date,
@@ -468,22 +468,31 @@ exports.addCrop = async (req, res) => {
     const end = new Date(harvest_date);
     const duration = Math.round((end - start) / (1000 * 60 * 60 * 24));
 
-    const user_crop_id = await generateUniqueId(
-      client,
-      "user_crops",
-      "user_crop_id"
-    );
+    // ✅ Use client-provided ID or generate new one
+    const cropId =
+      user_crop_id ||
+      (await generateUniqueId(client, "user_crops", "user_crop_id"));
 
+    // ✅ Use INSERT ... ON CONFLICT to handle duplicates gracefully
     const insertSql = `
       INSERT INTO user_crops (
         user_crop_id, farm_id, plant_id, planting_date, harvest_date, duration,
         field_size, status, is_active
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ON CONFLICT (user_crop_id) DO UPDATE SET
+        farm_id = EXCLUDED.farm_id,
+        plant_id = EXCLUDED.plant_id,
+        planting_date = EXCLUDED.planting_date,
+        harvest_date = EXCLUDED.harvest_date,
+        duration = EXCLUDED.duration,
+        field_size = EXCLUDED.field_size,
+        status = EXCLUDED.status,
+        is_active = EXCLUDED.is_active
       RETURNING *;
     `;
 
     const result = await client.query(insertSql, [
-      user_crop_id,
+      cropId,
       farm_id,
       plant_id,
       planting_date,
@@ -495,7 +504,11 @@ exports.addCrop = async (req, res) => {
     ]);
 
     await client.query("COMMIT");
-    res.json({ message: "Crop added", crop: result.rows[0] });
+    res.json({
+      message: "Crop added",
+      crop: result.rows[0],
+      user_crop_id: cropId, // ✅ Return the ID to client
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("addCrop error:", error.message || error);
@@ -506,6 +519,7 @@ exports.addCrop = async (req, res) => {
     client.release();
   }
 };
+
 
 exports.updateCrop = async (req, res) => {
   const { id } = req.params;

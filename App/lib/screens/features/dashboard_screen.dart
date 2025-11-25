@@ -1,10 +1,10 @@
+import 'package:agrhi/screens/features/crop_history_screen.dart';
 import 'package:agrhi/screens/features/model_manager_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'dart:async';
 import '../shared/sidebar.dart';
-import '../shared/placeholder_screen.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
@@ -14,22 +14,11 @@ import '../components/profile_card.dart';
 import '../components/feature_grid.dart';
 import 'disease_detection_screen.dart';
 import 'subsidy_screen.dart';
+import 'crop_care_screen.dart';
 import 'disease_history_screen.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/sync_service.dart';
-
-Future<void> printAllSecureStorage() async {
-  const storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock,
-      synchronizable: false,
-    ),
-  );
-  final all = await storage.readAll();
-  debugPrint('📦 Secure Storage: ${all.keys.join(", ")}');
-}
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -150,16 +139,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       debugPrint('Error loading user data: $e');
       if (mounted) setState(() => _isLoadingProfile = false);
     }
-  }
-
-  void _navigateToFeature(String displayTitle, IconData icon) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            PlaceholderScreen(title: displayTitle, icon: icon),
-      ),
-    );
   }
 
   void _openSidebar() {
@@ -508,7 +487,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       FeatureItem(
         title: 'Crop Care',
         icon: Icons.agriculture,
-        onTap: () => _navigateToFeature('Crop Care', Icons.agriculture),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const CropCareScreen()),
+        ),
       ),
       FeatureItem(
         title: 'Plant Doctor',
@@ -529,7 +511,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       FeatureItem(
         title: 'Crop History',
         icon: Icons.history_edu,
-        onTap: () => _navigateToFeature('Crop History', Icons.history_edu),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const CropHistoryScreen()),
+        ),
       ),
       FeatureItem(
         title: 'Detection History',
