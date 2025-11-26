@@ -19,7 +19,6 @@ class AddCropScreen extends StatefulWidget {
 class _AddCropScreenState extends State<AddCropScreen> {
   final _formKey = GlobalKey<FormState>();
   final _fieldSizeController = TextEditingController();
-  final _durationController = TextEditingController();
 
   String? _selectedFarmId;
   String? _selectedPlantId;
@@ -53,7 +52,6 @@ class _AddCropScreenState extends State<AddCropScreen> {
     _selectedPlantId = crop['plantid']?.toString();
     _selectedSoilTypeId = crop['soiltypeid']?.toString();
     _fieldSizeController.text = crop['fieldsize']?.toString() ?? '';
-    _durationController.text = crop['duration']?.toString() ?? '';
     _status = crop['status']?.toString() ?? 'Planted';
     _isActive = (crop['isactive'] == 1);
 
@@ -138,9 +136,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         plantId: _selectedPlantId!,
         plantingDate: _plantingDate!.toIso8601String(),
         harvestDate: _harvestDate?.toIso8601String(),
-        duration: _durationController.text.isNotEmpty
-            ? double.parse(_durationController.text.trim())
-            : null,
+        duration: null,
         fieldSize: double.parse(_fieldSizeController.text.trim()),
         soilTypeId: _selectedSoilTypeId!,
         status: _status,
@@ -293,116 +289,194 @@ class _AddCropScreenState extends State<AddCropScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   _buildSectionTitle('Farm & Plant Selection'),
-                  const SizedBox(height: 16),
-                  _buildDropdown(
-                    label: 'Select Farm',
-                    icon: Icons.agriculture,
-                    value: _selectedFarmId,
-                    items: _farms
-                        .map(
-                          (f) => {
-                            'id': f['farmid']?.toString(),
-                            'name':
-                                f['surveynumber']?.toString() ??
-                                'Farm ${f['farmid']}',
-                          },
-                        )
-                        .toList(),
-                    onChanged: (value) =>
-                        setState(() => _selectedFarmId = value),
-                    required: true,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildDropdown(
-                    label: 'Select Plant/Crop',
-                    icon: Icons.eco,
-                    value: _selectedPlantId,
-                    items: _plants
-                        .map(
-                          (p) => {
-                            'id': p['plantid']
-                                ?.toString(), // ✅ Fixed: plantid not plant_id
-                            'name':
-                                p['plantname']
-                                    ?.toString() ?? // ✅ Fixed: plantname not plant_name
-                                'Plant ${p['plantid']}',
-                          },
-                        )
-                        .toList(),
-                    onChanged: (value) =>
-                        setState(() => _selectedPlantId = value),
-                    required: true,
-                  ),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle('Crop Details'),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _fieldSizeController,
-                    label: 'Field Size (Acres)',
-                    icon: Icons.crop,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Select Farm',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildDropdown(
+                        label: null,
+                        icon: Icons.agriculture,
+                        value: _selectedFarmId,
+                        items: _farms
+                            .map(
+                              (f) => {
+                                'id': f['farmid']?.toString(),
+                                'name':
+                                    f['surveynumber']?.toString() ??
+                                    'Farm ${f['farmid']}',
+                              },
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setState(() => _selectedFarmId = value),
+                        required: true,
+                      ),
                     ],
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Field size is required';
-                      }
-                      final size = double.tryParse(value);
-                      if (size == null || size <= 0) {
-                        return 'Enter a valid field size';
-                      }
-                      return null;
-                    },
                   ),
-                  const SizedBox(height: 16),
-                  _buildDateField(
-                    label: 'Planting Date *',
-                    icon: Icons.calendar_today,
-                    date: _plantingDate,
-                    onTap: () => _selectDate(context, true),
-                    required: true,
+                  const SizedBox(height: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Select Plant/Crop',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildDropdown(
+                        label: null,
+                        icon: Icons.eco,
+                        value: _selectedPlantId,
+                        items: _plants
+                            .map(
+                              (p) => {
+                                'id': p['plantid']?.toString(),
+                                'name':
+                                    p['plantname']?.toString() ??
+                                    'Plant ${p['plantid']}',
+                              },
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setState(() => _selectedPlantId = value),
+                        required: true,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildDateField(
-                    label: 'Expected Harvest Date',
-                    icon: Icons.event_available,
-                    date: _harvestDate,
-                    onTap: () => _selectDate(context, false),
+                  const SizedBox(height: 14),
+                  _buildSectionTitle('Crop Details'),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Field Size (Acres)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildTextField(
+                        controller: _fieldSizeController,
+                        label: null,
+                        icon: Icons.crop,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d*'),
+                          ),
+                        ],
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Field size is required';
+                          }
+                          final size = double.tryParse(value);
+                          if (size == null || size <= 0) {
+                            return 'Enter a valid field size';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _durationController,
-                    label: 'Growth Duration (days)',
-                    icon: Icons.timer,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  const SizedBox(height: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Planting Date *',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildDateField(
+                        label: null,
+                        icon: Icons.calendar_today,
+                        date: _plantingDate,
+                        onTap: () => _selectDate(context, true),
+                        required: true,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildDropdown(
-                    label: 'Soil Type',
-                    icon: Icons.terrain,
-                    value: _selectedSoilTypeId,
-                    items: _soilTypes
-                        .map(
-                          (s) => {
-                            'id': s['soiltypeid']
-                                ?.toString(), // ✅ Fixed: soiltypeid not soil_type_id
-                            'name': s['name']?.toString() ?? 'Unknown',
-                          },
-                        )
-                        .toList(),
-                    onChanged: (value) =>
-                        setState(() => _selectedSoilTypeId = value),
-                    required: true,
+                  const SizedBox(height: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Expected Harvest Date',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildDateField(
+                        label: null,
+                        icon: Icons.event_available,
+                        date: _harvestDate,
+                        onTap: () => _selectDate(context, false),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildStatusDropdown(),
-                  const SizedBox(height: 16),
-                  _buildActiveSwitch(),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Soil Type',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildDropdown(
+                        label: null,
+                        icon: Icons.terrain,
+                        value: _selectedSoilTypeId,
+                        items: _soilTypes
+                            .map(
+                              (s) => {
+                                'id': s['soiltypeid']?.toString(),
+                                'name': s['name']?.toString() ?? 'Unknown',
+                              },
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setState(() => _selectedSoilTypeId = value),
+                        required: true,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Crop Status',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildStatusDropdown(),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
                   ElevatedButton.icon(
                     onPressed: _isLoading ? null : _saveCrop,
                     icon: Icon(
@@ -412,7 +486,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                     label: SmartReTranslator(
                       text: _isEditing ? 'Update Crop' : 'Create Crop',
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),
@@ -433,19 +507,24 @@ class _AddCropScreenState extends State<AddCropScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: Colors.black87,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        const SizedBox(height: 6),
+      ],
     );
   }
 
   Widget _buildTextField({
     required TextEditingController controller,
-    required String label,
+    required String? label,
     required IconData icon,
     String? Function(String?)? validator,
     TextInputType? keyboardType,
@@ -455,6 +534,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
+        alignLabelWithHint: true,
         prefixIcon: Icon(icon, color: AppColors.primaryGreen),
         filled: true,
         fillColor: Colors.white,
@@ -482,7 +562,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
   }
 
   Widget _buildDateField({
-    required String label,
+    required String? label,
     required IconData icon,
     required DateTime? date,
     required VoidCallback onTap,
@@ -493,6 +573,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
+          alignLabelWithHint: true,
           prefixIcon: Icon(icon, color: AppColors.primaryGreen),
           filled: true,
           fillColor: Colors.white,
@@ -520,7 +601,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   : 'Select date',
               style: TextStyle(
                 color: date != null ? Colors.black87 : Colors.grey,
-                fontSize: 16,
+                fontSize: 14,
               ),
             ),
             Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
@@ -531,7 +612,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
   }
 
   Widget _buildDropdown({
-    required String label,
+    required String? label,
     required IconData icon,
     required String? value,
     required List<Map<String, dynamic>> items,
@@ -542,6 +623,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
       value: value,
       decoration: InputDecoration(
         labelText: label,
+        alignLabelWithHint: true,
         prefixIcon: Icon(icon, color: AppColors.primaryGreen),
         filled: true,
         fillColor: Colors.white,
@@ -579,7 +661,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
     return DropdownButtonFormField<String>(
       value: _status,
       decoration: InputDecoration(
-        labelText: 'Crop Status',
+        alignLabelWithHint: true,
         prefixIcon: Icon(Icons.info_outline, color: AppColors.primaryGreen),
         filled: true,
         fillColor: Colors.white,
@@ -605,35 +687,9 @@ class _AddCropScreenState extends State<AddCropScreen> {
     );
   }
 
-  Widget _buildActiveSwitch() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.toggle_on, color: AppColors.primaryGreen),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text('Active Crop', style: TextStyle(fontSize: 16)),
-          ),
-          Switch(
-            value: _isActive,
-            onChanged: (value) => setState(() => _isActive = value),
-            activeColor: AppColors.primaryGreen,
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _fieldSizeController.dispose();
-    _durationController.dispose();
     super.dispose();
   }
 }

@@ -328,97 +328,162 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   _buildSectionTitle('Farm Details'),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _surveyNumberController,
-                    label: 'Survey Number',
-                    icon: Icons.numbers,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Survey number is required';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _farmSizeController,
-                    label: 'Farm Size (Acres)',
-                    icon: Icons.landscape,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Survey Number',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildTextField(
+                        controller: _surveyNumberController,
+                        label: null,
+                        icon: Icons.numbers,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Survey number is required';
+                          }
+                          return null;
+                        },
+                      ),
                     ],
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Farm size is required';
-                      }
-                      final size = double.tryParse(value);
-                      if (size == null || size <= 0) {
-                        return 'Enter a valid farm size';
-                      }
-                      return null;
-                    },
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Farm Size (Acres)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildTextField(
+                        controller: _farmSizeController,
+                        label: null,
+                        icon: Icons.landscape,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d*'),
+                          ),
+                        ],
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Farm size is required';
+                          }
+                          final size = double.tryParse(value);
+                          if (size == null || size <= 0) {
+                            return 'Enter a valid farm size';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
                   _buildSectionTitle('Farm Characteristics'),
-                  const SizedBox(height: 16),
-                  _buildMultiSelectField(
-                    label: 'Soil Types',
-                    icon: Icons.terrain,
-                    selectedCount: _selectedSoilTypeIds.length,
-                    selectedText: _getSelectedNames(
-                      _selectedSoilTypeIds,
-                      _soilTypes,
-                    ),
-                    onTap: () => _showMultiSelectDialog(
-                      title: 'Select Soil Types',
-                      items: _soilTypes,
-                      selectedIds: _selectedSoilTypeIds,
-                      onConfirm: (selected) {
-                        setState(() => _selectedSoilTypeIds = selected);
-                      },
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Soil Types',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildMultiSelectField(
+                        label: null,
+                        icon: Icons.terrain,
+                        selectedCount: _selectedSoilTypeIds.length,
+                        selectedText: _getSelectedNames(
+                          _selectedSoilTypeIds,
+                          _soilTypes,
+                        ),
+                        onTap: () => _showMultiSelectDialog(
+                          title: 'Select Soil Types',
+                          items: _soilTypes,
+                          selectedIds: _selectedSoilTypeIds,
+                          onConfirm: (selected) {
+                            setState(() => _selectedSoilTypeIds = selected);
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildMultiSelectField(
-                    label: 'Irrigation Methods',
-                    icon: Icons.water_drop,
-                    selectedCount: _selectedIrrigationIds.length,
-                    selectedText: _getSelectedNames(
-                      _selectedIrrigationIds,
-                      _irrigationTypes,
-                    ),
-                    onTap: () => _showMultiSelectDialog(
-                      title: 'Select Irrigation Methods',
-                      items: _irrigationTypes,
-                      selectedIds: _selectedIrrigationIds,
-                      onConfirm: (selected) {
-                        setState(() => _selectedIrrigationIds = selected);
-                      },
-                    ),
+                  const SizedBox(height: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Irrigation Methods',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildMultiSelectField(
+                        label: null,
+                        icon: Icons.water_drop,
+                        selectedCount: _selectedIrrigationIds.length,
+                        selectedText: _getSelectedNames(
+                          _selectedIrrigationIds,
+                          _irrigationTypes,
+                        ),
+                        onTap: () => _showMultiSelectDialog(
+                          title: 'Select Irrigation Methods',
+                          items: _irrigationTypes,
+                          selectedIds: _selectedIrrigationIds,
+                          onConfirm: (selected) {
+                            setState(() => _selectedIrrigationIds = selected);
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildMultiSelectField(
-                    label: 'Water Sources',
-                    icon: Icons.water,
-                    selectedCount: _selectedWaterSourceIds.length,
-                    selectedText: _getSelectedNames(
-                      _selectedWaterSourceIds,
-                      _waterSources,
-                    ),
-                    onTap: () => _showMultiSelectDialog(
-                      title: 'Select Water Sources',
-                      items: _waterSources,
-                      selectedIds: _selectedWaterSourceIds,
-                      onConfirm: (selected) {
-                        setState(() => _selectedWaterSourceIds = selected);
-                      },
-                    ),
+                  const SizedBox(height: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Water Sources',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _buildMultiSelectField(
+                        label: null,
+                        icon: Icons.water,
+                        selectedCount: _selectedWaterSourceIds.length,
+                        selectedText: _getSelectedNames(
+                          _selectedWaterSourceIds,
+                          _waterSources,
+                        ),
+                        onTap: () => _showMultiSelectDialog(
+                          title: 'Select Water Sources',
+                          items: _waterSources,
+                          selectedIds: _selectedWaterSourceIds,
+                          onConfirm: (selected) {
+                            setState(() => _selectedWaterSourceIds = selected);
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 14),
                   ElevatedButton.icon(
                     onPressed: _isLoading ? null : _saveFarm,
                     icon: Icon(
@@ -428,7 +493,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                     label: SmartReTranslator(
                       text: _isEditing ? 'Update Farm' : 'Create Farm',
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),
@@ -449,19 +514,21 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: Colors.black87,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        const SizedBox(height: 6),
+      ],
     );
   }
 
   Widget _buildTextField({
     required TextEditingController controller,
-    required String label,
+    required String? label,
     required IconData icon,
     String? Function(String?)? validator,
     TextInputType? keyboardType,
@@ -471,6 +538,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
+        alignLabelWithHint: true,
         prefixIcon: Icon(icon, color: AppColors.primaryGreen),
         filled: true,
         fillColor: Colors.white,
@@ -498,39 +566,19 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
   }
 
   Widget _buildMultiSelectField({
-    required String label,
+    required String? label,
     required IconData icon,
     required int selectedCount,
     required String selectedText,
     required VoidCallback onTap,
   }) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
+          alignLabelWithHint: true,
           prefixIcon: Icon(icon, color: AppColors.primaryGreen),
-          suffixIcon: selectedCount > 0
-              ? Container(
-                  margin: const EdgeInsets.all(8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryGreen,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '$selectedCount',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                )
-              : const Icon(Icons.arrow_drop_down),
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(
@@ -546,14 +594,20 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
             borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
           ),
         ),
-        child: Text(
-          selectedText,
-          style: TextStyle(
-            color: selectedCount > 0 ? Colors.black87 : Colors.grey,
-            fontSize: 16,
-          ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                selectedText.isEmpty ? 'None selected' : selectedText,
+                style: TextStyle(
+                  color: selectedText.isEmpty ? Colors.grey : Colors.black87,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+          ],
         ),
       ),
     );

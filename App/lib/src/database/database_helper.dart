@@ -1945,4 +1945,24 @@ class DatabaseHelper {
     final db = await database;
     return await db.query('plants');
   }
+  
+  Future<List<Map<String, dynamic>>> getCropsByFarmId(String farmId) async {
+    final db = await database;
+    return await db.rawQuery(
+      '''
+    SELECT 
+      uc.*,
+      p.plantname as plantname,
+      ct.name as croptype,
+      st.name as soiltype
+    FROM usercrops uc
+    LEFT JOIN plants p ON uc.plantid = p.plantid
+    LEFT JOIN croptypes ct ON p.croptypeid = ct.croptypeid
+    LEFT JOIN soiltypes st ON uc.soiltypeid = st.soiltypeid
+    WHERE uc.farmid = ?
+    ORDER BY uc.createdat DESC
+  ''',
+      [farmId],
+    );
+  }
 }
