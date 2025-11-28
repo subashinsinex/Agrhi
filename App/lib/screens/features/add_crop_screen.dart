@@ -81,7 +81,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error loading data: $e'),
+            content: SmartReTranslator(text: 'Error loading data: $e'),
             backgroundColor: AppColors.errorColor,
           ),
         );
@@ -95,29 +95,37 @@ class _AddCropScreenState extends State<AddCropScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedFarmId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please select a farm')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: SmartReTranslator(text: 'Please select a farm'),
+        ),
+      );
       return;
     }
 
     if (_selectedPlantId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please select a plant')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: SmartReTranslator(text: 'Please select a plant'),
+        ),
+      );
       return;
     }
 
     if (_selectedSoilTypeId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a soil type')),
+        const SnackBar(
+          content: SmartReTranslator(text: 'Please select a soil type'),
+        ),
       );
       return;
     }
 
     if (_plantingDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a planting date')),
+        const SnackBar(
+          content: SmartReTranslator(text: 'Please select a planting date'),
+        ),
       );
       return;
     }
@@ -149,7 +157,9 @@ class _AddCropScreenState extends State<AddCropScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_isEditing ? '✅ Crop updated' : '✅ Crop created'),
+            content: SmartReTranslator(
+              text: _isEditing ? 'Crop updated' : 'Crop created',
+            ),
             backgroundColor: AppColors.successColor,
           ),
         );
@@ -160,7 +170,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error: $e'),
+            content: SmartReTranslator(text: 'Error: $e'),
             backgroundColor: AppColors.errorColor,
           ),
         );
@@ -211,7 +221,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Crop deleted'),
+            content: SmartReTranslator(text: 'Crop deleted'),
             backgroundColor: Colors.green,
           ),
         );
@@ -222,7 +232,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error: $e'),
+            content: SmartReTranslator(text: 'Error: $e'),
             backgroundColor: AppColors.errorColor,
           ),
         );
@@ -292,8 +302,8 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Select Farm',
+                      const SmartReTranslator(
+                        text: 'Select Farm',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -324,8 +334,8 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Select Plant/Crop',
+                      const SmartReTranslator(
+                        text: 'Select Plant/Crop',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -357,8 +367,8 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Field Size (Acres)',
+                      const SmartReTranslator(
+                        text: 'Field Size (Acres)',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -394,8 +404,8 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Planting Date *',
+                      const SmartReTranslator(
+                        text: 'Planting Date *',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -415,8 +425,8 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Expected Harvest Date',
+                      const SmartReTranslator(
+                        text: 'Expected Harvest Date',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -435,8 +445,8 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Soil Type',
+                      const SmartReTranslator(
+                        text: 'Soil Type',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -465,8 +475,8 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Crop Status',
+                      const SmartReTranslator(
+                        text: 'Crop Status',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -510,12 +520,9 @@ class _AddCropScreenState extends State<AddCropScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
+        SmartReTranslator(
+          text: title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         const SizedBox(height: 6),
       ],
@@ -585,25 +592,23 @@ class _AddCropScreenState extends State<AddCropScreen> {
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: Colors.grey.shade300),
           ),
-          errorBorder: required && date == null
-              ? OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.errorColor),
-                )
-              : null,
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+          ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              date != null
-                  ? '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
-                  : 'Select date',
-              style: TextStyle(
-                color: date != null ? Colors.black87 : Colors.grey,
-                fontSize: 14,
-              ),
-            ),
+            date != null
+                ? Text(
+                    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+                    style: const TextStyle(color: Colors.black87, fontSize: 14),
+                  )
+                : const SmartReTranslator(
+                    text: 'Select date',
+                    style: TextStyle(color: Colors.grey, fontSize: 14),
+                  ),
             Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
           ],
         ),
@@ -611,7 +616,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
     );
   }
 
-  Widget _buildDropdown({
+Widget _buildDropdown({
     required String? label,
     required IconData icon,
     required String? value,
@@ -627,6 +632,10 @@ class _AddCropScreenState extends State<AddCropScreen> {
         prefixIcon: Icon(icon, color: AppColors.primaryGreen),
         filled: true,
         fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 16,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -639,14 +648,32 @@ class _AddCropScreenState extends State<AddCropScreen> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.errorColor),
+        ),
       ),
+      dropdownColor: Colors.white,
+      icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
+      isExpanded: true, // Keep this for text overflow handling
+      menuMaxHeight: 300, // Limit dropdown menu height
       items: [
         if (!required)
-          const DropdownMenuItem<String>(value: null, child: Text('Select...')),
+          const DropdownMenuItem<String>(
+            value: null,
+            child: SmartReTranslator(
+              text: 'Select...',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
         ...items.map((item) {
           return DropdownMenuItem<String>(
             value: item['id'],
-            child: Text(item['name'] ?? 'Unknown'),
+            child: SmartReTranslator(
+              text: item['name'] ?? 'Unknown',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           );
         }),
       ],
@@ -665,6 +692,10 @@ class _AddCropScreenState extends State<AddCropScreen> {
         prefixIcon: Icon(Icons.info_outline, color: AppColors.primaryGreen),
         filled: true,
         fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 16,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -678,10 +709,23 @@ class _AddCropScreenState extends State<AddCropScreen> {
           borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
         ),
       ),
+      dropdownColor: Colors.white,
+      icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
+      isExpanded: true,
+      menuMaxHeight: 200, // Limit dropdown menu height
       items: const [
-        DropdownMenuItem(value: 'Planted', child: Text('Planted')),
-        DropdownMenuItem(value: 'Growing', child: Text('Growing')),
-        DropdownMenuItem(value: 'Harvested', child: Text('Harvested')),
+        DropdownMenuItem(
+          value: 'Planted',
+          child: SmartReTranslator(text: 'Planted'),
+        ),
+        DropdownMenuItem(
+          value: 'Growing',
+          child: SmartReTranslator(text: 'Growing'),
+        ),
+        DropdownMenuItem(
+          value: 'Harvested',
+          child: SmartReTranslator(text: 'Harvested'),
+        ),
       ],
       onChanged: (value) => setState(() => _status = value!),
     );

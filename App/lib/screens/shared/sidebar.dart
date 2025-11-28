@@ -39,6 +39,9 @@ class AppSidebar extends StatelessWidget {
 
       await db.transaction((txn) async {
         await txn.delete('disease_analysis_results');
+        await txn.delete('farm_soil_types');
+        await txn.delete('farm_irrigations');
+        await txn.delete('farm_water_sources');
         await txn.delete('images');
         await txn.delete('usercrops');
         await txn.delete('farms');

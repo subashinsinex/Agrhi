@@ -28,7 +28,6 @@ class _CropCareScreenState extends State<CropCareScreen>
     _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
   }
 
-  // UPDATED: Refresh BOTH tabs simultaneously
   void _refreshBothTabs() {
     _cropsTabKey.currentState?._loadCrops();
     _farmsTabKey.currentState?._loadFarms();
@@ -107,7 +106,6 @@ class _CropCareScreenState extends State<CropCareScreen>
             );
             changed = result == true;
           }
-          // UPDATED: Refresh both tabs when changed
           if (changed) _refreshBothTabs();
         },
         backgroundColor: AppColors.primaryGreen,
@@ -166,7 +164,6 @@ class _CropCareScreenState extends State<CropCareScreen>
             backgroundColor: Colors.green,
           ),
         );
-        // UPDATED: Refresh both tabs after sync
         _refreshBothTabs();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -191,7 +188,7 @@ class _CropCareScreenState extends State<CropCareScreen>
 // ==================== FARMS MANAGER TAB ====================
 
 class FarmsManagerTab extends StatefulWidget {
-  final VoidCallback onDataChanged; // ADDED: Callback for data changes
+  final VoidCallback onDataChanged;
 
   const FarmsManagerTab({super.key, required this.onDataChanged});
 
@@ -205,7 +202,6 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
   bool _isLoading = true;
   String? _error;
   int _pendingCount = 0;
-  String? _expandedFarmId;
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -261,7 +257,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
       debugPrint('📊 Sync result: $syncResult');
 
       final db = DatabaseHelper.instance;
-      final farmsList = await db.getAllFarms();
+      final farmsList = await db.getAllFarmsWithRelations();
       final pending = await db.getPendingFarms();
 
       debugPrint(
@@ -273,12 +269,13 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
         _pendingCount = pending.length;
         _isLoading = false;
       });
+
     } catch (e) {
       debugPrint('❌ Error loading farms: $e');
 
       try {
         final db = DatabaseHelper.instance;
-        final farmsList = await db.getAllFarms();
+        final farmsList = await db.getAllFarmsWithRelations();
         final pending = await db.getPendingFarms();
 
         setState(() {
@@ -302,7 +299,6 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
       context,
       MaterialPageRoute(builder: (context) => const AddFarmScreen()),
     ).then((added) {
-      // UPDATED: Call callback to refresh both tabs
       if (added == true) widget.onDataChanged();
     });
   }
@@ -312,7 +308,6 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
       context,
       MaterialPageRoute(builder: (context) => AddFarmScreen(farm: farm)),
     ).then((updated) {
-      // UPDATED: Call callback to refresh both tabs
       if (updated == true) widget.onDataChanged();
     });
   }
@@ -326,7 +321,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
     );
 
     for (var farm in _farms) {
-      final farmId = farm['farmid']?.toString() ?? '';
+      final farmId = farm['farm_id']?.toString() ?? '';
       final crops = await DatabaseHelper.instance.getCropsByFarmId(farmId);
       totalCrops += crops.length;
       totalUsedArea += crops.fold<double>(
@@ -451,7 +446,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                     ),
                   ),
                   TextButton(
-                    onPressed: widget.onDataChanged, // UPDATED: Use callback
+                    onPressed: widget.onDataChanged,
                     child: const SmartReTranslator(
                       text: 'Sync now',
                       maxLines: 1,
@@ -501,7 +496,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                     {
                       'totalFarms': _farms.length,
                       'totalArea': totalArea,
-                      'totalCrops': 0,
+                      'totalCrops': 0,  
                       'usedArea': 0.0,
                       'availableArea': totalArea,
                       'avgUtilization': 0.0,
@@ -581,7 +576,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                               icon: Icons.crop_square,
                               label: 'Used Area',
                               value:
-                                  '${stats['usedArea'].toStringAsFixed(1)} Ac',
+                                  '${totalArea.toStringAsFixed(1)} Ac',
                             ),
                           ),
                           Container(
@@ -702,13 +697,30 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
     );
   }
 
-  // Keep all _buildFarmCard, _buildUniformStatItem, _buildAreaStat, and _buildChip methods unchanged
-  // They remain exactly as in the previous code...
-
+  // ✅ Build farm card with all three categories
   Widget _buildFarmCard(Map<String, dynamic> farm) {
     final farmId = farm['farmid']?.toString() ?? '';
-    final isExpanded = _expandedFarmId == farmId;
-    final isPending = farm['isdirty'] == 1 || farm['isuploaded'] == 0;
+    final isPending = (farm['isdirty'] == 1 || farm['isuploaded'] == 0);
+
+    // Get soil types, irrigations, and water sources from relations
+    final soilTypes = (farm['soil_types'] as List<dynamic>?) ?? [];
+    final irrigations = (farm['irrigations'] as List<dynamic>?) ?? [];
+    final waterSources = (farm['water_sources'] as List<dynamic>?) ?? [];
+
+    final soilTypeNames = soilTypes
+        .map((s) => s['name']?.toString() ?? '')
+        .where((n) => n.isNotEmpty)
+        .join(', ');
+
+    final irrigationNames = irrigations
+        .map((i) => i['methodname']?.toString() ?? '')
+        .where((n) => n.isNotEmpty)
+        .join(', ');
+
+    final waterSourceNames = waterSources
+        .map((w) => w['source']?.toString() ?? '')
+        .where((n) => n.isNotEmpty)
+        .join(', ');
 
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: DatabaseHelper.instance.getCropsByFarmId(farmId),
@@ -719,321 +731,259 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
           0.0,
           (sum, crop) => sum + _toDouble(crop['fieldsize']),
         );
-        final availableArea = totalFarmArea - usedArea;
         final usagePercentage = totalFarmArea > 0
-            ? (usedArea / totalFarmArea * 100).clamp(0, 100)
+            ? ((usedArea / totalFarmArea) * 100).clamp(0, 100)
             : 0.0;
 
         return Container(
-          margin: const EdgeInsets.only(bottom: 16),
+          margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             border: isPending
                 ? Border.all(color: Colors.orange.shade300, width: 2)
                 : null,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () {
-                setState(() {
-                  _expandedFarmId = isExpanded ? null : farmId;
-                });
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Row
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryGreen.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.agriculture,
-                            color: AppColors.primaryGreen,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: SmartReTranslator(
-                                      text:
-                                          farm['surveynumber']?.toString() ??
-                                          'N/A',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  if (isPending)
-                                    Container(
-                                      margin: const EdgeInsets.only(left: 8),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.cloud_upload,
-                                            size: 12,
-                                            color: Colors.white,
-                                          ),
-                                          SizedBox(width: 4),
-                                          SmartReTranslator(
-                                            text: 'Pending',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.landscape,
-                                    size: 16,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  SmartReTranslator(
-                                    text:
-                                        '${_formatNumber(farm['farmsize'])} Acres',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          isExpanded
-                              ? Icons.keyboard_arrow_up
-                              : Icons.keyboard_arrow_down,
-                          color: Colors.grey.shade600,
-                        ),
-                      ],
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryGreen.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.agriculture,
+                        color: AppColors.primaryGreen,
+                        size: 20,
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Icon(Icons.crop, size: 16, color: Colors.grey.shade600),
-                        const SizedBox(width: 4),
-                        SmartReTranslator(
-                          text: '${crops.length} Crops',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade700,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: usagePercentage > 90
-                                ? Colors.red
-                                : usagePercentage > 70
-                                ? Colors.orange
-                                : AppColors.successColor,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: SmartReTranslator(
-                            text: '${usagePercentage.toStringAsFixed(0)}% Used',
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Survey number
+                          Text(
+                            farm['surveynumber']?.toString() ?? 'N/A',
                             style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.landscape,
+                                size: 14,
+                                color: Colors.grey.shade600,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${_formatNumber(farm['farmsize'])} ',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SmartReTranslator(
+                                text: 'Ac',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(width: 12),
+                              Icon(
+                                Icons.eco,
+                                size: 14,
+                                color: Colors.grey.shade600,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${crops.length} ',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SmartReTranslator(
+                                text: 'Crops',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                    if (isExpanded) ...[
-                      const SizedBox(height: 16),
-                      Divider(color: Colors.grey.shade200, height: 1),
-                      const SizedBox(height: 16),
+                    if (isPending)
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.orange,
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _buildAreaStat(
-                                  'Total Area',
-                                  '${totalFarmArea.toStringAsFixed(1)} Ac',
-                                  Icons.landscape,
-                                  AppColors.primaryGreen,
-                                ),
-                                _buildAreaStat(
-                                  'Used',
-                                  '${usedArea.toStringAsFixed(1)} Ac',
-                                  Icons.crop,
-                                  Colors.orange,
-                                ),
-                                _buildAreaStat(
-                                  'Available',
-                                  '${availableArea.toStringAsFixed(1)} Ac',
-                                  Icons.check_circle,
-                                  Colors.green,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const SmartReTranslator(
-                                      text: 'Land Usage',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.black87,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Text(
-                                      '${usagePercentage.toStringAsFixed(0)}%',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: usagePercentage > 90
-                                            ? Colors.red
-                                            : AppColors.primaryGreen,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: LinearProgressIndicator(
-                                    value: usagePercentage / 100,
-                                    backgroundColor: Colors.grey.shade200,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      usagePercentage > 90
-                                          ? Colors.red
-                                          : usagePercentage > 70
-                                          ? Colors.orange
-                                          : AppColors.primaryGreen,
-                                    ),
-                                    minHeight: 8,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                        child: const Icon(
+                          Icons.cloud_upload,
+                          size: 16,
+                          color: Colors.white,
                         ),
                       ),
-                      if (farm['soil_types'] != null ||
-                          farm['irrigation_types'] != null ||
-                          farm['water_sources'] != null) ...[
-                        const SizedBox(height: 16),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            if (farm['soil_types'] != null)
-                              _buildChip(
-                                Icons.terrain,
-                                farm['soil_types'] as String,
-                              ),
-                            if (farm['irrigation_types'] != null)
-                              _buildChip(
-                                Icons.water_drop,
-                                farm['irrigation_types'] as String,
-                              ),
-                            if (farm['water_sources'] != null)
-                              _buildChip(
-                                Icons.water,
-                                farm['water_sources'] as String,
-                              ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () => _editFarm(farm),
-                          icon: const Icon(Icons.edit, size: 18),
-                          label: const SmartReTranslator(
-                            text: 'Edit Farm',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppColors.primaryGreen,
-                          ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: usagePercentage > 90
+                            ? Colors.red
+                            : usagePercentage > 70
+                            ? Colors.orange
+                            : AppColors.successColor,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${usagePercentage.toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
+                    ),
                   ],
                 ),
-              ),
+
+                // ✅ Show all three categories
+                if (soilTypeNames.isNotEmpty ||
+                    irrigationNames.isNotEmpty ||
+                    waterSourceNames.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        // ✅ Soil Types
+                        if (soilTypeNames.isNotEmpty)
+                          _buildCompactInfo(
+                            Icons.terrain,
+                            soilTypeNames,
+                            Colors.brown.shade700,
+                          ),
+
+                        // ✅ Spacing between soil types and irrigation
+                        if (soilTypeNames.isNotEmpty &&
+                            irrigationNames.isNotEmpty)
+                          const SizedBox(height: 6),
+
+                        // ✅ Irrigation Methods
+                        if (irrigationNames.isNotEmpty)
+                          _buildCompactInfo(
+                            Icons.water_drop,
+                            irrigationNames,
+                            Colors.blue.shade700,
+                          ),
+
+                        // ✅ Spacing between irrigation and water sources
+                        if (irrigationNames.isNotEmpty &&
+                            waterSourceNames.isNotEmpty)
+                          const SizedBox(height: 6),
+
+                        // ✅ Water Sources
+                        if (waterSourceNames.isNotEmpty)
+                          _buildCompactInfo(
+                            Icons.water,
+                            waterSourceNames,
+                            Colors.cyan.shade700,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 8),
+                // Edit Button
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => _editFarm(farm),
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const SmartReTranslator(
+                      text: 'Edit',
+                      style: TextStyle(fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primaryGreen,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
       },
+    );
+  }
+
+  // ✅ Helper widget to display compact info rows
+  Widget _buildCompactInfo(IconData icon, String text, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+          child: SmartReTranslator(
+            text: text,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1072,71 +1022,15 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
       ],
     );
   }
-
-  Widget _buildAreaStat(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Column(
-      children: [
-        Icon(icon, size: 20, color: color),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        SmartReTranslator(
-          text: label,
-          style: const TextStyle(fontSize: 11, color: Colors.grey),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildChip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.grey.shade700),
-          const SizedBox(width: 6),
-          Flexible(
-            child: SmartReTranslator(
-              text: text,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade700,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
+
+// ==================== CROPS MANAGER TAB ====================
+// [Keep your existing CropsManagerTab code - no changes needed]
 
 // ==================== CROPS MANAGER TAB ====================
 
 class CropsManagerTab extends StatefulWidget {
-  final VoidCallback onDataChanged; // ADDED: Callback for data changes
+  final VoidCallback onDataChanged;
 
   const CropsManagerTab({super.key, required this.onDataChanged});
 
@@ -1150,7 +1044,6 @@ class _CropsManagerTabState extends State<CropsManagerTab>
   bool _isLoading = true;
   String? _error;
   int _pendingCount = 0;
-  String? _expandedCropId;
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -1184,6 +1077,21 @@ class _CropsManagerTabState extends State<CropsManagerTab>
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
+  }
+
+  String _formatDateOnly(String? dateTimeString) {
+    if (dateTimeString == null || dateTimeString.isEmpty) return '';
+    try {
+      if (dateTimeString.contains('T')) {
+        return dateTimeString.split('T')[0];
+      }
+      if (dateTimeString.contains(' ')) {
+        return dateTimeString.split(' ')[0];
+      }
+      return dateTimeString;
+    } catch (e) {
+      return dateTimeString;
+    }
   }
 
   Future<void> _loadCrops() async {
@@ -1229,7 +1137,6 @@ class _CropsManagerTabState extends State<CropsManagerTab>
       context,
       MaterialPageRoute(builder: (context) => const AddCropScreen()),
     ).then((added) {
-      // UPDATED: Call callback to refresh both tabs
       if (added == true) widget.onDataChanged();
     });
   }
@@ -1239,7 +1146,6 @@ class _CropsManagerTabState extends State<CropsManagerTab>
       context,
       MaterialPageRoute(builder: (context) => AddCropScreen(crop: crop)),
     ).then((updated) {
-      // UPDATED: Call callback to refresh both tabs
       if (updated == true) widget.onDataChanged();
     });
   }
@@ -1342,7 +1248,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                     ),
                   ),
                   TextButton(
-                    onPressed: widget.onDataChanged, // UPDATED: Use callback
+                    onPressed: widget.onDataChanged,
                     child: const SmartReTranslator(
                       text: 'Sync now',
                       maxLines: 1,
@@ -1425,7 +1331,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                       Expanded(
                         child: _buildUniformStatItem(
                           icon: Icons.landscape,
-                          label: 'Total Area',
+                          label: 'Area Used',
                           value: '${totalArea.toStringAsFixed(1)} Ac',
                         ),
                       ),
@@ -1438,7 +1344,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                       Expanded(
                         child: _buildUniformStatItem(
                           icon: Icons.agriculture,
-                          label: 'Farms',
+                          label: 'Active Farms',
                           value: uniqueFarms.toString(),
                         ),
                       ),
@@ -1452,7 +1358,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                       Expanded(
                         child: _buildUniformStatItem(
                           icon: Icons.check_circle,
-                          label: 'Active',
+                          label: 'Active Crops',
                           value: activeCrops.toString(),
                         ),
                       ),
@@ -1566,223 +1472,361 @@ class _CropsManagerTabState extends State<CropsManagerTab>
     );
   }
 
-  // Keep _buildCropCard, _buildUniformStatItem, and _buildChip unchanged...
-  // (Same as previous code - too long to repeat here, but they remain identical)
-
   Widget _buildCropCard(Map<String, dynamic> crop) {
     final isActive = crop['isactive'] == 1;
     final isPending = (crop['isdirty'] == 1 || crop['isuploaded'] == 0);
     final statusColor = isActive ? AppColors.successColor : Colors.orange;
-    final cropId = crop['usercropid']?.toString() ?? '';
-    final isExpanded = _expandedCropId == cropId;
+
+    // Format dates to show only date (remove time)
+    String? plantingDate = _formatDateOnly(crop['plantingdate']?.toString());
+    String? harvestDate = _formatDateOnly(crop['harvestdate']?.toString());
+
+    // ✅ Get plant name from crop data
+    final plantName =
+        crop['plantname']?.toString() ??
+        crop['plant_name']?.toString() ??
+        'Unknown';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: isPending
             ? Border.all(color: Colors.orange.shade300, width: 2)
             : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            setState(() {
-              _expandedCropId = isExpanded ? null : cropId;
-            });
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Row
+            Row(
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(Icons.eco, color: statusColor, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SmartReTranslator(
-                                  text:
-                                      crop['plant_name']?.toString() ??
-                                      'Unknown',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (isPending)
-                                Container(
-                                  margin: const EdgeInsets.only(left: 8),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.cloud_upload,
-                                        size: 12,
-                                        color: Colors.white,
-                                      ),
-                                      SizedBox(width: 4),
-                                      SmartReTranslator(
-                                        text: 'Pending',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                          if (crop['croptype'] != null) ...[
-                            const SizedBox(height: 4),
-                            SmartReTranslator(
-                              text: crop['croptype'] as String,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      isExpanded
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      color: Colors.grey.shade600,
-                    ),
-                  ],
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.eco, color: statusColor, size: 20),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(Icons.crop, size: 16, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    SmartReTranslator(
-                      text: '${_formatNumber(crop['fieldsize'])} Acres',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: SmartReTranslator(
-                        text: isActive ? 'Active' : 'Inactive',
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SmartReTranslator(
+                        text: plantName,
                         style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  ],
-                ),
-                if (isExpanded) ...[
-                  const SizedBox(height: 16),
-                  Divider(color: Colors.grey.shade200, height: 1),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _buildChip(
-                        Icons.calendar_today,
-                        crop['plantingdate']?.toString() ?? 'No planting date',
-                      ),
-                      if (crop['harvestdate'] != null)
-                        _buildChip(
-                          Icons.event_available,
-                          crop['harvestdate'].toString(),
+                      if (crop['croptype'] != null) ...[
+                        const SizedBox(height: 2),
+                        SmartReTranslator(
+                          text: crop['croptype'] as String,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      if (crop['surveynumber'] != null)
-                        _buildChip(
-                          Icons.location_on,
-                          crop['surveynumber'] as String,
-                        ),
-                      if (crop['soiltype'] != null)
-                        _buildChip(Icons.terrain, crop['soiltype'] as String),
-                      if (crop['status'] != null)
-                        _buildChip(
-                          Icons.info_outline,
-                          crop['status'] as String,
-                        ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () => _editCrop(crop),
-                      icon: const Icon(Icons.edit, size: 18),
-                      label: const SmartReTranslator(
-                        text: 'Edit Crop',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.primaryGreen,
-                      ),
+                ),
+                if (isPending)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.cloud_upload,
+                      size: 16,
+                      color: Colors.white,
                     ),
                   ),
-                ],
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: SmartReTranslator(
+                    text: isActive ? 'Active' : 'Inactive',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
-          ),
+            const SizedBox(height: 10),
+
+            // ✅ Crop Details in 2x2 Grid with Labels
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  // Row 1: Survey Number | Acres
+                  Row(
+                    children: [
+                      // Survey Number (Left)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  size: 14,
+                                  color: Colors.grey.shade600,
+                                ),
+                                const SizedBox(width: 4),
+                                const SmartReTranslator(
+                                  text: 'Survey',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              crop['survey_number']?.toString() ?? 'N/A',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade800,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Acres (Right)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.crop_landscape,
+                                  size: 14,
+                                  color: AppColors.primaryGreen,
+                                ),
+                                const SizedBox(width: 4),
+                                const SmartReTranslator(
+                                  text: 'Area',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Text(
+                                  '${_formatNumber(crop['fieldsize'])} ',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade800,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                SmartReTranslator(
+                                  text: 'Ac',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade800,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Row 2: Planting Date | Harvest Date
+                  Row(
+                    children: [
+                      // Planting Date (Left)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_month,
+                                  size: 14,
+                                  color: Colors.green.shade700,
+                                ),
+                                const SizedBox(width: 4),
+                                const SmartReTranslator(
+                                  text: 'Planted',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              plantingDate.isNotEmpty ? plantingDate : 'N/A',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade800,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Harvest Date (Right)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.event_available,
+                                  size: 14,
+                                  color: Colors.amber.shade800,
+                                ),
+                                const SizedBox(width: 4),
+                                const SmartReTranslator(
+                                  text: 'Harvest',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              harvestDate.isNotEmpty ? harvestDate : 'N/A',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade800,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Soil Type (if exists)
+                  if (crop['soiltype'] != null) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.terrain,
+                          size: 14,
+                          color: Colors.brown.shade700,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: SmartReTranslator(
+                            text: crop['soiltype'] as String,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 8),
+            // Edit Button
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _editCrop(crop),
+                icon: const Icon(Icons.edit, size: 16),
+                label: const SmartReTranslator(
+                  text: 'Edit',
+                  style: TextStyle(fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primaryGreen,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1821,35 +1865,6 @@ class _CropsManagerTabState extends State<CropsManagerTab>
           textAlign: TextAlign.center,
         ),
       ],
-    );
-  }
-
-  Widget _buildChip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.grey.shade700),
-          const SizedBox(width: 6),
-          Flexible(
-            child: SmartReTranslator(
-              text: text,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade700,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
