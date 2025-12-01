@@ -21,6 +21,7 @@ exports.getAllFarms = async (req, res) => {
         f.farm_id,
         f.farm_size,
         f.survey_number,
+        f.is_delete,
         ud.name AS owner_name,
         array_agg(DISTINCT s.name) FILTER (WHERE s.name IS NOT NULL) AS soil_types,
         array_agg(DISTINCT i.method_name) FILTER (WHERE i.method_name IS NOT NULL) AS irrigation_methods,
@@ -52,6 +53,7 @@ exports.getFarmById = async (req, res) => {
         f.farm_id,
         f.farm_size,
         f.survey_number,
+        f.is_delete,
         array_agg(DISTINCT s.name) FILTER (WHERE s.name IS NOT NULL) AS soil_types,
         array_agg(DISTINCT i.method_name) FILTER (WHERE i.method_name IS NOT NULL) AS irrigation_methods,
         array_agg(DISTINCT w.source) FILTER (WHERE w.source IS NOT NULL) AS water_sources
@@ -80,6 +82,7 @@ exports.addFarm = async (req, res) => {
     phone_number,
     farm_size,
     survey_number,
+    is_delete,
     soil_type_ids, // <-- array, not single value
     irrigation_ids, // <-- array
     water_src_ids, // <-- array
@@ -101,10 +104,10 @@ exports.addFarm = async (req, res) => {
 
     // Insert farm row
     const farmResult = await client.query(
-      `INSERT INTO farms (user_id, farm_id, farm_size, survey_number)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO farms (user_id, farm_id, farm_size, survey_number, is_delete)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *;`,
-      [user_id, farm_id, farm_size, survey_number]
+      [user_id, farm_id, farm_size, survey_number, is_delete]
     );
     const farm = farmResult.rows[0];
 
@@ -155,6 +158,7 @@ exports.addFarmByUserId = async (req, res) => {
     farm_id,
     farm_size,
     survey_number,
+    is_delete,
     soil_type_ids, // array
     irrigation_ids, // array
     water_src_ids, // array
@@ -175,10 +179,10 @@ exports.addFarmByUserId = async (req, res) => {
 
     // Insert farm row
     const farmResult = await client.query(
-      `INSERT INTO farms (user_id, farm_id, farm_size, survey_number)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO farms (user_id, farm_id, farm_size, survey_number, is_delete)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *;`,
-      [user_id, farm_id, farm_size, survey_number]
+      [user_id, farm_id, farm_size, survey_number, is_delete]
     );
     const farm = farmResult.rows[0];
 
@@ -228,6 +232,7 @@ exports.updateFarm = async (req, res) => {
   const {
     farm_size,
     survey_number,
+    is_delete,
     soil_type_ids, // <-- array
     irrigation_ids, // <-- array
     water_src_ids, // <-- array
@@ -240,9 +245,9 @@ exports.updateFarm = async (req, res) => {
     // Update main farm record (do NOT touch user_id)
     await client.query(
       `UPDATE farms 
-       SET farm_size = $2, survey_number = $3
+       SET farm_size = $2, survey_number = $3, is_delete = $4
        WHERE farm_id = $1`,
-      [farm_id, farm_size, survey_number]
+      [farm_id, farm_size, survey_number, is_delete]
     );
 
     // DELETE + multi-insert soils
@@ -315,11 +320,11 @@ exports.getAllCrops = async (req, res) => {
         uc.farm_id,
         uc.user_crop_id, 
         uc.farm_id,
+        uc.is_delete,
         pl.plant_name, 
         ct.name AS crop_type,
         uc.planting_date, 
         uc.harvest_date,
-        uc.duration,
         uc.field_size, 
         uc.status, 
         uc.is_active, 
@@ -348,11 +353,11 @@ exports.getCropById = async (req, res) => {
     const sql = `
       SELECT
         uc.user_crop_id,
+        uc.is_delete,
         pl.plant_name,
         ct.name AS crop_type,
         uc.planting_date,
         uc.harvest_date,
-        uc.duration,
         uc.field_size,
         uc.status,
         uc.is_active,
@@ -382,11 +387,11 @@ exports.getCropHistoryById = async (req, res) => {
     const sql = `
       SELECT
         uc.user_crop_id,
+        uc.is_delete,
         pl.plant_name,
         ct.name AS crop_type,
         uc.planting_date,
         uc.harvest_date,
-        uc.duration,
         uc.field_size,
         uc.status,
         uc.is_active,
@@ -458,15 +463,12 @@ exports.addCrop = async (req, res) => {
     field_size,
     status,
     is_active,
+    is_delete,
   } = req.body;
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-
-    const start = new Date(planting_date);
-    const end = new Date(harvest_date);
-    const duration = Math.round((end - start) / (1000 * 60 * 60 * 24));
 
     // ✅ Use client-provided ID or generate new one
     const cropId =
@@ -476,18 +478,18 @@ exports.addCrop = async (req, res) => {
     // ✅ Use INSERT ... ON CONFLICT to handle duplicates gracefully
     const insertSql = `
       INSERT INTO user_crops (
-        user_crop_id, farm_id, plant_id, planting_date, harvest_date, duration,
-        field_size, status, is_active
+        user_crop_id, farm_id, plant_id, planting_date, harvest_date,
+        field_size, status, is_active, is_delete
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       ON CONFLICT (user_crop_id) DO UPDATE SET
         farm_id = EXCLUDED.farm_id,
         plant_id = EXCLUDED.plant_id,
         planting_date = EXCLUDED.planting_date,
         harvest_date = EXCLUDED.harvest_date,
-        duration = EXCLUDED.duration,
         field_size = EXCLUDED.field_size,
         status = EXCLUDED.status,
-        is_active = EXCLUDED.is_active
+        is_active = EXCLUDED.is_active,
+        is_delete = EXCLUDED.is_delete
       RETURNING *;
     `;
 
@@ -497,10 +499,10 @@ exports.addCrop = async (req, res) => {
       plant_id,
       planting_date,
       harvest_date,
-      duration,
       field_size,
       status,
       is_active,
+      is_delete,
     ]);
 
     await client.query("COMMIT");
@@ -520,7 +522,6 @@ exports.addCrop = async (req, res) => {
   }
 };
 
-
 exports.updateCrop = async (req, res) => {
   const { id } = req.params;
   const {
@@ -531,16 +532,12 @@ exports.updateCrop = async (req, res) => {
     field_size,
     status,
     is_active,
+    is_delete,
   } = req.body;
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-
-    // 1. Calculate duration
-    const start = new Date(planting_date);
-    const end = new Date(harvest_date);
-    const duration = Math.round((end - start) / (1000 * 60 * 60 * 24));
 
     // 2. Update query for user_crops
     const sql = `
@@ -549,10 +546,10 @@ exports.updateCrop = async (req, res) => {
           plant_id = $2,
           planting_date = $3,
           harvest_date = $4,
-          duration = $5,
-          field_size = $6,
-          status = $7,
-          is_active = $8
+          field_size = $5,
+          status = $6,
+          is_active = $7,
+          is_delete = $8
       WHERE user_crop_id = $9
       RETURNING *
     `;
@@ -562,10 +559,10 @@ exports.updateCrop = async (req, res) => {
       plant_id,
       planting_date,
       harvest_date,
-      duration,
       field_size,
       status,
       is_active,
+      is_delete,
       id,
     ]);
 
