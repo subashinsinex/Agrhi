@@ -10,6 +10,7 @@ router.get("/farms/:id", jwtChecker, farmCropService.getFarmById);
 router.post("/addfarms", jwtChecker, farmCropService.addFarm);
 router.post("/addfarmsbyid", jwtChecker, farmCropService.addFarmByUserId);
 router.put("/updatefarms/:id", jwtChecker, farmCropService.updateFarm);
+router.put("/isdeletefarms/:id", jwtChecker, farmCropService.isdeleteFarm);
 router.delete(
   "/deletefarms/:id",
   jwtChecker,
@@ -23,6 +24,7 @@ router.get("/crops/:id", jwtChecker, farmCropService.getCropById);
 router.get("/crophistory/:id", jwtChecker, farmCropService.getCropHistoryById);
 router.post("/addcrops", jwtChecker, farmCropService.addCrop);
 router.put("/updatecrops/:id", jwtChecker, farmCropService.updateCrop);
+router.put("/isdeletecrops/:id", jwtChecker, farmCropService.isdeleteCrop);
 router.delete(
   "/deletecrops/:id",
   jwtChecker,

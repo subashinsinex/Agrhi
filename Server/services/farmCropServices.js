@@ -300,6 +300,29 @@ exports.updateFarm = async (req, res) => {
   }
 };
 
+exports.isdeleteFarm = async (req, res) => {
+  const { id } = req.params; // farm_id
+
+  try {
+    const result = await pool.query(
+      `UPDATE farms
+       SET is_delete = true
+       WHERE farm_id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Farm not found" });
+    }
+
+    res.json({ message: "Farm marked as deleted", farm: result.rows[0] });
+  } catch (error) {
+    console.error("isdeleteFarm error:", error);
+    res.status(500).json({ message: "Error marking farm as deleted", error });
+  }
+};
+
 exports.deleteFarm = async (req, res) => {
   const { id } = req.params;
   try {
@@ -583,6 +606,29 @@ exports.updateCrop = async (req, res) => {
       .json({ message: "Error updating crop", error: error.message || error });
   } finally {
     client.release();
+  }
+};
+
+exports.isdeleteCrop = async (req, res) => {
+  const { id } = req.params; // user_crop_id
+
+  try {
+    const result = await pool.query(
+      `UPDATE user_crops
+       SET is_delete = true
+       WHERE user_crop_id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Crop not found" });
+    }
+
+    res.json({ message: "Crop marked as deleted", crop: result.rows[0] });
+  } catch (error) {
+    console.error("isdeleteCrop error:", error);
+    res.status(500).json({ message: "Error marking crop as deleted", error });
   }
 };
 
