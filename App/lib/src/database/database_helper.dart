@@ -40,7 +40,7 @@ class DatabaseHelper {
     print('DB path: $path');
     final db = await openDatabase(
       path,
-      version: 4, // ✅ Updated to version 4
+      version: 5, // ✅ UPDATED to version 5 for soft delete
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         final res = await db.rawQuery('PRAGMA foreign_keys');
@@ -98,6 +98,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // ✅ UPDATED: Added isdeleted column
     await db.execute('''
       CREATE TABLE farms (
         farmid TEXT PRIMARY KEY,
@@ -105,7 +106,8 @@ class DatabaseHelper {
         surveynumber TEXT NOT NULL UNIQUE,
         createdat TEXT,
         isuploaded INTEGER DEFAULT 0,
-        isdirty INTEGER DEFAULT 1
+        isdirty INTEGER DEFAULT 1,
+        isdeleted INTEGER DEFAULT 0
       )
     ''');
 
@@ -139,6 +141,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // ✅ UPDATED: Added isdeleted column
     await db.execute('''
       CREATE TABLE usercrops (
         usercropid TEXT PRIMARY KEY,
@@ -146,7 +149,6 @@ class DatabaseHelper {
         plantid TEXT NOT NULL,
         plantingdate TEXT NOT NULL,
         harvestdate TEXT,
-        duration REAL,
         fieldsize REAL,
         soiltypeid TEXT NOT NULL,
         status TEXT CHECK (status IN ('Growing', 'Harvested', 'Planted')),
@@ -154,6 +156,7 @@ class DatabaseHelper {
         createdat TEXT,
         isuploaded INTEGER DEFAULT 0,
         isdirty INTEGER DEFAULT 1,
+        isdeleted INTEGER DEFAULT 0,
         FOREIGN KEY (farmid) REFERENCES farms(farmid) ON DELETE CASCADE,
         FOREIGN KEY (plantid) REFERENCES plants(plantid) ON DELETE RESTRICT,
         FOREIGN KEY (soiltypeid) REFERENCES soiltypes(soiltypeid) ON DELETE RESTRICT
@@ -196,7 +199,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // ✅ FIXED: Images table with underscores
     await db.execute('''
       CREATE TABLE images (
         image_id TEXT PRIMARY KEY,
@@ -207,7 +209,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // ✅ FIXED: Disease analysis results table with underscores
     await db.execute('''
       CREATE TABLE disease_analysis_results (
         id TEXT PRIMARY KEY,
@@ -225,8 +226,12 @@ class DatabaseHelper {
       )
     ''');
 
+    // ✅ UPDATED: Added indexes for soft delete
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_farms_pending ON farms(isdirty, isuploaded)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_farms_deleted ON farms(isdeleted)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_farms_survey ON farms(surveynumber)',
@@ -236,6 +241,9 @@ class DatabaseHelper {
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_crops_pending ON usercrops(isdirty, isuploaded)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_crops_deleted ON usercrops(isdeleted)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_crops_farm ON usercrops(farmid)',
@@ -270,7 +278,7 @@ class DatabaseHelper {
         'updated_at': '2000-01-01T00:00:00Z',
       });
     }
-    print('✅ DB created with junction tables');
+    print('✅ DB created with soft delete support');
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -402,20 +410,17 @@ class DatabaseHelper {
       print('✅ Junction tables migration complete');
     }
 
-    // ✅ NEW: Version 4 migration for column names
     if (oldVersion < 4) {
       print(
         '🔄 Upgrading to v4: Fixing column names for images and analysis tables',
       );
 
       await db.transaction((txn) async {
-        // Check if old tables exist
         final tables = await txn.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND (name='images' OR name='diseaseanalysisresults')",
         );
 
         if (tables.any((t) => t['name'] == 'images')) {
-          // Migrate images table
           await txn.execute('ALTER TABLE images RENAME TO images_old');
 
           await txn.execute('''
@@ -438,7 +443,6 @@ class DatabaseHelper {
         }
 
         if (tables.any((t) => t['name'] == 'diseaseanalysisresults')) {
-          // Migrate diseaseanalysisresults table
           await txn.execute(
             'ALTER TABLE diseaseanalysisresults RENAME TO disease_analysis_results_old',
           );
@@ -471,7 +475,6 @@ class DatabaseHelper {
           print('✅ Disease analysis results table migrated');
         }
 
-        // Recreate indexes
         await txn.execute(
           'CREATE INDEX IF NOT EXISTS idx_dar_pending ON disease_analysis_results(is_dirty, is_uploaded)',
         );
@@ -482,6 +485,298 @@ class DatabaseHelper {
 
       print('✅ Column names migration complete');
     }
+
+    // ✅ NEW: Version 5 migration for soft delete
+    if (oldVersion < 5) {
+      print('🔄 Upgrading to v5: Adding isdeleted columns');
+
+      try {
+        await db.execute(
+          'ALTER TABLE farms ADD COLUMN isdeleted INTEGER DEFAULT 0',
+        );
+        await db.execute(
+          'ALTER TABLE usercrops ADD COLUMN isdeleted INTEGER DEFAULT 0',
+        );
+
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_farms_deleted ON farms(isdeleted)',
+        );
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_crops_deleted ON usercrops(isdeleted)',
+        );
+
+        print('✅ Soft delete columns added');
+      } catch (e) {
+        print('ℹ️ isdeleted columns may already exist: $e');
+      }
+    }
+  }
+
+  // ==================== SOFT DELETE METHODS ====================
+
+  /// Mark farm as deleted with validation and cascade logic
+  Future<Map<String, dynamic>> markFarmAsDeleted(String farmId) async {
+    final db = await database;
+
+    return await db.transaction((txn) async {
+      // 1. Check if farm exists
+      final farmRows = await txn.query(
+        'farms',
+        where: 'farmid = ? AND isdeleted = 0',
+        whereArgs: [farmId],
+        limit: 1,
+      );
+
+      if (farmRows.isEmpty) {
+        return {
+          'success': false,
+          'message': 'Farm not found or already deleted',
+        };
+      }
+
+      final farm = farmRows.first;
+      final wasUploaded = farm['isuploaded'] == 1;
+
+      // 2. Check for active crops
+      final activeCrops = await txn.query(
+        'usercrops',
+        where: 'farmid = ? AND isdeleted = 0',
+        whereArgs: [farmId],
+      );
+
+      if (activeCrops.isNotEmpty) {
+        return {
+          'success': false,
+          'message':
+              'Cannot delete farm with ${activeCrops.length} active crop(s)',
+          'cropCount': activeCrops.length,
+        };
+      }
+
+      if (wasUploaded) {
+        // 3a. SOFT DELETE: Mark as deleted (will sync to server)
+        await txn.update(
+          'farms',
+          {'isdeleted': 1, 'isdirty': 1},
+          where: 'farmid = ?',
+          whereArgs: [farmId],
+        );
+
+        print('✅ Farm marked as deleted (will sync): $farmId');
+
+        return {
+          'success': true,
+          'message': 'Farm marked for deletion',
+          'type': 'soft_delete',
+          'farmId': farmId,
+        };
+      } else {
+        // 3b. HARD DELETE: Remove completely (never synced)
+
+        // Delete junction table entries
+        await txn.delete(
+          'farm_soiltypes',
+          where: 'farm_id = ?',
+          whereArgs: [farmId],
+        );
+        await txn.delete(
+          'farm_irrigations',
+          where: 'farm_id = ?',
+          whereArgs: [farmId],
+        );
+        await txn.delete(
+          'farm_watersources',
+          where: 'farm_id = ?',
+          whereArgs: [farmId],
+        );
+
+        // Delete the farm
+        await txn.delete('farms', where: 'farmid = ?', whereArgs: [farmId]);
+
+        print('✅ Farm hard deleted (local only): $farmId');
+
+        return {
+          'success': true,
+          'message': 'Farm deleted',
+          'type': 'hard_delete',
+          'farmId': farmId,
+        };
+      }
+    });
+  }
+
+  /// Mark crop as deleted
+  Future<Map<String, dynamic>> markCropAsDeleted(String cropId) async {
+    final db = await database;
+
+    return await db.transaction((txn) async {
+      // 1. Check if crop exists
+      final cropRows = await txn.query(
+        'usercrops',
+        where: 'usercropid = ? AND isdeleted = 0',
+        whereArgs: [cropId],
+        limit: 1,
+      );
+
+      if (cropRows.isEmpty) {
+        return {
+          'success': false,
+          'message': 'Crop not found or already deleted',
+        };
+      }
+
+      final crop = cropRows.first;
+      final wasUploaded = crop['isuploaded'] == 1;
+
+      if (wasUploaded) {
+        // SOFT DELETE: Mark as deleted (will sync to server)
+        await txn.update(
+          'usercrops',
+          {'isdeleted': 1, 'isdirty': 1},
+          where: 'usercropid = ?',
+          whereArgs: [cropId],
+        );
+
+        print('✅ Crop marked as deleted (will sync): $cropId');
+
+        return {
+          'success': true,
+          'message': 'Crop marked for deletion',
+          'type': 'soft_delete',
+          'cropId': cropId,
+        };
+      } else {
+        // HARD DELETE: Remove completely (never synced)
+        await txn.delete(
+          'usercrops',
+          where: 'usercropid = ?',
+          whereArgs: [cropId],
+        );
+
+        print('✅ Crop hard deleted (local only): $cropId');
+
+        return {
+          'success': true,
+          'message': 'Crop deleted',
+          'type': 'hard_delete',
+          'cropId': cropId,
+        };
+      }
+    });
+  }
+
+  /// Get pending deletions for sync
+  Future<List<Map<String, dynamic>>> getPendingFarmDeletions() async {
+    final db = await database;
+    return await db.query('farms', where: 'isdeleted = 1 AND isdirty = 1');
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingCropDeletions() async {
+    final db = await database;
+    return await db.query('usercrops', where: 'isdeleted = 1 AND isdirty = 1');
+  }
+
+  /// Cleanup after successful server deletion sync
+  Future<void> cleanupDeletedFarm(String farmId) async {
+    final db = await database;
+
+    await db.transaction((txn) async {
+      // Remove junction table entries
+      await txn.delete(
+        'farm_soiltypes',
+        where: 'farm_id = ?',
+        whereArgs: [farmId],
+      );
+      await txn.delete(
+        'farm_irrigations',
+        where: 'farm_id = ?',
+        whereArgs: [farmId],
+      );
+      await txn.delete(
+        'farm_watersources',
+        where: 'farm_id = ?',
+        whereArgs: [farmId],
+      );
+
+      // Remove the farm
+      await txn.delete('farms', where: 'farmid = ?', whereArgs: [farmId]);
+    });
+
+    print('✅ Cleaned up deleted farm: $farmId');
+  }
+
+  Future<void> cleanupDeletedCrop(String cropId) async {
+    final db = await database;
+    await db.delete('usercrops', where: 'usercropid = ?', whereArgs: [cropId]);
+    print('✅ Cleaned up deleted crop: $cropId');
+  }
+
+  /// Restore deleted farm (undo soft delete)
+  Future<Map<String, dynamic>> restoreFarm(String farmId) async {
+    final db = await database;
+
+    final result = await db.update(
+      'farms',
+      {'isdeleted': 0, 'isdirty': 1},
+      where: 'farmid = ? AND isdeleted = 1',
+      whereArgs: [farmId],
+    );
+
+    if (result > 0) {
+      print('✅ Farm restored: $farmId');
+      return {'success': true, 'message': 'Farm restored'};
+    }
+
+    return {'success': false, 'message': 'Farm not found or not deleted'};
+  }
+
+  /// Restore deleted crop (undo soft delete)
+  Future<Map<String, dynamic>> restoreCrop(String cropId) async {
+    final db = await database;
+
+    final result = await db.update(
+      'usercrops',
+      {'isdeleted': 0, 'isdirty': 1},
+      where: 'usercropid = ? AND isdeleted = 1',
+      whereArgs: [cropId],
+    );
+
+    if (result > 0) {
+      print('✅ Crop restored: $cropId');
+      return {'success': true, 'message': 'Crop restored'};
+    }
+
+    return {'success': false, 'message': 'Crop not found or not deleted'};
+  }
+
+  /// Get all deleted items (for recycle bin feature)
+  Future<List<Map<String, dynamic>>> getDeletedFarms() async {
+    final db = await database;
+    return await db.rawQuery('''
+      SELECT f.*
+      FROM farms f
+      WHERE f.isdeleted = 1
+      ORDER BY f.createdat DESC
+    ''');
+  }
+
+  Future<List<Map<String, dynamic>>> getDeletedCrops() async {
+    final db = await database;
+    return await db.rawQuery('''
+      SELECT 
+        uc.*,
+        p.plantname as plant_name,
+        ct.name as crop_type,
+        f.surveynumber as survey_number,
+        st.name as soil_type
+      FROM usercrops uc
+      LEFT JOIN plants p ON uc.plantid = p.plantid
+      LEFT JOIN croptypes ct ON p.croptypeid = ct.croptypeid
+      LEFT JOIN farms f ON uc.farmid = f.farmid
+      LEFT JOIN soiltypes st ON uc.soiltypeid = st.soiltypeid
+      WHERE uc.isdeleted = 1
+      ORDER BY uc.createdat DESC
+    ''');
   }
 
   // ==================== JUNCTION TABLE METHODS ====================
@@ -512,14 +807,14 @@ class DatabaseHelper {
           ? (existingFarm.first['isuploaded'] == 1)
           : false;
 
-      // ✅ FIXED: Keep isuploaded = 1 for updates (so sync knows to UPDATE not ADD)
       final farmData = {
         'farmid': id,
         'farmsize': farmSize,
         'surveynumber': surveyNumber,
         'createdat': isUpdate ? existingFarm.first['createdat'] : now,
-        'isuploaded': wasUploaded ? 1 : 0, // Keep uploaded status
-        'isdirty': 1, // Mark as dirty for sync
+        'isuploaded': wasUploaded ? 1 : 0,
+        'isdirty': 1,
+        'isdeleted': 0, // ✅ Ensure not deleted on upsert
       };
 
       if (isUpdate) {
@@ -572,10 +867,15 @@ class DatabaseHelper {
     });
   }
 
-
+  // ✅ UPDATED: Filter out deleted farms
   Future<List<Map<String, dynamic>>> getAllFarmsWithRelations() async {
     final db = await database;
-    final farms = await db.query('farms', orderBy: 'createdat DESC');
+    final farms = await db.query(
+      'farms',
+      where: 'isdeleted = 0', // ✅ Filter deleted
+      orderBy: 'createdat DESC',
+    );
+
     List<Map<String, dynamic>> result = [];
 
     for (var farm in farms) {
@@ -700,6 +1000,7 @@ class DatabaseHelper {
       'createdat': DateTime.now().toIso8601String(),
       'isuploaded': 0,
       'isdirty': 1,
+      'isdeleted': 0, // ✅ Default not deleted
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     return id;
@@ -726,7 +1027,6 @@ class DatabaseHelper {
       'plantid': plantId,
       'plantingdate': plantingDate,
       'harvestdate': harvestDate,
-      'duration': duration,
       'fieldsize': fieldSize,
       'soiltypeid': soilTypeId,
       'status': status,
@@ -734,20 +1034,24 @@ class DatabaseHelper {
       'createdat': DateTime.now().toIso8601String(),
       'isuploaded': 0,
       'isdirty': 1,
+      'isdeleted': 0, // ✅ Default not deleted
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     return id;
   }
 
+  // ✅ UPDATED: Filter out deleted farms
   Future<List<Map<String, dynamic>>> getAllFarms() async {
     final db = await database;
     return await db.rawQuery('''
       SELECT f.* 
       FROM farms f
+      WHERE f.isdeleted = 0
       ORDER BY f.createdat DESC
     ''');
   }
 
+  // ✅ UPDATED: Filter out deleted crops
   Future<List<Map<String, dynamic>>> getAllCrops() async {
     final db = await database;
     return await db.rawQuery('''
@@ -762,6 +1066,7 @@ class DatabaseHelper {
       LEFT JOIN croptypes ct ON p.croptypeid = ct.croptypeid
       LEFT JOIN farms f ON uc.farmid = f.farmid
       LEFT JOIN soiltypes st ON uc.soiltypeid = st.soiltypeid
+      WHERE uc.isdeleted = 0
       ORDER BY uc.createdat DESC
     ''');
   }
@@ -770,7 +1075,8 @@ class DatabaseHelper {
     final db = await database;
     return await db.query(
       'farms',
-      where: 'isdirty = 1 OR isuploaded = 0',
+      where:
+          '(isdirty = 1 OR isuploaded = 0) AND isdeleted = 0', // ✅ Exclude deleted
       orderBy: 'createdat DESC',
     );
   }
@@ -779,7 +1085,8 @@ class DatabaseHelper {
     final db = await database;
     return await db.query(
       'usercrops',
-      where: 'isdirty = 1 OR isuploaded = 0',
+      where:
+          '(isdirty = 1 OR isuploaded = 0) AND isdeleted = 0', // ✅ Exclude deleted
       orderBy: 'createdat DESC',
     );
   }
@@ -868,7 +1175,6 @@ class DatabaseHelper {
 
   // ==================== IMAGE & ANALYSIS OPS ====================
 
-  // ✅ FIXED: Using underscored column names
   Future<String> insertImage({
     String? plantId,
     required String localPath,
@@ -1748,7 +2054,6 @@ class DatabaseHelper {
         for (final item in rows) {
           if (item is! Map) continue;
 
-          // ✅ FIXED: Use correct column names
           if (item['image_id'] != null) {
             final imgId = item['image_id'].toString();
             final exists = await txn.query(
@@ -1859,13 +2164,13 @@ class DatabaseHelper {
     final cropsCount =
         Sqflite.firstIntValue(
           await db.rawQuery(
-            'SELECT COUNT(*) FROM usercrops WHERE isactive = 1',
+            'SELECT COUNT(*) FROM usercrops WHERE isactive = 1 AND isdeleted = 0',
           ),
         ) ??
         0;
     final farmsCount =
         Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM farms'),
+          await db.rawQuery('SELECT COUNT(*) FROM farms WHERE isdeleted = 0'),
         ) ??
         0;
     final diseasesCount =
@@ -1945,7 +2250,8 @@ class DatabaseHelper {
     final db = await database;
     return await db.query('plants');
   }
-  
+
+  // ✅ UPDATED: Filter out deleted crops
   Future<List<Map<String, dynamic>>> getCropsByFarmId(String farmId) async {
     final db = await database;
     return await db.rawQuery(
@@ -1959,10 +2265,28 @@ class DatabaseHelper {
     LEFT JOIN plants p ON uc.plantid = p.plantid
     LEFT JOIN croptypes ct ON p.croptypeid = ct.croptypeid
     LEFT JOIN soiltypes st ON uc.soiltypeid = st.soiltypeid
-    WHERE uc.farmid = ?
+    WHERE uc.farmid = ? AND uc.isdeleted = 0
     ORDER BY uc.createdat DESC
   ''',
       [farmId],
+    );
+  }
+
+  /// Update crop active status
+  Future<void> updateCropActiveStatus({
+    required String cropId,
+    required int isActive,
+  }) async {
+    final db = await database;
+
+    await db.update(
+      'usercrops',
+      {
+        'isactive': isActive,
+        'isdirty': 1, // Mark as dirty for sync
+      },
+      where: 'usercropid = ?',
+      whereArgs: [cropId],
     );
   }
 }

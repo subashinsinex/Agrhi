@@ -1,8 +1,12 @@
 // lib/src/screens/splash/splash_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'dart:convert';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
 import '../../src/services/auth_service.dart';
+import '../../src/services/sync_service.dart';
+import '../../src/services/crop_care_sync_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -25,6 +29,15 @@ class _SplashScreenState extends State<SplashScreen>
 
   String _statusMessage = 'Initializing...';
   bool _showOfflineBadge = false;
+
+  // ✅ ADDED: Secure storage instance
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+      synchronizable: false,
+    ),
+  );
 
   @override
   void initState() {
@@ -57,6 +70,142 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeController.forward();
   }
 
+  // ✅ ADDED: Helper method to read from storage with retry logic
+  Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
+    for (int i = 0; i < maxRetries; i++) {
+      try {
+        final value = await _storage.read(key: key);
+        if (value != null && value.isNotEmpty) {
+          return value;
+        }
+        if (i < maxRetries - 1) {
+          await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
+        }
+      } catch (e) {
+        if (i == maxRetries - 1) {
+          debugPrint('Storage read failed for $key: $e');
+          rethrow;
+        }
+      }
+    }
+    return null;
+  }
+
+  // ✅ ADDED: Decode JWT payload to get expiry
+  Map<String, dynamic>? _decodeJwtPayload(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      String payload = parts[1];
+
+      int mod4 = payload.length % 4;
+      if (mod4 > 0) {
+        payload += '=' * (4 - mod4);
+      }
+
+      final decoded = utf8.decode(base64Url.decode(payload));
+      final map = jsonDecode(decoded);
+      if (map is Map<String, dynamic>) return map;
+      if (map is Map) return Map<String, dynamic>.from(map);
+      return null;
+    } catch (e) {
+      debugPrint('JWT decode error: $e');
+      return null;
+    }
+  }
+
+  // ✅ ADDED: Get JWT expiry in UTC
+  DateTime? _getJwtExpiryUtc(String token) {
+    final payload = _decodeJwtPayload(token);
+    if (payload == null) return null;
+
+    final exp = payload['exp'];
+
+    if (exp is int) {
+      return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
+    } else if (exp is String) {
+      final n = int.tryParse(exp);
+      if (n != null) {
+        return DateTime.fromMillisecondsSinceEpoch(n * 1000, isUtc: true);
+      }
+    }
+
+    return null;
+  }
+
+  // ✅ ADDED: Get valid access token with refresh logic
+  Future<String?> _getValidAccessTokenForSync() async {
+    String? accessToken =
+        await _readWithRetry('access_token') ??
+        await _storage.read(key: 'access_token');
+
+    String? expiryIso =
+        await _readWithRetry('access_token_expires_at') ??
+        await _storage.read(key: 'access_token_expires_at');
+
+    String? expiryEpochMsStr =
+        await _readWithRetry('access_token_expiry') ??
+        await _storage.read(key: 'access_token_expiry');
+
+    bool isExpired = false;
+    final now = DateTime.now().toUtc();
+    const skew = Duration(seconds: 60);
+
+    if (accessToken != null && accessToken.isNotEmpty) {
+      final jwtExp = _getJwtExpiryUtc(accessToken);
+      if (jwtExp != null) {
+        isExpired = now.add(skew).isAfter(jwtExp);
+      } else {
+        try {
+          if (expiryIso != null && expiryIso.isNotEmpty) {
+            final exp = DateTime.tryParse(expiryIso)?.toUtc();
+            if (exp != null) isExpired = now.add(skew).isAfter(exp);
+          } else if (expiryEpochMsStr != null && expiryEpochMsStr.isNotEmpty) {
+            final ms = int.tryParse(expiryEpochMsStr);
+            if (ms != null) {
+              final exp = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+              isExpired = now.add(skew).isAfter(exp);
+            }
+          } else {
+            isExpired = false;
+          }
+        } catch (_) {
+          isExpired = true;
+        }
+      }
+    } else {
+      isExpired = true;
+    }
+
+    if (!isExpired && accessToken != null && accessToken.isNotEmpty) {
+      return accessToken;
+    }
+
+    // Token is expired, try to refresh
+    try {
+      await _authService.refreshAccessToken();
+      accessToken =
+          await _readWithRetry('access_token') ??
+          await _storage.read(key: 'access_token');
+
+      if (accessToken == null || accessToken.isEmpty) {
+        debugPrint('Token refresh succeeded but no access_token found');
+        return null;
+      }
+
+      final jwtExp = _getJwtExpiryUtc(accessToken);
+      if (jwtExp != null) {
+        final stillExpired = now.add(skew).isAfter(jwtExp);
+        return stillExpired ? null : accessToken;
+      }
+
+      return accessToken;
+    } catch (e) {
+      debugPrint('Failed to refresh access token: $e');
+      return null;
+    }
+  }
+
   Future<void> _checkAuthAndNavigate() async {
     await Future.delayed(const Duration(seconds: 2));
 
@@ -73,6 +222,10 @@ class _SplashScreenState extends State<SplashScreen>
       case AuthStatus.authenticated:
         setState(() => _statusMessage = 'Welcome back!');
         await Future.delayed(const Duration(milliseconds: 500));
+
+        // ✅ Perform background sync before navigating
+        await _performBackgroundSync();
+
         if (mounted) Routes.navigateToDashboard(context);
         break;
 
@@ -92,6 +245,95 @@ class _SplashScreenState extends State<SplashScreen>
         await Future.delayed(const Duration(milliseconds: 500));
         if (mounted) Routes.navigateToLogin(context);
         break;
+    }
+  }
+
+  /// ✅ UPDATED: Perform background sync with secure storage access token
+  Future<void> _performBackgroundSync() async {
+    try {
+      if (!mounted) return;
+
+      setState(() => _statusMessage = 'Syncing data...');
+
+      // ✅ CHANGED: Get valid access token from secure storage
+      final accessToken = await _getValidAccessTokenForSync();
+
+      if (accessToken == null || accessToken.isEmpty) {
+        debugPrint('⚠️ No valid access token available for sync');
+        if (mounted) {
+          setState(() => _statusMessage = 'Welcome back!');
+        }
+        return;
+      }
+
+      // ✅ Run both syncs in parallel for faster completion
+      final results =
+          await Future.wait([
+            SyncService.instance.performFullSync(accessToken),
+            CropCareSyncService.instance.performFullSync(accessToken),
+          ]).timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              debugPrint('⚠️ Sync timeout - continuing anyway');
+              return [
+                {'success': false, 'error': 'timeout'},
+                {'success': false, 'error': 'timeout'},
+              ];
+            },
+          );
+
+      final diseaseSync = results[0];
+      final cropCareSync = results[1];
+
+      // Log disease analysis sync results
+      if (diseaseSync['success'] == true) {
+        debugPrint('✅ Disease analysis sync completed');
+        final catalogsResult = diseaseSync['catalogs'] as Map<String, dynamic>?;
+        final twoWayResult =
+            diseaseSync['two_way_sync'] as Map<String, dynamic>?;
+
+        final catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
+        final uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
+        final downloaded =
+            (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
+        final imagesUploaded =
+            (twoWayResult?['images']?['upload'] as int?) ?? 0;
+
+        debugPrint(
+          '  - Catalogs: $catalogsUpdated, Upload: $uploaded, Download: $downloaded, Images: $imagesUploaded',
+        );
+      } else {
+        debugPrint('⚠️ Disease analysis sync failed: ${diseaseSync['error']}');
+      }
+
+      // Log crop care sync results
+      if (cropCareSync['success'] == true) {
+        debugPrint('✅ Crop care sync completed');
+        final sync = cropCareSync['sync'] as Map<String, dynamic>?;
+        if (sync != null) {
+          final farmsUploaded = sync['farmUpload']?['uploaded'] ?? 0;
+          final cropsUploaded = sync['cropUpload']?['uploaded'] ?? 0;
+          final historyDownloaded = sync['historyDownload']?['downloaded'] ?? 0;
+
+          debugPrint(
+            '  - Farms uploaded: $farmsUploaded, Crops uploaded: $cropsUploaded, History downloaded: $historyDownloaded',
+          );
+        }
+      } else {
+        debugPrint('⚠️ Crop care sync failed: ${cropCareSync['error']}');
+      }
+
+      if (mounted) {
+        setState(() => _statusMessage = 'Sync complete!');
+      }
+
+      await Future.delayed(const Duration(milliseconds: 300));
+    } catch (e) {
+      debugPrint('❌ Background sync error: $e');
+      // Don't block navigation on sync failure
+      if (mounted) {
+        setState(() => _statusMessage = 'Welcome back!');
+      }
     }
   }
 

@@ -19,6 +19,7 @@ import 'disease_history_screen.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/sync_service.dart';
+import '../../src/services/crop_care_sync_service.dart'; // ✅ ADDED
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -87,6 +88,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'analyses',
       'Catalogs',
       'updated',
+      'Farms', // ✅ ADDED
+      'Crops', // ✅ ADDED
+      'History', // ✅ ADDED
     ], highPriority: true);
   }
 
@@ -293,6 +297,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // ✅ UPDATED: Silent sync with both services
   Future<void> _performSilentSync() async {
     if (_isSyncing) return;
 
@@ -305,14 +310,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
       }
 
-      final syncResult = await SyncService.instance.performFullSync(validToken);
+      // ✅ Run both syncs in parallel
+      final results = await Future.wait([
+        SyncService.instance.performFullSync(validToken),
+        CropCareSyncService.instance.performFullSync(validToken),
+      ]);
 
-      final bool success = (syncResult['success'] as bool?) ?? false;
+      final diseaseSync = results[0];
+      final cropCareSync = results[1];
 
-      if (success) {
-        final catalogsResult = syncResult['catalogs'] as Map<String, dynamic>?;
+      final bool diseaseSuccess = (diseaseSync['success'] as bool?) ?? false;
+      final bool cropCareSuccess = (cropCareSync['success'] as bool?) ?? false;
+
+      if (diseaseSuccess) {
+        final catalogsResult = diseaseSync['catalogs'] as Map<String, dynamic>?;
         final twoWayResult =
-            syncResult['two_way_sync'] as Map<String, dynamic>?;
+            diseaseSync['two_way_sync'] as Map<String, dynamic>?;
 
         final catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
         final uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
@@ -322,10 +335,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
             (twoWayResult?['images']?['upload'] as int?) ?? 0;
 
         debugPrint(
-          'Silent sync: catalogs=$catalogsUpdated, up=$uploaded, down=$downloaded, img=$imagesUploaded',
+          'Silent disease sync: catalogs=$catalogsUpdated, up=$uploaded, down=$downloaded, img=$imagesUploaded',
         );
       } else {
-        debugPrint('Silent sync error: ${syncResult['error']}');
+        debugPrint('Silent disease sync error: ${diseaseSync['error']}');
+      }
+
+      if (cropCareSuccess) {
+        final sync = cropCareSync['sync'] as Map<String, dynamic>?;
+        if (sync != null) {
+          final farmsUploaded = sync['farmUpload']?['uploaded'] ?? 0;
+          final cropsUploaded = sync['cropUpload']?['uploaded'] ?? 0;
+          final historyDownloaded = sync['historyDownload']?['downloaded'] ?? 0;
+
+          debugPrint(
+            'Silent crop sync: farms=$farmsUploaded, crops=$cropsUploaded, history=$historyDownloaded',
+          );
+        }
+      } else {
+        debugPrint('Silent crop sync error: ${cropCareSync['error']}');
       }
     } catch (e) {
       debugPrint('Silent sync exception: $e');
@@ -336,6 +364,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // ✅ UPDATED: Manual sync with both services
   Future<void> _performFullSync() async {
     if (_isSyncing) return;
 
@@ -392,23 +421,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     try {
-      final syncResult = await SyncService.instance.performFullSync(validToken);
+      // ✅ Run both syncs in parallel
+      final results =
+          await Future.wait([
+            SyncService.instance.performFullSync(validToken),
+            CropCareSyncService.instance.performFullSync(validToken),
+          ]).timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              return [
+                {'success': false, 'error': 'timeout'},
+                {'success': false, 'error': 'timeout'},
+              ];
+            },
+          );
 
-      final bool success = (syncResult['success'] as bool?) ?? false;
+      final diseaseSync = results[0];
+      final cropCareSync = results[1];
 
-      if (success) {
-        final catalogsResult = syncResult['catalogs'] as Map<String, dynamic>?;
-        final twoWayResult =
-            syncResult['two_way_sync'] as Map<String, dynamic>?;
+      final bool diseaseSuccess = (diseaseSync['success'] as bool?) ?? false;
+      final bool cropCareSuccess = (cropCareSync['success'] as bool?) ?? false;
 
-        final catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
-        final uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
-        final downloaded =
-            (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
-        final imagesUploaded =
-            (twoWayResult?['images']?['upload'] as int?) ?? 0;
+      if (diseaseSuccess || cropCareSuccess) {
+        // Extract disease sync stats
+        int catalogsUpdated = 0;
+        int uploaded = 0;
+        int downloaded = 0;
+        int imagesUploaded = 0;
 
-        // ✅ FIXED: Translatable sync success message
+        if (diseaseSuccess) {
+          final catalogsResult =
+              diseaseSync['catalogs'] as Map<String, dynamic>?;
+          final twoWayResult =
+              diseaseSync['two_way_sync'] as Map<String, dynamic>?;
+
+          catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
+          uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
+          downloaded = (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
+          imagesUploaded = (twoWayResult?['images']?['upload'] as int?) ?? 0;
+        }
+
+        // Extract crop care sync stats
+        int farmsUploaded = 0;
+        int cropsUploaded = 0;
+        int historyDownloaded = 0;
+
+        if (cropCareSuccess) {
+          final sync = cropCareSync['sync'] as Map<String, dynamic>?;
+          if (sync != null) {
+            farmsUploaded = sync['farmUpload']?['uploaded'] ?? 0;
+            cropsUploaded = sync['cropUpload']?['uploaded'] ?? 0;
+            historyDownloaded = sync['historyDownload']?['downloaded'] ?? 0;
+          }
+        }
+
+        // ✅ Comprehensive sync success message
         messenger.showSnackBar(
           SnackBar(
             content: Column(
@@ -423,21 +490,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fontSize: 15,
                   ),
                 ),
-                const SizedBox(height: 4),
-                SmartReTranslator(
-                  text:
-                      'Upload $uploaded, Downloaded $downloaded, Images $imagesUploaded, Catalogs updated $catalogsUpdated',
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
-                ),
-              ],            ),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: AppColors.successColor,
-              duration: const Duration(seconds: 2),
-              shape: RoundedRectangleBorder(
+                const SizedBox(height: 6),
+                if (diseaseSuccess)
+                  SmartReTranslator(
+                    text:
+                        'Upload $uploaded, Downloaded $downloaded, Images $imagesUploaded, Catalogs $catalogsUpdated',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                if (diseaseSuccess && cropCareSuccess)
+                  const SizedBox(height: 3),
+                if (cropCareSuccess)
+                  SmartReTranslator(
+                    text:
+                        'Farms $farmsUploaded, Crops $cropsUploaded, History $historyDownloaded',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+              ],
+            ),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppColors.successColor,
+            duration: const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
           ),
         );
+
         await _storage.write(
           key: 'last_sync_time',
           value: DateTime.now().toIso8601String(),
@@ -457,7 +535,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         );
-        debugPrint('Manual sync error: ${syncResult['error']}');
+        debugPrint(
+          'Manual sync errors: disease=${diseaseSync['error']}, crop=${cropCareSync['error']}',
+        );
       }
     } catch (e) {
       messenger.showSnackBar(
@@ -482,7 +562,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ FIXED: Features list created inside build method
+    // ✅ Features list created inside build method
     final features = [
       FeatureItem(
         title: 'Crop Care',
@@ -574,7 +654,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   key: ValueKey(
                     'weather_${Provider.of<LanguageService>(context).currentLocale.languageCode}',
                   ),
-                  useDeviceLocation: true),
+                  useDeviceLocation: true,
+                ),
                 const SizedBox(height: 10),
                 const Align(
                   alignment: Alignment.centerLeft,
@@ -622,7 +703,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                // ✅ FIXED: Grid with proper key for language changes
                 DirectFeatureGrid(
                   key: ValueKey(
                     Provider.of<LanguageService>(
@@ -709,7 +789,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// ✅ FIXED: DirectFeatureGrid with proper translation support
 class DirectFeatureGrid extends StatelessWidget {
   final List<FeatureItem> features;
   final int crossAxisCount;
@@ -767,7 +846,6 @@ class DirectFeatureGrid extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: SmartReTranslator(
-                    // ✅ FIXED: Unique key for each feature title
                     key: ValueKey('feature_${feature.title}_$index'),
                     text: feature.title,
                     style: const TextStyle(

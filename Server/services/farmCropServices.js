@@ -65,7 +65,7 @@ exports.getFarmById = async (req, res) => {
       LEFT JOIN farms_water_src fw ON f.farm_id = fw.farm_id
       LEFT JOIN water_src w ON fw.water_src_id = w.water_src_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      WHERE f.user_id = $1
+      WHERE f.user_id = $1 AND f.is_delete = false
       GROUP BY f.farm_id, ud.name, ud.dob, ud.address;
     `;
     const result = await pool.query(sql, [id]);
@@ -393,7 +393,7 @@ exports.getCropById = async (req, res) => {
       LEFT JOIN crop_types ct ON pl.crop_type_id = ct.crop_type_id
       LEFT JOIN farms f ON uc.farm_id = f.farm_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      WHERE f.farm_id = $1
+      WHERE f.farm_id = $1 AND uc.is_delete = false
       AND uc.is_active = true;
     `;
     const result = await pool.query(sql, [id]);
@@ -427,7 +427,7 @@ exports.getCropHistoryById = async (req, res) => {
       LEFT JOIN crop_types ct ON pl.crop_type_id = ct.crop_type_id
       LEFT JOIN farms f ON uc.farm_id = f.farm_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      WHERE f.farm_id = $1
+      WHERE f.farm_id = $1 AND uc.is_delete = false
       AND uc.is_active = false;
     `;
     const result = await pool.query(sql, [id]);

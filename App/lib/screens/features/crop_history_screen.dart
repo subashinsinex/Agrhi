@@ -1,10 +1,7 @@
 // lib/screens/features/crop_history_screen.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../../utils/colors.dart';
-import '../../utils/constants.dart';
+import '../../src/database/database_helper.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../shared/widgets/smart_retranslator.dart';
 
@@ -16,22 +13,14 @@ class CropHistoryScreen extends StatefulWidget {
 }
 
 class _CropHistoryScreenState extends State<CropHistoryScreen> {
-  List<Map<String, dynamic>> _cropHistory = [];
+  List<Map<String, dynamic>> _inactiveCrops = [];
   bool _isLoading = true;
   String? _error;
-
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
 
   @override
   void initState() {
     super.initState();
-    _loadCropHistory();
-  }
-
-  Future<String?> _getAccessToken() async {
-    return await _storage.read(key: 'access_token');
+    _loadInactiveCrops();
   }
 
   String _formatNumber(dynamic value, {int decimals = 1}) {
@@ -44,92 +33,392 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
     return '0';
   }
 
-  String _formatDate(dynamic dateValue) {
-    if (dateValue == null) return 'N/A';
+  double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  String _formatDateOnly(String? dateTimeString) {
+    if (dateTimeString == null || dateTimeString.isEmpty) return '';
     try {
-      final date = DateTime.parse(dateValue.toString());
-      return '${date.day}/${date.month}/${date.year}';
+      if (dateTimeString.contains('T')) {
+        return dateTimeString.split('T')[0];
+      }
+      if (dateTimeString.contains(' ')) {
+        return dateTimeString.split(' ')[0];
+      }
+      return dateTimeString;
     } catch (e) {
-      return dateValue.toString();
+      return dateTimeString;
     }
   }
 
-  Future<void> _loadCropHistory() async {
+  // ✅ Calculate crop duration
+  int? _calculateCropDuration(String? plantingDate, String? harvestDate) {
+    if (plantingDate == null || harvestDate == null) return null;
+    if (plantingDate.isEmpty || harvestDate.isEmpty) return null;
+
+    try {
+      final planted = DateTime.tryParse(plantingDate);
+      final harvested = DateTime.tryParse(harvestDate);
+
+      if (planted != null && harvested != null) {
+        return harvested.difference(planted).inDays;
+      }
+    } catch (e) {
+      debugPrint('Error calculating duration: $e');
+    }
+    return null;
+  }
+
+  // ✅ Calculate statistics from inactive crops (3 key metrics)
+  Map<String, dynamic> _calculateStatistics() {
+    final totalCrops = _inactiveCrops.length;
+
+    // Count unique crop varieties
+    final uniqueCropTypes = _inactiveCrops
+        .map((c) => c['plantname']?.toString() ?? c['plant_name']?.toString())
+        .where((name) => name != null && name.isNotEmpty)
+        .toSet()
+        .length;
+
+    // Count crops harvested this year
+    final currentYear = DateTime.now().year;
+    final thisYearCrops = _inactiveCrops.where((crop) {
+      final harvestDate = crop['harvestdate']?.toString();
+      if (harvestDate != null && harvestDate.isNotEmpty) {
+        try {
+          final date = DateTime.tryParse(harvestDate);
+          return date?.year == currentYear;
+        } catch (_) {}
+      }
+      return false;
+    }).length;
+
+    return {
+      'totalCrops': totalCrops,
+      'uniqueTypes': uniqueCropTypes,
+      'thisYearCrops': thisYearCrops,
+    };
+  }
+
+  Future<void> _loadInactiveCrops() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      final token = await _getAccessToken();
-      if (token == null) {
-        throw Exception('Not authenticated');
-      }
+      final db = DatabaseHelper.instance;
+      final allCrops = await db.getAllCrops();
 
-      final userId = await _storage.read(key: 'user_id');
-      if (userId == null) {
-        throw Exception('User ID not found');
-      }
+      // ✅ Filter to show only inactive crops (isactive = 0)
+      final inactiveCrops = allCrops
+          .where((crop) => crop['isactive'] == 0)
+          .toList();
 
-      debugPrint('🔍 Loading crop history for user: $userId');
+      setState(() {
+        _inactiveCrops = inactiveCrops;
+        _isLoading = false;
+      });
 
-      final response = await http
-          .get(
-            Uri.parse('${AppConstants.baseUrl}/farmcrop/crophistory/$userId'),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-          )
-          .timeout(const Duration(seconds: 30));
-
-      debugPrint('📡 Response status: ${response.statusCode}');
-      debugPrint('📦 Response body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        // ✅ Check if response body is empty
-        if (response.body.trim().isEmpty) {
-          debugPrint('ℹ️ Empty response - no crop history');
-          setState(() {
-            _cropHistory = [];
-            _isLoading = false;
-          });
-          return;
-        }
-
-        final decoded = jsonDecode(response.body);
-
-        List<Map<String, dynamic>> historyList;
-
-        if (decoded is List) {
-          historyList = decoded.cast<Map<String, dynamic>>();
-        } else if (decoded is Map<String, dynamic>) {
-          historyList = [decoded];
-        } else {
-          throw Exception('Unexpected response format');
-        }
-
-        // ✅ Server already filters inactive crops, use data as-is
-        debugPrint('✅ Loaded ${historyList.length} crops from history');
-        setState(() {
-          _cropHistory = historyList;
-          _isLoading = false;
-        });
-      } else if (response.statusCode == 404) {
-        debugPrint('ℹ️ No crop history found for this user');
-        setState(() {
-          _cropHistory = [];
-          _isLoading = false;
-        });
-      } else {
-        throw Exception('Failed to load crop history: ${response.statusCode}');
-      }
+      debugPrint('✅ Loaded ${inactiveCrops.length} inactive crops');
     } catch (e) {
-      debugPrint('❌ Error loading crop history: $e');
+      debugPrint('❌ Error loading inactive crops: $e');
       setState(() {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  // ✅ Show detailed crop info dialog
+  void _showCropInfoDialog(Map<String, dynamic> crop) {
+    final plantName =
+        crop['plantname']?.toString() ??
+        crop['plant_name']?.toString() ??
+        'Unknown Crop';
+
+    final plantingDate = _formatDateOnly(crop['plantingdate']?.toString());
+    final harvestDate = _formatDateOnly(crop['harvestdate']?.toString());
+    final duration = _calculateCropDuration(
+      crop['plantingdate']?.toString(),
+      crop['harvestdate']?.toString(),
+    );
+    final fieldSize = _formatNumber(crop['fieldsize']);
+    final surveyNumber = crop['survey_number']?.toString() ?? 'N/A';
+    final soilType = crop['soiltype']?.toString();
+    final status = crop['status']?.toString() ?? 'Unknown';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.history, color: Colors.orange.shade700),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                plantName,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Status Badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      size: 16,
+                      color: Colors.grey.shade700,
+                    ),
+                    const SizedBox(width: 6),
+                    SmartReTranslator(
+                      text: status,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 20),
+
+              // Farm Details
+              _buildInfoRow(
+                Icons.agriculture,
+                'Survey Number',
+                surveyNumber,
+                AppColors.primaryGreen,
+              ),
+              const SizedBox(height: 12),
+
+              // Field Size
+              _buildInfoRow(
+                Icons.crop_landscape,
+                'Field Size',
+                '$fieldSize Acres',
+                Colors.orange.shade700,
+              ),
+              const Divider(height: 20),
+
+              // Planting Date
+              _buildInfoRow(
+                Icons.calendar_month,
+                'Planting Date',
+                plantingDate.isNotEmpty ? plantingDate : 'Not recorded',
+                Colors.green.shade700,
+              ),
+              const SizedBox(height: 12),
+
+              // Harvest Date
+              _buildInfoRow(
+                Icons.event_available,
+                'Harvest Date',
+                harvestDate.isNotEmpty ? harvestDate : 'Not recorded',
+                Colors.amber.shade800,
+              ),
+
+              // Duration
+              if (duration != null) ...[
+                const SizedBox(height: 12),
+                _buildInfoRow(
+                  Icons.timer_outlined,
+                  'Crop Duration',
+                  '$duration days',
+                  Colors.blue.shade700,
+                ),
+              ],
+
+              // Soil Type
+              if (soilType != null) ...[
+                const Divider(height: 20),
+                _buildInfoSection(
+                  Icons.terrain,
+                  'Soil Type',
+                  soilType,
+                  Colors.brown.shade700,
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const SmartReTranslator(
+              text: 'Close',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _reactivateCrop(crop);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.successColor,
+            ),
+            child: const SmartReTranslator(
+              text: 'Reactivate',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method to build info rows
+  Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey.shade800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Helper method to build info sections
+  Widget _buildInfoSection(
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              SmartReTranslator(
+                text: value.isNotEmpty ? value : 'Not specified',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ Reactivate crop
+  Future<void> _reactivateCrop(Map<String, dynamic> crop) async {
+    final cropId = crop['usercropid'].toString();
+    final plantName =
+        crop['plantname']?.toString() ??
+        crop['plant_name']?.toString() ??
+        'this crop';
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const SmartReTranslator(
+          text: 'Reactivate Crop?',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: SmartReTranslator(
+          text:
+              'Are you sure you want to reactivate $plantName? It will appear in the active crops list.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const SmartReTranslator(text: 'Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.successColor,
+            ),
+            child: const SmartReTranslator(text: 'Reactivate'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final db = DatabaseHelper.instance;
+
+      // Reactivate the crop
+      await db.updateCropActiveStatus(
+        cropId: cropId,
+        isActive: 1, // ✅ Set to active
+      );
+
+      debugPrint('✅ Crop $cropId reactivated');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: SmartReTranslator(text: 'Crop reactivated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Refresh the list
+        _loadInactiveCrops();
+      }
+    } catch (e) {
+      debugPrint('❌ Error reactivating crop: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: SmartReTranslator(text: 'Error: $e'),
+            backgroundColor: AppColors.errorColor,
+          ),
+        );
+      }
     }
   }
 
@@ -138,148 +427,528 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
     return Scaffold(
       appBar: const CustomAppBar(title: 'Crop History'),
       backgroundColor: AppColors.backgroundColor,
-      body: _buildBody(),
+      body: _isLoading
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: AppColors.primaryGreen),
+                  const SizedBox(height: 16),
+                  const SmartReTranslator(
+                    text: 'Loading crop history...',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            )
+          : _error != null
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: AppColors.errorColor,
+                  ),
+                  const SizedBox(height: 16),
+                  const SmartReTranslator(
+                    text: 'Error loading crop history',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _loadInactiveCrops,
+                    icon: const Icon(Icons.refresh),
+                    label: const SmartReTranslator(
+                      text: 'Retry',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryGreen,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : _inactiveCrops.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.history, size: 100, color: Colors.grey.shade300),
+                    const SizedBox(height: 24),
+                    const SmartReTranslator(
+                      text: 'No Crop History',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 12),
+                    const SmartReTranslator(
+                      text:
+                          'You don\'t have any inactive crops yet. Deactivated crops will appear here.',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.grey,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : CustomScrollView(
+              slivers: [
+                // ✅ Summary Card with 3 Metrics (3x1 Single Row)
+                SliverToBoxAdapter(
+                  child: Builder(
+                    builder: (context) {
+                      final stats = _calculateStatistics();
+
+                      return Container(
+                        margin: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.orange.shade600,
+                              Colors.orange.shade400,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.orange.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            Expanded(
+                              child: _buildStatItem(
+                                icon: Icons.history,
+                                label: 'Total History',
+                                value: stats['totalCrops'].toString(),
+                              ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 60,
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                            Expanded(
+                              child: _buildStatItem(
+                                icon: Icons.calendar_today,
+                                label: 'This Year',
+                                value: stats['thisYearCrops'].toString(),
+                              ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 60,
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                            Expanded(
+                              child: _buildStatItem(
+                                icon: Icons.category,
+                                label: 'Unique Varieties',
+                                value: stats['uniqueTypes'].toString(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Crop List
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final crop = _inactiveCrops[index];
+                      return _buildCropHistoryCard(crop);
+                    }, childCount: _inactiveCrops.length),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
-  Widget _buildBody() {
-    if (_isLoading) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: AppColors.primaryGreen),
-            const SizedBox(height: 16),
-            const SmartReTranslator(
-              text: 'Loading crop history...',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    }
+  Widget _buildCropHistoryCard(Map<String, dynamic> crop) {
+    final isPending = (crop['isdirty'] == 1 || crop['isuploaded'] == 0);
 
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: AppColors.errorColor),
-            const SizedBox(height: 16),
-            const SmartReTranslator(
-              text: 'Error loading crop history',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                _error!,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _loadCropHistory,
-              icon: const Icon(Icons.refresh),
-              label: const SmartReTranslator(text: 'Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryGreen,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    // Format dates to show only date (remove time)
+    String? plantingDate = _formatDateOnly(crop['plantingdate']?.toString());
+    String? harvestDate = _formatDateOnly(crop['harvestdate']?.toString());
 
-    if (_cropHistory.isEmpty) {
-      return Center(
+    final plantName =
+        crop['plantname']?.toString() ??
+        crop['plant_name']?.toString() ??
+        'Unknown';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: isPending
+            ? Border.all(color: Colors.orange.shade300, width: 2)
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () => _showCropInfoDialog(crop),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.all(12),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.history, size: 100, color: Colors.grey.shade300),
-              const SizedBox(height: 24),
-              const SmartReTranslator(
-                text: 'No Crop History',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+              // Header Row
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.history,
+                      color: Colors.grey.shade600,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SmartReTranslator(
+                          text: plantName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (crop['croptype'] != null) ...[
+                          const SizedBox(height: 2),
+                          SmartReTranslator(
+                            text: crop['croptype'] as String,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (isPending)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.cloud_upload,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  // ✅ Inactive Badge (clickable to reactivate)
+                  InkWell(
+                    onTap: () => _reactivateCrop(crop),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const SmartReTranslator(
+                        text: 'Inactive',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              const SmartReTranslator(
-                text:
-                    'You don\'t have any completed or inactive crops yet. Your crop history will appear here once crops are harvested or marked as inactive.',
-                style: TextStyle(fontSize: 15, color: Colors.grey, height: 1.5),
-                textAlign: TextAlign.center,
+              const SizedBox(height: 10),
+
+              // Crop Details in 2x2 Grid
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    // Row 1: Survey Number | Acres
+                    Row(
+                      children: [
+                        // Survey Number (Left)
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.location_on,
+                                    size: 14,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const SmartReTranslator(
+                                    text: 'Survey',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                crop['survey_number']?.toString() ?? 'N/A',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade800,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Acres (Right)
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.crop_landscape,
+                                    size: 14,
+                                    color: Colors.orange.shade700,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const SmartReTranslator(
+                                    text: 'Area',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    '${_formatNumber(crop['fieldsize'])} ',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade800,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  SmartReTranslator(
+                                    text: 'Ac',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade800,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Row 2: Planting Date | Harvest Date
+                    Row(
+                      children: [
+                        // Planting Date (Left)
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.calendar_month,
+                                    size: 14,
+                                    color: Colors.green.shade700,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const SmartReTranslator(
+                                    text: 'Planted',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                plantingDate.isNotEmpty ? plantingDate : 'N/A',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade800,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Harvest Date (Right)
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.event_available,
+                                    size: 14,
+                                    color: Colors.amber.shade800,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const SmartReTranslator(
+                                    text: 'Harvest',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                harvestDate.isNotEmpty ? harvestDate : 'N/A',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade800,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Soil Type (if exists)
+                    if (crop['soiltype'] != null) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.terrain,
+                            size: 14,
+                            color: Colors.brown.shade700,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: SmartReTranslator(
+                              text: crop['soiltype'] as String,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.orange.shade600, Colors.orange.shade400],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.orange.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildStatItem(
-                    icon: Icons.history,
-                    label: 'Total History',
-                    value: _cropHistory.length.toString(),
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  height: 50,
-                  color: Colors.white.withOpacity(0.3),
-                ),
-                Expanded(
-                  child: _buildStatItem(
-                    icon: Icons.crop,
-                    label: 'Total Area',
-                    value:
-                        '${_cropHistory.fold<double>(0.0, (sum, c) => sum + double.parse(c['field_size']?.toString() ?? '0')).toStringAsFixed(1)} Ac',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final crop = _cropHistory[index];
-              return _buildCropHistoryCard(crop);
-            }, childCount: _cropHistory.length),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -290,213 +959,30 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
   }) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white, size: 32),
+        Icon(icon, color: Colors.white, size: 28),
         const SizedBox(height: 8),
         Text(
           value,
           style: const TextStyle(
-            fontSize: 24,
+            fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 4),
-        Text(
-          label,
+        SmartReTranslator(
+          text: label,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 11,
             color: Colors.white.withOpacity(0.9),
             fontWeight: FontWeight.w500,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
-    );
-  }
-
-  Widget _buildCropHistoryCard(Map<String, dynamic> crop) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.eco,
-                    color: Colors.orange.shade700,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        crop['plant_name']?.toString() ?? 'Unknown',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (crop['crop_type'] != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          crop['crop_type'] as String,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    crop['status']?.toString() ?? 'Completed',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildChip(
-                  Icons.crop,
-                  '${_formatNumber(crop['field_size'])} Acres',
-                ),
-                if (crop['survey_number'] != null)
-                  _buildChip(
-                    Icons.location_on,
-                    crop['survey_number'] as String,
-                  ),
-                if (crop['planting_date'] != null)
-                  _buildChip(
-                    Icons.calendar_today,
-                    'Planted: ${_formatDate(crop['planting_date'])}',
-                  ),
-                if (crop['harvest_date'] != null)
-                  _buildChip(
-                    Icons.event_available,
-                    'Harvested: ${_formatDate(crop['harvest_date'])}',
-                  ),
-                if (crop['duration'] != null)
-                  _buildChip(
-                    Icons.timer,
-                    '${_formatNumber(crop['duration'], decimals: 0)} days',
-                  ),
-              ],
-            ),
-            if (crop['farmer'] != null ||
-                crop['water_requirement'] != null) ...[
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  if (crop['farmer'] != null) ...[
-                    Icon(Icons.person, size: 16, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    Text(
-                      crop['farmer'] as String,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                  if (crop['farmer'] != null &&
-                      crop['water_requirement'] != null)
-                    const SizedBox(width: 16),
-                  if (crop['water_requirement'] != null) ...[
-                    Icon(
-                      Icons.water_drop,
-                      size: 16,
-                      color: Colors.grey.shade600,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${crop['water_requirement']} Water',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.grey.shade700),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade700,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

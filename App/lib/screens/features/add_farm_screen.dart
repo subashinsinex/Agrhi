@@ -140,6 +140,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
     }
   }
 
+  // ✅ UPDATED: Use soft delete method with validation
   Future<void> _deleteFarm() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -171,21 +172,30 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final db = await DatabaseHelper.instance.database;
-      await db.delete(
-        'farms',
-        where: 'farmid = ?',
-        whereArgs: [widget.farm!['farmid']],
-      );
+      final db = DatabaseHelper.instance;
+
+      // ✅ Use soft delete with validation
+      final result = await db.markFarmAsDeleted(widget.farm!['farmid']);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Farm deleted'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context, true);
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ ${result['message']}'),
+              backgroundColor: AppColors.successColor,
+            ),
+          );
+          Navigator.pop(context, true);
+        } else {
+          // Show error (e.g., farm has crops)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ ${result['message']}'),
+              backgroundColor: AppColors.errorColor,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('❌ Error deleting farm: $e');

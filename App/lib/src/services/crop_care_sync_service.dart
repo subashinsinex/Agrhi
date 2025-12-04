@@ -7,7 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../database/database_helper.dart';
 import '../../utils/constants.dart';
 
-/// Service for two-way sync of farms and crops
+/// Service for two-way sync of farms, crops, and crop history
 class CropCareSyncService {
   static final CropCareSyncService instance = CropCareSyncService._init();
   CropCareSyncService._init();
@@ -65,24 +65,41 @@ class CropCareSyncService {
     try {
       debugPrint('🔄 Starting CropCare two-way sync...');
 
-      // Upload first, then download
+      // ✅ Upload deletions FIRST, then other changes, then download
+      final farmDeletionResult = await uploadPendingFarmDeletions(accessToken);
+      final cropDeletionResult = await uploadPendingCropDeletions(accessToken);
       final farmUploadResult = await uploadPendingFarms(accessToken);
       final cropUploadResult = await uploadPendingCrops(accessToken);
+
+      // ✅ Upload inactive crop changes (reactivations)
+      final reactivationResult = await uploadInactiveCropChanges(accessToken);
+
       final farmDownloadResult = await downloadServerFarms(accessToken);
       final cropDownloadResult = await downloadServerCrops(accessToken);
 
+      // ✅ Download crop history separately
+      final historyDownloadResult = await downloadCropHistory(accessToken);
+
       final allSuccess =
+          farmDeletionResult['success'] &&
+          cropDeletionResult['success'] &&
           farmUploadResult['success'] &&
           cropUploadResult['success'] &&
+          reactivationResult['success'] &&
           farmDownloadResult['success'] &&
-          cropDownloadResult['success'];
+          cropDownloadResult['success'] &&
+          historyDownloadResult['success'];
 
       return {
         'success': allSuccess,
+        'farmDeletion': farmDeletionResult,
+        'cropDeletion': cropDeletionResult,
         'farmUpload': farmUploadResult,
         'cropUpload': cropUploadResult,
+        'reactivation': reactivationResult,
         'farmDownload': farmDownloadResult,
         'cropDownload': cropDownloadResult,
+        'historyDownload': historyDownloadResult,
         'timestamp': DateTime.now().toIso8601String(),
       };
     } catch (e) {
@@ -92,6 +109,168 @@ class CropCareSyncService {
         'error': e.toString(),
         'timestamp': DateTime.now().toIso8601String(),
       };
+    }
+  }
+
+  // ==================== SOFT DELETE SYNC ====================
+
+  /// Upload pending farm deletions to server
+  Future<Map<String, dynamic>> uploadPendingFarmDeletions(
+    String accessToken,
+  ) async {
+    try {
+      final pendingDeletions = await _db.getPendingFarmDeletions();
+      debugPrint('🗑️ Uploading ${pendingDeletions.length} farm deletions...');
+
+      if (pendingDeletions.isEmpty) {
+        return {
+          'success': true,
+          'message': 'No pending farm deletions',
+          'synced': 0,
+        };
+      }
+
+      int synced = 0;
+      int failed = 0;
+      final List<String> failedIds = [];
+
+      for (final farm in pendingDeletions) {
+        final farmId = farm['farmid'] as String;
+
+        try {
+          // ✅ PUT request to server (soft delete)
+          final response = await http
+              .put(
+                Uri.parse('$baseUrl/farmcrop/isdeletefarms/$farmId'),
+                headers: {
+                  'Authorization': 'Bearer $accessToken',
+                  'Content-Type': 'application/json',
+                },
+              )
+              .timeout(const Duration(seconds: 10));
+
+          debugPrint('📡 Farm deletion response: ${response.statusCode}');
+
+          if (response.statusCode == 200 ||
+              response.statusCode == 204 ||
+              response.statusCode == 201) {
+            // ✅ Server confirmed deletion, NOW cleanup local database
+            await _db.cleanupDeletedFarm(farmId);
+            synced++;
+            debugPrint('✅ Farm deletion synced and cleaned up: $farmId');
+          } else if (response.statusCode == 404) {
+            // Farm already deleted on server, cleanup locally anyway
+            await _db.cleanupDeletedFarm(farmId);
+            synced++;
+            debugPrint(
+              'ℹ️ Farm already deleted on server, cleaned up locally: $farmId',
+            );
+          } else {
+            failed++;
+            failedIds.add(farmId);
+            debugPrint(
+              '❌ Failed to sync farm deletion: $farmId (${response.statusCode})',
+            );
+          }
+        } catch (e) {
+          failed++;
+          failedIds.add(farmId);
+          debugPrint('❌ Error syncing farm deletion $farmId: $e');
+        }
+      }
+
+      return {
+        'success': failed == 0,
+        'synced': synced,
+        'failed': failed,
+        'failedIds': failedIds,
+        'message': failed == 0
+            ? 'All farm deletions synced and cleaned up'
+            : 'Synced $synced/${pendingDeletions.length} farm deletions',
+      };
+    } catch (e) {
+      debugPrint('❌ Farm deletion sync error: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Upload pending crop deletions to server
+  Future<Map<String, dynamic>> uploadPendingCropDeletions(
+    String accessToken,
+  ) async {
+    try {
+      final pendingDeletions = await _db.getPendingCropDeletions();
+      debugPrint('🗑️ Uploading ${pendingDeletions.length} crop deletions...');
+
+      if (pendingDeletions.isEmpty) {
+        return {
+          'success': true,
+          'message': 'No pending crop deletions',
+          'synced': 0,
+        };
+      }
+
+      int synced = 0;
+      int failed = 0;
+      final List<String> failedIds = [];
+
+      for (final crop in pendingDeletions) {
+        final cropId = crop['usercropid'] as String;
+
+        try {
+          // ✅ PUT request to server (soft delete)
+          final response = await http
+              .put(
+                Uri.parse('$baseUrl/farmcrop/isdeletecrops/$cropId'),
+                headers: {
+                  'Authorization': 'Bearer $accessToken',
+                  'Content-Type': 'application/json',
+                },
+              )
+              .timeout(const Duration(seconds: 10));
+
+          debugPrint('📡 Crop deletion response: ${response.statusCode}');
+
+          if (response.statusCode == 200 ||
+              response.statusCode == 204 ||
+              response.statusCode == 201) {
+            // ✅ Server confirmed deletion, NOW cleanup local database
+            await _db.cleanupDeletedCrop(cropId);
+            synced++;
+            debugPrint('✅ Crop deletion synced and cleaned up: $cropId');
+          } else if (response.statusCode == 404) {
+            // Crop already deleted on server, cleanup locally anyway
+            await _db.cleanupDeletedCrop(cropId);
+            synced++;
+            debugPrint(
+              'ℹ️ Crop already deleted on server, cleaned up locally: $cropId',
+            );
+          } else {
+            failed++;
+            failedIds.add(cropId);
+            debugPrint(
+              '❌ Failed to sync crop deletion: $cropId (${response.statusCode})',
+            );
+          }
+        } catch (e) {
+          failed++;
+          failedIds.add(cropId);
+          debugPrint('❌ Error syncing crop deletion $cropId: $e');
+        }
+      }
+
+      return {
+        'success': failed == 0,
+        'synced': synced,
+        'failed': failed,
+        'failedIds': failedIds,
+        'message': failed == 0
+            ? 'All crop deletions synced and cleaned up'
+            : 'Synced $synced/${pendingDeletions.length} crop deletions',
+      };
+    } catch (e) {
+      debugPrint('❌ Crop deletion sync error: $e');
+      return {'success': false, 'error': e.toString()};
     }
   }
 
@@ -281,7 +460,7 @@ class CropCareSyncService {
             // ✅ ADD new crop with POST - SEND LOCAL CROP ID
             endpoint = '$baseUrl/farmcrop/addcrops';
             payload = {
-              'user_crop_id': cropId, // ✅✅✅ SEND LOCAL ID TO SERVER
+              'user_crop_id': cropId,
               'farm_id': crop['farmid'],
               'plant_id': crop['plantid'],
               'planting_date': crop['plantingdate'],
@@ -356,6 +535,298 @@ class CropCareSyncService {
       debugPrint('❌ Crop upload error: $e');
       return {'success': false, 'error': e.toString(), 'uploaded': 0};
     }
+  }
+
+  // ==================== CROP HISTORY SYNC ====================
+
+  /// Upload inactive crop status changes (reactivations)
+  Future<Map<String, dynamic>> uploadInactiveCropChanges(
+    String accessToken,
+  ) async {
+    try {
+      // Get crops that were reactivated locally (isdirty=1 and isactive=1)
+      final pendingCrops = await _db.getPendingCrops();
+      final reactivated = pendingCrops
+          .where((c) => c['isactive'] == 1 && c['isdirty'] == 1)
+          .toList();
+
+      debugPrint('📤 Uploading ${reactivated.length} reactivated crops...');
+
+      if (reactivated.isEmpty) {
+        return {
+          'success': true,
+          'message': 'No reactivated crops',
+          'uploaded': 0,
+        };
+      }
+
+      int uploaded = 0;
+      final List<String> failedIds = [];
+
+      for (final crop in reactivated) {
+        try {
+          final cropId = crop['usercropid'] as String;
+
+          // Update crop on server to set isactive = true
+          final response = await http
+              .put(
+                Uri.parse('$baseUrl/farmcrop/updatecrops/$cropId'),
+                headers: {
+                  'Authorization': 'Bearer $accessToken',
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode({
+                  'farm_id': crop['farmid'],
+                  'plant_id': crop['plantid'],
+                  'planting_date': crop['plantingdate'],
+                  'harvest_date': crop['harvestdate'],
+                  'field_size': crop['fieldsize'],
+                  'status': crop['status'],
+                  'is_active': true, // ✅ Reactivate on server
+                }),
+              )
+              .timeout(const Duration(seconds: 30));
+
+          debugPrint(
+            '📡 Reactivation response for $cropId: ${response.statusCode}',
+          );
+
+          if (response.statusCode == 200 || response.statusCode == 201) {
+            await _db.markCropAsUploaded(cropId);
+            uploaded++;
+            debugPrint('✅ Reactivated crop synced: $cropId');
+          } else {
+            failedIds.add(cropId);
+            debugPrint('❌ Failed to sync reactivation for $cropId');
+          }
+        } catch (e) {
+          failedIds.add(crop['usercropid'] as String);
+          debugPrint('❌ Error syncing reactivated crop: $e');
+        }
+      }
+
+      return {
+        'success': uploaded == reactivated.length,
+        'uploaded': uploaded,
+        'failed': failedIds.length,
+        'failedIds': failedIds,
+        'message': uploaded == reactivated.length
+            ? 'All reactivations uploaded'
+            : 'Uploaded $uploaded/${reactivated.length} reactivations',
+      };
+    } catch (e) {
+      debugPrint('❌ Reactivation sync error: $e');
+      return {'success': false, 'error': e.toString(), 'uploaded': 0};
+    }
+  }
+
+  /// Download crop history (inactive crops) from server per farm
+  Future<Map<String, dynamic>> downloadCropHistory(String accessToken) async {
+    try {
+      final farms = await _db.getAllFarms();
+
+      if (farms.isEmpty) {
+        debugPrint('ℹ️ No farms to download crop history for');
+        return {'success': true, 'downloaded': 0};
+      }
+
+      int totalHistoryCrops = 0;
+      final List<Map<String, dynamic>> allHistoryCrops = [];
+
+      for (final farm in farms) {
+        final farmId = farm['farmid'] as String;
+
+        try {
+          final uri = Uri.parse('$baseUrl/farmcrop/crophistory/$farmId');
+
+          debugPrint('📥 Downloading crop history for farm $farmId');
+
+          final response = await http
+              .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
+              .timeout(const Duration(seconds: 30));
+
+          debugPrint(
+            '📡 Crop history response for farm $farmId: ${response.statusCode}',
+          );
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+
+            List<dynamic> historyList;
+            if (data is List) {
+              historyList = data;
+            } else if (data is Map && data['crops'] is List) {
+              historyList = data['crops'];
+            } else if (data is Map && data['data'] is List) {
+              historyList = data['data'];
+            } else {
+              historyList = [];
+            }
+
+            // ✅ Add farm_id to each history crop
+            for (var crop in historyList) {
+              if (crop is Map<String, dynamic>) {
+                crop['farm_id'] = farmId;
+                allHistoryCrops.add(crop);
+              }
+            }
+
+            totalHistoryCrops += historyList.length;
+          } else if (response.statusCode == 404) {
+            debugPrint('ℹ️ No crop history found for farm $farmId');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error downloading crop history for farm $farmId: $e');
+        }
+      }
+
+      debugPrint('📦 Received $totalHistoryCrops history crops from server');
+
+      if (allHistoryCrops.isNotEmpty) {
+        await _applyServerCropHistory(allHistoryCrops);
+      }
+
+      // Update sync timestamp
+      await _updateLastHistorySyncTimestamp(DateTime.now().toIso8601String());
+
+      return {'success': true, 'downloaded': totalHistoryCrops};
+    } catch (e) {
+      debugPrint('❌ Crop history download error: $e');
+      return {'success': false, 'error': e.toString(), 'downloaded': 0};
+    }
+  }
+
+  /// Apply server crop history to local database
+  Future<void> _applyServerCropHistory(List<Map<String, dynamic>> crops) async {
+    final db = await _db.database;
+
+    await db.transaction((txn) async {
+      for (final crop in crops) {
+        try {
+          // Crop history should always have isactive = 0
+          final isActive = _toBoolInt(crop['is_active'] ?? crop['isactive']);
+
+          if (isActive == 1) {
+            debugPrint(
+              '⚠️ Skipping active crop in history: ${crop['user_crop_id']}',
+            );
+            continue;
+          }
+
+          String? cropId = crop['user_crop_id'] ?? crop['usercropid'];
+          final farmIdFromServer = crop['farm_id'] ?? crop['farmid'];
+
+          if (cropId == null || farmIdFromServer == null) {
+            debugPrint('⚠️ Skipping incomplete history crop data');
+            continue;
+          }
+
+          final farmId = farmIdFromServer.toString();
+
+          String? plantId = crop['plant_id'] ?? crop['plantid'];
+
+          if (plantId == null && crop['plant_name'] != null) {
+            final result = await txn.query(
+              'plants',
+              columns: ['plantid'],
+              where: 'LOWER(plantname) = LOWER(?)',
+              whereArgs: [crop['plant_name']],
+              limit: 1,
+            );
+            if (result.isNotEmpty) {
+              plantId = result.first['plantid'].toString();
+            }
+          }
+
+          if (plantId == null) {
+            debugPrint('⚠️ Skipping history crop without plant_id');
+            continue;
+          }
+
+          // Get soil type (required field)
+          String? soilTypeId = crop['soil_type_id'] ?? crop['soiltypeid'];
+
+          if (soilTypeId == null) {
+            final farmSoilTypes = await txn.query(
+              'farm_soiltypes',
+              columns: ['soil_type_id'],
+              where: 'farm_id = ?',
+              whereArgs: [farmId],
+              limit: 1,
+            );
+
+            if (farmSoilTypes.isNotEmpty) {
+              soilTypeId = farmSoilTypes.first['soil_type_id'].toString();
+            } else {
+              final anySoilType = await txn.query(
+                'soiltypes',
+                columns: ['soiltypeid'],
+                limit: 1,
+              );
+              if (anySoilType.isNotEmpty) {
+                soilTypeId = anySoilType.first['soiltypeid'].toString();
+              } else {
+                debugPrint('❌ No soil type available for history crop');
+                continue;
+              }
+            }
+          }
+
+          // Check if crop exists locally
+          final exists = await txn.query(
+            'usercrops',
+            where: 'usercropid = ?',
+            whereArgs: [cropId],
+            limit: 1,
+          );
+
+          final row = {
+            'usercropid': cropId,
+            'farmid': farmId,
+            'plantid': plantId.toString(),
+            'plantingdate': crop['planting_date'] ?? crop['plantingdate'],
+            'harvestdate': crop['harvest_date'] ?? crop['harvestdate'],
+            'fieldsize': crop['field_size'] ?? crop['fieldsize'],
+            'soiltypeid': soilTypeId,
+            'status': crop['status'] ?? 'Completed',
+            'isactive': 0, // ✅ Force inactive for history
+            'createdat':
+                crop['created_at'] ??
+                crop['createdat'] ??
+                DateTime.now().toIso8601String(),
+            'isuploaded': 1,
+            'isdirty': 0,
+            'isdeleted': 0,
+          };
+
+          if (exists.isEmpty) {
+            await txn.insert('usercrops', row);
+            debugPrint('➕ Added history crop: $cropId (${crop['plant_name']})');
+          } else {
+            // Only update if not locally modified
+            final localCrop = exists.first;
+            if (localCrop['isdirty'] == 0) {
+              await txn.update(
+                'usercrops',
+                row,
+                where: 'usercropid = ?',
+                whereArgs: [cropId],
+              );
+              debugPrint(
+                '📝 Updated history crop: $cropId (${crop['plant_name']})',
+              );
+            } else {
+              debugPrint('⏭️ Skipping locally modified history crop: $cropId');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error processing history crop: $e');
+          continue;
+        }
+      }
+    });
+
+    debugPrint('✅ Applied ${crops.length} history crops from server');
   }
 
   // ==================== DOWNLOAD ====================
@@ -465,10 +936,10 @@ class CropCareSyncService {
               cropsList = [];
             }
 
-            // ✅ FIXED: Add farm_id to each crop since server doesn't provide it
+            // ✅ Add farm_id to each crop since server doesn't provide it
             for (var crop in cropsList) {
               if (crop is Map<String, dynamic>) {
-                crop['farm_id'] = farmId; // Inject the farm_id
+                crop['farm_id'] = farmId;
                 allCrops.add(crop);
               }
             }
@@ -498,7 +969,7 @@ class CropCareSyncService {
 
   // ==================== APPLY SERVER CHANGES ====================
 
-Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
+  Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
     final db = await _db.database;
 
     await db.transaction((txn) async {
@@ -531,6 +1002,7 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
               'createdat': createdAt,
               'isuploaded': 1,
               'isdirty': 0,
+              'isdeleted': 0, // ✅ Ensure not deleted
             });
             debugPrint('➕ Added farm from server: $farmId');
           } else {
@@ -544,6 +1016,7 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
                 'createdat': createdAt,
                 'isuploaded': 1,
                 'isdirty': 0,
+                'isdeleted': 0, // ✅ Reset deleted status
               },
               where: 'surveynumber = ?',
               whereArgs: [surveyNumber],
@@ -553,7 +1026,7 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
             );
           }
 
-          // Relation handling, using the matched farm ID above
+          // Relation handling
           List<String> soilTypeIds = [];
           List<String> irrigationIds = [];
           List<String> waterSourceIds = [];
@@ -690,10 +1163,8 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
     await db.transaction((txn) async {
       for (final crop in crops) {
         try {
-          // Get crop ID
           String? cropId = crop['user_crop_id'] ?? crop['usercropid'];
 
-          // ✅ Get farm_id (now injected from parent loop)
           final farmIdFromServer = crop['farm_id'] ?? crop['farmid'];
           if (farmIdFromServer == null) {
             debugPrint(
@@ -703,7 +1174,6 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
           }
           final farmId = farmIdFromServer.toString();
 
-          // Look up plant_id by plant_name
           String? plantId = crop['plant_id'] ?? crop['plantid'];
 
           if (plantId == null && crop['plant_name'] != null) {
@@ -728,7 +1198,6 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
 
           final plantingDate = crop['planting_date'] ?? crop['plantingdate'];
 
-          // If no crop ID, find existing OR generate new UUID
           if (cropId == null) {
             final existing = await txn.query(
               'usercrops',
@@ -748,7 +1217,6 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
             }
           }
 
-          // ✅ Handle NULL soil_type_id - get from farm
           String? soilTypeId = crop['soil_type_id'] ?? crop['soiltypeid'];
 
           if (soilTypeId == null) {
@@ -792,7 +1260,6 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
             'plantid': plantId.toString(),
             'plantingdate': plantingDate,
             'harvestdate': crop['harvest_date'] ?? crop['harvestdate'],
-            'duration': crop['duration'],
             'fieldsize': crop['field_size'] ?? crop['fieldsize'],
             'soiltypeid': soilTypeId,
             'status': crop['status'] ?? 'Planted',
@@ -803,6 +1270,7 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
                 DateTime.now().toIso8601String(),
             'isuploaded': 1,
             'isdirty': 0,
+            'isdeleted': 0, // ✅ Ensure not deleted
           };
 
           if (exists.isEmpty) {
@@ -871,25 +1339,51 @@ Future<void> _applyServerFarms(List<Map<String, dynamic>> farms) async {
     }
   }
 
+  Future<String?> _getLastHistorySyncTimestamp() async {
+    try {
+      return await _storage.read(key: 'history_last_sync');
+    } catch (e) {
+      debugPrint('❌ Error reading history sync timestamp: $e');
+      return null;
+    }
+  }
+
+  Future<void> _updateLastHistorySyncTimestamp(String? timestamp) async {
+    if (timestamp == null) return;
+    try {
+      await _storage.write(key: 'history_last_sync', value: timestamp);
+      debugPrint('✅ Saved history sync timestamp: $timestamp');
+    } catch (e) {
+      debugPrint('❌ Error saving history sync timestamp: $e');
+    }
+  }
+
   // ==================== UTILITIES ====================
 
   Future<Map<String, dynamic>> getSyncStatus() async {
     final pendingFarms = await _db.getPendingFarms();
     final pendingCrops = await _db.getPendingCrops();
+    final pendingFarmDeletions = await _db.getPendingFarmDeletions();
+    final pendingCropDeletions = await _db.getPendingCropDeletions();
     final farmSync = await _getLastFarmSyncTimestamp();
     final cropSync = await _getLastCropSyncTimestamp();
+    final historySync = await _getLastHistorySyncTimestamp();
 
     return {
       'pendingFarms': pendingFarms.length,
       'pendingCrops': pendingCrops.length,
+      'pendingFarmDeletions': pendingFarmDeletions.length,
+      'pendingCropDeletions': pendingCropDeletions.length,
       'lastFarmSync': farmSync,
       'lastCropSync': cropSync,
+      'lastHistorySync': historySync,
     };
   }
 
   Future<void> clearSyncTimestamps() async {
     await _storage.delete(key: 'farm_last_sync');
     await _storage.delete(key: 'crop_last_sync');
+    await _storage.delete(key: 'history_last_sync');
     debugPrint('🗑️ Cleared all sync timestamps');
   }
 

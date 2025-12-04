@@ -32,6 +32,9 @@ class _AddCropScreenState extends State<AddCropScreen> {
   List<Map<String, dynamic>> _plants = [];
   List<Map<String, dynamic>> _soilTypes = [];
 
+  double _availableAcres = 0.0;
+  double _totalFarmSize = 0.0;
+
   bool _isLoading = false;
   bool _isEditing = false;
 
@@ -40,10 +43,6 @@ class _AddCropScreenState extends State<AddCropScreen> {
     super.initState();
     _isEditing = widget.crop != null;
     _loadReferenceData();
-
-    if (_isEditing) {
-      _populateFormData();
-    }
   }
 
   void _populateFormData() {
@@ -61,6 +60,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
     if (crop['harvestdate'] != null) {
       _harvestDate = DateTime.tryParse(crop['harvestdate']);
     }
+
+    // ✅ Load available acres after farms are loaded
+    if (_selectedFarmId != null) {
+      _loadAvailableAcres(_selectedFarmId!);
+    }
   }
 
   Future<void> _loadReferenceData() async {
@@ -76,6 +80,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
         _plants = plants;
         _soilTypes = soilTypes;
       });
+
+      // ✅ Populate form data AFTER farms are loaded
+      if (_isEditing) {
+        _populateFormData();
+      }
     } catch (e) {
       debugPrint('❌ Error loading reference data: $e');
       if (mounted) {
@@ -88,6 +97,36 @@ class _AddCropScreenState extends State<AddCropScreen> {
       }
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+/// ✅ Load available acres excluding current crop in edit mode and inactive crops
+  Future<void> _loadAvailableAcres(String farmId) async {
+    try {
+      final db = DatabaseHelper.instance;
+      final farm = _farms.firstWhere((f) => f['farmid'].toString() == farmId);
+      _totalFarmSize = (farm['farmsize'] ?? 0).toDouble();
+      final allCrops = await db.getCropsByFarmId(farmId);
+      double usedAcres = 0.0;
+      for (final crop in allCrops) {
+        if (_isEditing &&
+            crop['usercropid'].toString() ==
+                widget.crop!['usercropid'].toString()) {
+          continue;
+        }
+        if (crop['isactive'] == 0) {
+          continue;
+        }
+        usedAcres += (crop['fieldsize'] ?? 0).toDouble();
+      }
+      setState(() {
+        _availableAcres = _totalFarmSize - usedAcres;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading available acres: $e');
+      setState(() {
+        _availableAcres = 0.0;
+      });
     }
   }
 
@@ -158,7 +197,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: SmartReTranslator(
-              text: _isEditing ? 'Crop updated' : 'Crop created',
+              text: _isEditing ? 'Crop updated' : 'Crop updated',
             ),
             backgroundColor: AppColors.successColor,
           ),
@@ -211,21 +250,27 @@ class _AddCropScreenState extends State<AddCropScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final db = await DatabaseHelper.instance.database;
-      await db.delete(
-        'usercrops',
-        where: 'usercropid = ?',
-        whereArgs: [widget.crop!['usercropid']],
-      );
+      final db = DatabaseHelper.instance;
+
+      final result = await db.markCropAsDeleted(widget.crop!['usercropid']);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: SmartReTranslator(text: 'Crop deleted'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context, true);
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: SmartReTranslator(text: result['message']),
+              backgroundColor: AppColors.successColor,
+            ),
+          );
+          Navigator.pop(context, true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: SmartReTranslator(text: result['message']),
+              backgroundColor: AppColors.errorColor,
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('❌ Error deleting crop: $e');
@@ -324,8 +369,12 @@ class _AddCropScreenState extends State<AddCropScreen> {
                               },
                             )
                             .toList(),
-                        onChanged: (value) =>
-                            setState(() => _selectedFarmId = value),
+                        onChanged: (value) {
+                          setState(() => _selectedFarmId = value);
+                          if (value != null) {
+                            _loadAvailableAcres(value);
+                          }
+                        },
                         required: true,
                       ),
                     ],
@@ -367,12 +416,29 @@ class _AddCropScreenState extends State<AddCropScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SmartReTranslator(
-                        text: 'Field Size (Acres)',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const SmartReTranslator(
+                            text: 'Field Size (Acres)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          if (_selectedFarmId != null)
+                            SmartReTranslator(
+                              text:
+                                  'Available: ${_availableAcres.toStringAsFixed(2)} acres',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _availableAcres > 0
+                                    ? AppColors.primaryGreen
+                                    : AppColors.errorColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       _buildTextField(
@@ -394,6 +460,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
                           final size = double.tryParse(value);
                           if (size == null || size <= 0) {
                             return 'Enter a valid field size';
+                          }
+                          // ✅ Validate against available acres
+                          if (_selectedFarmId != null &&
+                              size > _availableAcres) {
+                            return 'Exceeds available acres ($_availableAcres)';
                           }
                           return null;
                         },
@@ -616,7 +687,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
     );
   }
 
-Widget _buildDropdown({
+  Widget _buildDropdown({
     required String? label,
     required IconData icon,
     required String? value,
@@ -655,8 +726,8 @@ Widget _buildDropdown({
       ),
       dropdownColor: Colors.white,
       icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
-      isExpanded: true, // Keep this for text overflow handling
-      menuMaxHeight: 300, // Limit dropdown menu height
+      isExpanded: true,
+      menuMaxHeight: 300,
       items: [
         if (!required)
           const DropdownMenuItem<String>(
@@ -712,7 +783,7 @@ Widget _buildDropdown({
       dropdownColor: Colors.white,
       icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
       isExpanded: true,
-      menuMaxHeight: 200, // Limit dropdown menu height
+      menuMaxHeight: 200,
       items: const [
         DropdownMenuItem(
           value: 'Planted',
