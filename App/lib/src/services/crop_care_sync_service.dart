@@ -344,6 +344,7 @@ class CropCareSyncService {
               'soil_type_ids': farmWithRelations['soil_type_ids'] ?? [],
               'irrigation_ids': farmWithRelations['irrigation_ids'] ?? [],
               'water_src_ids': farmWithRelations['water_source_ids'] ?? [],
+              'is_delete': 0,
             };
             debugPrint('➕ Adding new farm $farmId');
 
@@ -443,6 +444,7 @@ class CropCareSyncService {
               'field_size': crop['fieldsize'],
               'status': crop['status'],
               'is_active': crop['isactive'] == 1,
+              'is_delete': crop['isdeleted'] == 0,
             };
             debugPrint('📝 Updating crop $cropId');
 
@@ -468,6 +470,7 @@ class CropCareSyncService {
               'field_size': crop['fieldsize'],
               'status': crop['status'],
               'is_active': crop['isactive'] == 1,
+              'is_delete': crop['isdeleted'] == 1,
             };
             debugPrint(
               '➕ Adding new crop $cropId (sending local ID to server)',
@@ -1052,7 +1055,7 @@ class CropCareSyncService {
                 limit: 1,
               );
               if (result.isNotEmpty)
-                soilTypeIds.add(result.first['soiltypeid'].toString());
+              {soilTypeIds.add(result.first['soiltypeid'].toString());}
             }
           }
           if (farm['irrigation_ids'] != null) {
@@ -1076,7 +1079,7 @@ class CropCareSyncService {
                 limit: 1,
               );
               if (result.isNotEmpty)
-                irrigationIds.add(result.first['irrigationid'].toString());
+              {irrigationIds.add(result.first['irrigationid'].toString());}
             }
           }
           if (farm['water_src_ids'] != null ||
@@ -1101,7 +1104,7 @@ class CropCareSyncService {
                 limit: 1,
               );
               if (result.isNotEmpty)
-                waterSourceIds.add(result.first['watersrcid'].toString());
+              {waterSourceIds.add(result.first['watersrcid'].toString());}
             }
           }
 
