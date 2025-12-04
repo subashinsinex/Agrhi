@@ -43,10 +43,12 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       automaticallyImplyLeading: false,
       backgroundColor: backgroundColor ?? AppColors.appBarBackground,
       foregroundColor: foregroundColor ?? AppColors.textWhite,
-      elevation: elevation ?? 8,
-      shadowColor: AppColors.shadowColor,
-      scrolledUnderElevation: elevation ?? 8,
+      elevation: elevation ?? 2,
+      shadowColor: AppColors.shadowColor.withOpacity(0.3),
+      scrolledUnderElevation: elevation ?? 4,
       centerTitle: centerTitle,
+      surfaceTintColor: Colors.transparent,
+      toolbarHeight: 70, // ✅ INCREASED: Default is 56, now 70
     );
   }
 
@@ -83,11 +85,16 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                 snapshot.data ?? title!,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: foregroundColor ?? AppColors.textWhite,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 22, // ✅ INCREASED: From 20 to 22
+                  letterSpacing: 0.15,
                 ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               );
             },
           ),
+          const SizedBox(height: 4), // ✅ INCREASED: From 2 to 4
           FutureBuilder<String>(
             future: languageService.translate(subtitle!),
             builder: (context, snapshot) {
@@ -95,10 +102,14 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                 snapshot.data ?? subtitle!,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: (foregroundColor ?? AppColors.textWhite).withOpacity(
-                    0.8,
+                    0.85,
                   ),
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w400,
+                  fontSize: 14, // ✅ INCREASED: From 13 to 14
+                  letterSpacing: 0.1,
                 ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               );
             },
           ),
@@ -114,8 +125,12 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
             snapshot.data ?? title!,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               color: foregroundColor ?? AppColors.textWhite,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w600,
+              fontSize: 22, // ✅ INCREASED: From 20 to 22
+              letterSpacing: 0.15,
             ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           );
         },
       );
@@ -127,34 +142,43 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget? _buildLeading(BuildContext context) {
     if (onMenuPressed != null) {
       return IconButton(
-        icon: Icon(Icons.menu, color: foregroundColor ?? AppColors.textWhite),
+        icon: Icon(
+          Icons.menu,
+          color: foregroundColor ?? AppColors.textWhite,
+          size: 26, // ✅ INCREASED: From 24 to 26
+        ),
         onPressed: onMenuPressed,
         tooltip: 'Menu',
+        splashRadius: 24,
       );
     } else if (onBackPressed != null) {
       return IconButton(
         icon: Icon(
           Icons.arrow_back,
           color: foregroundColor ?? AppColors.textWhite,
+          size: 26, // ✅ INCREASED: From 24 to 26
         ),
         onPressed: onBackPressed,
         tooltip: 'Back',
+        splashRadius: 24,
       );
     } else if (automaticallyImplyLeading && Navigator.of(context).canPop()) {
       return IconButton(
         icon: Icon(
           Icons.arrow_back,
           color: foregroundColor ?? AppColors.textWhite,
+          size: 26, // ✅ INCREASED: From 24 to 26
         ),
         onPressed: () => Navigator.of(context).pop(),
         tooltip: 'Back',
+        splashRadius: 24,
       );
     }
     return null;
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => const Size.fromHeight(70); // ✅ INCREASED: From kToolbarHeight (56) to 70
 }
 
 class DashboardAppBar extends CustomAppBar {
@@ -167,18 +191,237 @@ class DashboardAppBar extends CustomAppBar {
         showLanguageSwitcher: false,
       );
 
-  const DashboardAppBar.withMenu({
+  DashboardAppBar.withSettings({
     super.key,
-    required VoidCallback onMenuPressed,
-    List<Widget>? additionalActions,
+    required VoidCallback? onSyncPressed,
+    required VoidCallback onHelpPressed,
+    required VoidCallback onLogoutPressed,
+    required bool isSyncing,
   }) : super(
          title: 'Welcome',
          subtitle: 'Enjoy our Services',
          automaticallyImplyLeading: false,
-         onMenuPressed: onMenuPressed,
          showLanguageSwitcher: true,
-         actions: additionalActions,
+         actions: [
+           _SettingsDropdownButton(
+             onSyncPressed: onSyncPressed,
+             onHelpPressed: onHelpPressed,
+             onLogoutPressed: onLogoutPressed,
+             isSyncing: isSyncing,
+           ),
+         ],
        );
+}
+
+class _SettingsDropdownButton extends StatelessWidget {
+  final VoidCallback? onSyncPressed;
+  final VoidCallback onHelpPressed;
+  final VoidCallback onLogoutPressed;
+  final bool isSyncing;
+
+  const _SettingsDropdownButton({
+    required this.onSyncPressed,
+    required this.onHelpPressed,
+    required this.onLogoutPressed,
+    required this.isSyncing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: PopupMenuButton<String>(
+        icon: Icon(
+          Icons.settings_outlined,
+          color: AppColors.textWhite,
+          size: 26, // ✅ INCREASED: From 24 to 26
+        ),
+        tooltip: 'Settings',
+        offset: const Offset(
+          0,
+          60,
+        ), // ✅ ADJUSTED: Increased from 52 to 60 to match new height
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        color: AppColors.primaryWhite.withOpacity(0.95),
+        elevation: 8,
+        splashRadius: 24,
+        padding: EdgeInsets.zero,
+        itemBuilder: (BuildContext context) => [
+          // ✅ Sync Option
+          PopupMenuItem<String>(
+            value: 'sync',
+            enabled: !isSyncing,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: FutureBuilder<String>(
+              future: languageService.translate('Sync'),
+              builder: (context, snapshot) {
+                return Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: isSyncing
+                            ? AppColors.textSecondary.withOpacity(0.1)
+                            : AppColors.primaryGreen.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: isSyncing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.textSecondary,
+                                ),
+                              )
+                            : Icon(
+                                Icons.sync_outlined,
+                                color: AppColors.primaryGreen,
+                                size: 20,
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            snapshot.data ?? 'Sync',
+                            style: TextStyle(
+                              color: isSyncing
+                                  ? AppColors.textSecondary.withOpacity(0.5)
+                                  : AppColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (isSyncing)
+                            Text(
+                              'In progress...',
+                              style: TextStyle(
+                                color: AppColors.textSecondary.withOpacity(0.7),
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+
+          // ✅ Help & Support Option
+          PopupMenuItem<String>(
+            value: 'help',
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: FutureBuilder<String>(
+              future: languageService.translate('Help & Support'),
+              builder: (context, snapshot) {
+                return Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.help_outline,
+                          color: Colors.blue,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        snapshot.data ?? 'Help & Support',
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+
+          // ✅ Divider with proper spacing
+          const PopupMenuDivider(height: 1),
+
+          // ✅ Logout Option
+          PopupMenuItem<String>(
+            value: 'logout',
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: FutureBuilder<String>(
+              future: languageService.translate('Logout'),
+              builder: (context, snapshot) {
+                return Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.errorColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          Icons.logout,
+                          color: AppColors.errorColor,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        snapshot.data ?? 'Logout',
+                        style: TextStyle(
+                          color: AppColors.errorColor,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+        onSelected: (String value) {
+          switch (value) {
+            case 'sync':
+              onSyncPressed?.call();
+              break;
+            case 'help':
+              onHelpPressed();
+              break;
+            case 'logout':
+              onLogoutPressed();
+              break;
+          }
+        },
+      ),
+    );
+  }
 }
 
 class FeatureAppBar extends CustomAppBar {

@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'dart:async';
-import '../shared/sidebar.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+// Remove: import '../shared/sidebar.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
@@ -19,7 +21,10 @@ import 'disease_history_screen.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/sync_service.dart';
-import '../../src/services/crop_care_sync_service.dart'; // ✅ ADDED
+import '../../src/services/crop_care_sync_service.dart';
+import '../../src/database/database_helper.dart';
+import '../features/feedback_screen.dart';
+import '../auth/login_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -30,7 +35,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? userData;
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  // Remove: final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isLoadingProfile = true;
   final AuthService _authService = AuthService();
   bool _isSyncing = false;
@@ -88,9 +93,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'analyses',
       'Catalogs',
       'updated',
-      'Farms', // ✅ ADDED
-      'Crops', // ✅ ADDED
-      'History', // ✅ ADDED
+      'Farms',
+      'Crops',
+      'History',
+      'Settings',
+      'Logout',
+      'Confirm Logout',
+      'Are you sure you want to log out?',
+      'Cancel',
     ], highPriority: true);
   }
 
@@ -145,9 +155,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _openSidebar() {
-    _scaffoldKey.currentState?.openDrawer();
-  }
+  // Remove: void _openSidebar() method
 
   Map<String, dynamic>? _decodeJwtPayload(String token) {
     try {
@@ -297,7 +305,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ UPDATED: Silent sync with both services
   Future<void> _performSilentSync() async {
     if (_isSyncing) return;
 
@@ -310,7 +317,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
       }
 
-      // ✅ Run both syncs in parallel
       final results = await Future.wait([
         SyncService.instance.performFullSync(validToken),
         CropCareSyncService.instance.performFullSync(validToken),
@@ -364,7 +370,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ UPDATED: Manual sync with both services
   Future<void> _performFullSync() async {
     if (_isSyncing) return;
 
@@ -421,7 +426,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     try {
-      // ✅ Run both syncs in parallel
       final results =
           await Future.wait([
             SyncService.instance.performFullSync(validToken),
@@ -443,7 +447,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final bool cropCareSuccess = (cropCareSync['success'] as bool?) ?? false;
 
       if (diseaseSuccess || cropCareSuccess) {
-        // Extract disease sync stats
         int catalogsUpdated = 0;
         int uploaded = 0;
         int downloaded = 0;
@@ -461,7 +464,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           imagesUploaded = (twoWayResult?['images']?['upload'] as int?) ?? 0;
         }
 
-        // Extract crop care sync stats
         int farmsUploaded = 0;
         int cropsUploaded = 0;
         int historyDownloaded = 0;
@@ -475,7 +477,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
         }
 
-        // ✅ Comprehensive sync success message
         messenger.showSnackBar(
           SnackBar(
             content: Column(
@@ -560,9 +561,219 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // ✅ ADD: Background cleanup method
+  Future<void> _performBackgroundCleanup() async {
+    try {
+      debugPrint('🗑️ Starting background cleanup...');
+
+      // 1. Delete secure storage
+      debugPrint('🗑️ Clearing secure storage...');
+      await _storage.deleteAll();
+      debugPrint('✅ Secure storage cleared');
+
+      // 2. Clear user-specific database tables
+      debugPrint('🗑️ Clearing database tables...');
+      final db = await DatabaseHelper.instance.database;
+
+      await db.transaction((txn) async {
+        await txn.delete('disease_analysis_results');
+        await txn.delete('farm_soil_types');
+        await txn.delete('farm_irrigations');
+        await txn.delete('farm_water_sources');
+        await txn.delete('images');
+        await txn.delete('usercrops');
+        await txn.delete('farms');
+      });
+
+      debugPrint('✅ Database tables cleared');
+
+      // 3. Delete disease_images directory
+      debugPrint('🗑️ Deleting disease images...');
+      try {
+        final appDocDir = await getApplicationDocumentsDirectory();
+        final docImagesDir = Directory('${appDocDir.path}/disease_images');
+
+        if (await docImagesDir.exists()) {
+          await docImagesDir.delete(recursive: true);
+          debugPrint('✅ Documents disease images deleted');
+        }
+
+        final appSupportDir = await getApplicationSupportDirectory();
+        final supportImagesDir = Directory(
+          '${appSupportDir.path}/disease_images',
+        );
+
+        if (await supportImagesDir.exists()) {
+          await supportImagesDir.delete(recursive: true);
+          debugPrint('✅ Support disease images deleted');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error deleting disease images: $e');
+      }
+
+      // 4. Clear cache contents
+      debugPrint('🗑️ Clearing app cache...');
+      try {
+        final cacheDir = await getTemporaryDirectory();
+        if (await cacheDir.exists()) {
+          await for (var entity in cacheDir.list()) {
+            try {
+              if (entity is File) {
+                await entity.delete();
+              } else if (entity is Directory) {
+                await entity.delete(recursive: true);
+              }
+            } catch (e) {
+              debugPrint('⚠️ Failed to delete: ${entity.path}');
+            }
+          }
+          debugPrint('✅ App cache cleared');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error clearing cache: $e');
+      }
+
+      debugPrint('🎉 Background cleanup complete');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error during background cleanup: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  // ✅ ADD: Logout confirmation method
+  void _showLogoutConfirmation() {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return FutureBuilder<List<String>>(
+          future: Future.wait([
+            languageService.translate('Confirm Logout'),
+            languageService.translate('Are you sure you want to log out?'),
+            languageService.translate('Cancel'),
+            languageService.translate('Logout'),
+          ]),
+          builder: (context, snapshot) {
+            final translations =
+                snapshot.data ??
+                [
+                  'Confirm Logout',
+                  'Are you sure you want to log out?',
+                  'Cancel',
+                  'Logout',
+                ];
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              elevation: 24,
+              backgroundColor: AppColors.primaryWhite,
+              icon: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.errorColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.logout_rounded,
+                  color: AppColors.errorColor,
+                  size: 32,
+                ),
+              ),
+              title: Text(
+                translations[0],
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              content: Text(
+                translations[1],
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+              actions: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Colors.grey.shade300),
+                          ),
+                        ),
+                        child: Text(
+                          translations[2],
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(dialogContext);
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const LoginScreen(),
+                            ),
+                            (Route<dynamic> route) => false,
+                          );
+                          _performBackgroundCleanup();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.errorColor,
+                          foregroundColor: AppColors.textWhite,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: Text(
+                          translations[3],
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+              titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ✅ Features list created inside build method
     final features = [
       FeatureItem(
         title: 'Crop Care',
@@ -615,32 +826,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
 
     return Scaffold(
-      key: _scaffoldKey,
-      appBar: DashboardAppBar.withMenu(
-        onMenuPressed: _openSidebar,
-        additionalActions: [
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
-            child: IconButton(
-              tooltip: 'Sync',
-              onPressed: _isSyncing ? null : _performFullSync,
-              icon: _isSyncing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Icon(Icons.sync_outlined, color: AppColors.textWhite),
-            ),
-          ),
-        ],
+      // Remove: key: _scaffoldKey,
+      appBar: DashboardAppBar.withSettings(
+        onSyncPressed: _isSyncing ? null : _performFullSync,
+        onHelpPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const FeedbackScreen()),
+          );
+        },
+        onLogoutPressed: _showLogoutConfirmation,
+        isSyncing: _isSyncing,
       ),
-      drawer: const AppSidebar(),
-      drawerEnableOpenDragGesture: true,
-      drawerEdgeDragWidth: 120,
+      // Remove: drawer: const AppSidebar(),
+      // Remove: drawerEnableOpenDragGesture: true,
+      // Remove: drawerEdgeDragWidth: 120,
       backgroundColor: AppColors.backgroundColor,
       body: RefreshIndicator(
         onRefresh: _loadUserData,
@@ -672,7 +872,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
                   child: _isLoadingProfile
@@ -686,7 +885,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           address: userData?['address'],
                         ),
                 ),
-
                 const SizedBox(height: 20),
                 const Align(
                   alignment: Alignment.centerLeft,
