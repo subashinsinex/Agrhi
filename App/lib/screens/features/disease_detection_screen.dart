@@ -4,9 +4,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../src/services/disease_analysis_service.dart';
 import '../../src/services/sync_service.dart';
 import '../../src/models/model_service.dart';
@@ -15,7 +17,7 @@ import '../../src/models/disease_labels.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/model_download_service.dart';
 import '../shared/widgets/custom_app_bar.dart';
-import '../shared/widgets/smart_retranslator.dart'; // ✅ ADD THIS
+import '../shared/widgets/smart_retranslator.dart';
 import '../../utils/colors.dart';
 
 class DetectDiseaseScreen extends StatefulWidget {
@@ -63,12 +65,39 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadGateModel(); // â† ADD THIS
       _checkDownloadedModels();
-      _preloadPhrases(); // ✅ NEW: Preload translations
+      _preloadPhrases();
     });
   }
 
-  // ✅ NEW: Preload all phrases for instant translation
+  // âœ… NEW: Load gate model on startup
+  Future<void> _loadGateModel() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final gatePath = '${dir.path}/models/plant_detector_cpu.tflite';
+
+      final gateFile = File(gatePath);
+      if (!await gateFile.exists()) {
+        // Copy from assets
+        await gateFile.parent.create(recursive: true);
+        final byteData = await rootBundle.load(
+          'assets/models/plant_detector_cpu.tflite',
+        );
+        await gateFile.writeAsBytes(byteData.buffer.asUint8List());
+        print('ðŸ“¦ Copied gate model from assets');
+      }
+
+      await ModelService.loadGateModel(gatePath);
+      print('âœ… Gate model ready');
+    } catch (e) {
+      print('âŒ Failed to load gate model: $e');
+      if (mounted) {
+        _showErrorSnackBar('Failed to load plant detector: $e');
+      }
+    }
+  }
+
   Future<void> _preloadPhrases() async {
     final languageService = Provider.of<LanguageService>(
       context,
@@ -84,7 +113,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'Loading AI model...',
       'Remove image',
       'Processing image data...',
-      'Running  Disease Scanner...',
+      'Running disease scanner...',
       'Analyzing crop health...',
       'Generating results...',
       'Finalizing diagnosis...',
@@ -110,9 +139,10 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'Synced to server',
       'analysis',
       'images',
+      'Not a Plant', // â† ADD THIS
+      'This image does not appear to be a plant.', // â† ADD THIS
     ];
 
-    // Add all crop names and disease labels
     for (final crop in diseaseLabels.keys) {
       phrases.add(crop);
       for (final label in diseaseLabels[crop] ?? []) {
@@ -282,9 +312,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       }
     } catch (_) {
       if (!mounted) return;
-      _showErrorSnackBar(
-        'Failed to load model for $cropName', // Will be translated by SmartReTranslator
-      );
+      _showErrorSnackBar('Failed to load model for $cropName');
     } finally {
       if (!mounted) return;
       setState(() => _isModelLoading = false);
@@ -331,10 +359,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     required double confidence0to1,
     required String localImagePath,
   }) async {
-    // const double healthyMinConfidence = 0.80;
-    // final isHealthy = detectedLabel.toLowerCase().contains('healthy');
-    // if (isHealthy && confidence0to1 >= healthyMinConfidence) return;
-
     final userId = await _readUserId();
     if (userId == null || userId.isEmpty) {
       _showErrorSnackBar('User not found in secure storage');
@@ -391,11 +415,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       final accessToken = await _storage.read(key: 'access_token');
 
       if (accessToken == null || accessToken.isEmpty) {
-        debugPrint('⚠️ No access token - sync will happen later');
+        debugPrint('âš ï¸ No access token - sync will happen later');
         return;
       }
 
-      debugPrint('🔄 Triggering forced sync...');
+      debugPrint('ðŸ”„ Triggering forced sync...');
 
       final syncResult = await SyncService.instance.performFullSync(
         accessToken,
@@ -412,7 +436,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
         if (uploaded > 0 || imagesUploaded > 0) {
           debugPrint(
-            '✅ Forced sync: upload $uploaded analyses, $imagesUploaded images',
+            'âœ… Forced sync: upload $uploaded analyses, $imagesUploaded images',
           );
 
           if (mounted) {
@@ -471,10 +495,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         }
       }
     } catch (e) {
-      debugPrint('❌ Forced sync error: $e');
+      debugPrint('âŒ Forced sync error: $e');
     }
   }
 
+  // âœ… MODIFIED: Skip save if label is 'undefined'
   Future<void> _analyzeImage(String path) async {
     try {
       for (int i = 0; i <= 100; i += 5) {
@@ -509,8 +534,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
       _resultController.forward();
 
+      // âœ… ONLY save if not error AND not 'undefined'
       final hasError = topResult.containsKey('error');
-      if (!hasError && path.isNotEmpty) {
+      final isUndefined = topResult['label'] == 'undefined';
+
+      if (!hasError && !isUndefined && path.isNotEmpty) {
         final label = (topResult['label'] ?? 'Unknown').toString();
         final conf = (topResult['confidence'] as num?)?.toDouble() ?? 0.0;
         await _persistResultUsingPlant(
@@ -550,7 +578,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
-          label: 'Dismiss', // Can wrap with SmartReTranslator if needed
+          label: 'Dismiss',
           textColor: Colors.white,
           onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
         ),
@@ -588,17 +616,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  // ✅ NEW: Helper to get translated crop name
   String _getCropName(String crop) {
-    return crop; // SmartReTranslator will handle translation
+    return crop;
   }
 
-  // ✅ NEW: Helper to get disease label (formatted)
   String _getDiseaseLabel(String label) {
-    return label.replaceAll(
-      '_',
-      ' ',
-    ); // SmartReTranslator will handle translation
+    return label.replaceAll('_', ' ');
   }
 
   String _getStatusMessage(double progress) {
@@ -615,7 +638,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  // Continue with widget builders...
   Widget _buildCropAndCameraSection() {
     if (_isCheckingModels) {
       return Card(
@@ -1107,8 +1129,101 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     );
   }
 
+  // âœ… MODIFIED: Handle 'undefined' label
   Widget _buildResults() {
     final isError = result!.containsKey('error');
+    final isUndefined = result!['label'] == 'undefined';
+
+    // Handle "not a plant" case
+    if (isUndefined) {
+      return AnimatedBuilder(
+        animation: _resultController,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: 0.8 + (_resultController.value * 0.2),
+            child: Opacity(
+              opacity: _resultController.value,
+              child: Card(
+                elevation: 4,
+                shadowColor: Colors.grey.withOpacity(0.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.grey.withOpacity(0.3),
+                      width: 2,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[400],
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.block,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const SmartReTranslator(
+                          text: 'Not a Plant',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SmartReTranslator(
+                              text: 'This image does not appear to be a plant.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.textSecondary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Confidence: ${((result!['confidence'] ?? 0.0) * 100).toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    // Original disease result display
     final labelText = _getDiseaseLabel(result!['label'].toString());
     final isHealthy =
         !isError &&
@@ -1322,10 +1437,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppBar(
-        title:
-            'Plant Doctor', // Will be translated by SmartReTranslator in CustomAppBar
-      ),
+      appBar: const CustomAppBar(title: 'Plant Doctor'),
       backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {

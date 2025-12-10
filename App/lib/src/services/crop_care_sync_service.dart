@@ -320,6 +320,7 @@ class CropCareSyncService {
               'soil_type_ids': farmWithRelations['soil_type_ids'] ?? [],
               'irrigation_ids': farmWithRelations['irrigation_ids'] ?? [],
               'water_src_ids': farmWithRelations['water_source_ids'] ?? [],
+              'is_delete': 0,
             };
             debugPrint('📝 Updating farm $farmId');
 

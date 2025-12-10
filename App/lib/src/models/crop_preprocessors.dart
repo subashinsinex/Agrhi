@@ -1,8 +1,25 @@
+// lib/src/models/crop_preprocessors.dart
 import 'dart:io';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
+// ═══════════════════════════════════════════════════════════════════
+// ⚠️ IMPORTANT CHANGE: Preprocessors no longer resize images
+//
+// Why: The gate model (plant detector) must receive ORIGINAL images
+// to work correctly. Pre-resizing to 128x128 or 224x224 destroys
+// information and causes false positives.
+//
+// How it works now:
+// 1. Original image → Gate model (resizes internally to 224x224)
+// 2. If plant detected → Disease model (resizes internally to its size)
+//
+// The old preprocessing functions have been simplified to return
+// the original path. ModelService handles all resizing.
+// ═══════════════════════════════════════════════════════════════════
+
 // Utility: Proper normalization for display purposes only
+// (Not used in current pipeline, kept for potential future use)
 img.Image _normalize01(img.Image image) {
   final normalized = img.Image(width: image.width, height: image.height);
   for (final pixel in image) {
@@ -13,117 +30,89 @@ img.Image _normalize01(img.Image image) {
 
 img.Image _mobilenetNormalize(img.Image image) => _normalize01(image);
 
-// RICE - Grayscale with contrast enhancement
+// ═══════════════════════════════════════════════════════════════════
+// PREPROCESSOR FUNCTIONS
+// All now return original path - models handle their own resizing
+// ═══════════════════════════════════════════════════════════════════
+
+/// RICE - No preprocessing, model handles resizing
 Future<String> ricePreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 224, height: 224);
-  final grayscale = img.grayscale(resized);
-  final contrasted = img.adjustColor(grayscale, contrast: 1.5);
-  final rgb = img.bakeOrientation(contrasted);
-  final processedPath = '${imagePath}_rice.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(rgb));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 224x224
+  return imagePath;
 }
 
-// SUGARCANE - Standard preprocessing
+/// SUGARCANE - No preprocessing, model handles resizing
 Future<String> sugarcanePreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 224, height: 224);
-  final processed = _mobilenetNormalize(resized);
-  final processedPath = '${imagePath}_sugarcane.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(processed));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 224x224
+  return imagePath;
 }
 
-// WHEAT - Standard preprocessing
+/// WHEAT - No preprocessing, model handles resizing
 Future<String> wheatPreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 224, height: 224);
-  final processed = _mobilenetNormalize(resized);
-  final processedPath = '${imagePath}_wheat.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(processed));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 224x224
+  return imagePath;
 }
 
-// GROUNDNUT - Standard preprocessing
+/// GROUNDNUT - No preprocessing, model handles resizing
 Future<String> groundnutPreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 256, height: 256);
-  final normalized = _normalize01(resized);
-  final processedPath = '${imagePath}_groundnut.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(normalized));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 256x256
+  return imagePath;
 }
 
-// COTTON - Custom normalization for 128x128
+/// COTTON - No preprocessing, model handles resizing
 Future<String> cottonPreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 128, height: 128);
-  final normalized = img.Image(width: 128, height: 128);
-
-  for (final pixel in resized) {
-    final r = (((pixel.r / 255.0) - 0.5) * 2 * 255).toInt().clamp(0, 255);
-    final g = (((pixel.g / 255.0) - 0.5) * 2 * 255).toInt().clamp(0, 255);
-    final b = (((pixel.b / 255.0) - 0.5) * 2 * 255).toInt().clamp(0, 255);
-    normalized.setPixelRgba(pixel.x, pixel.y, r, g, b, 255);
-  }
-
-  final processedPath = '${imagePath}_cotton.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(normalized));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 128x128
+  return imagePath;
 }
 
-// BANANA - 128x128 standard preprocessing
+/// BANANA - No preprocessing, model handles resizing
+/// ✅ FIXED: Was resizing to 128x128, now returns original
 Future<String> bananaPreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 128, height: 128);
-  final normalized = _normalize01(resized);
-  final processedPath = '${imagePath}_banana.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(normalized));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Gate model resizes internally to 224x224
+  // Disease model resizes internally to 256x256
+  return imagePath;
 }
 
-// CORN - Standard preprocessing
+/// CORN - No preprocessing, model handles resizing
 Future<String> cornPreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 224, height: 224);
-  final normalized = _normalize01(resized);
-  final processedPath = '${imagePath}_corn.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(normalized));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 224x224
+  return imagePath;
 }
 
-// COCONUT - 128x128 standard preprocessing
+/// COCONUT - No preprocessing, model handles resizing
 Future<String> coconutPreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 128, height: 128);
-  final normalized = _normalize01(resized);
-  final processedPath = '${imagePath}_coconut.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(normalized));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 128x128
+  return imagePath;
 }
 
-// COFFEE - Standard preprocessing
+/// COFFEE - No preprocessing, model handles resizing
 Future<String> coffeePreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 224, height: 224);
-  final normalized = _normalize01(resized);
-  final processedPath = '${imagePath}_coffee.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(normalized));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 224x224
+  return imagePath;
 }
 
-// TOMATO - Standard preprocessing
+/// TOMATO - No preprocessing, model handles resizing
 Future<String> tomatoPreprocessor(String imagePath) async {
-  final image = img.decodeImage(await File(imagePath).readAsBytes())!;
-  final resized = img.copyResize(image, width: 640, height: 640);
-  final normalized = _normalize01(resized);
-  final processedPath = '${imagePath}_tomato.jpg';
-  await File(processedPath).writeAsBytes(img.encodeJpg(normalized));
-  return processedPath;
+  // Gate model needs original image resolution
+  // Model internally resizes to 640x640
+  return imagePath;
 }
 
-// Mapping functions to crop names
+// ═══════════════════════════════════════════════════════════════════
+// PREPROCESSOR MAP
+// Maps crop names to their preprocessor functions
+// ═══════════════════════════════════════════════════════════════════
+
+/// Mapping functions to crop names
 final Map<String, Future<String> Function(String)> preprocessMap = {
   'Rice': ricePreprocessor,
   'Sugarcane': sugarcanePreprocessor,
@@ -137,7 +126,12 @@ final Map<String, Future<String> Function(String)> preprocessMap = {
   'Tomato': tomatoPreprocessor,
 };
 
-// NEW: Helper function to get downloaded model path
+// ═══════════════════════════════════════════════════════════════════
+// MODEL PATH HELPERS
+// Functions to get the path to downloaded model files
+// ═══════════════════════════════════════════════════════════════════
+
+/// Helper function to get downloaded model path
 Future<String> _getModelPath(String cropName) async {
   final dir = await getApplicationDocumentsDirectory();
   final modelDir = Directory('${dir.path}/models');
@@ -159,7 +153,7 @@ Future<String> _getModelPath(String cropName) async {
   return '${modelDir.path}/${fileNameMap[cropName]}';
 }
 
-// CHANGED: Model file paths now point to downloaded models
+/// Model file paths now point to downloaded models
 final Map<String, Future<String> Function()> modelMap = {
   'Rice': () => _getModelPath('Rice'),
   'Sugarcane': () => _getModelPath('Sugarcane'),
@@ -173,7 +167,14 @@ final Map<String, Future<String> Function()> modelMap = {
   'Tomato': () => _getModelPath('Tomato'),
 };
 
-// Expected input shapes for each model
+// ═══════════════════════════════════════════════════════════════════
+// MODEL INPUT SHAPES
+// Reference only - ModelService handles actual resizing
+// ═══════════════════════════════════════════════════════════════════
+
+/// Expected input shapes for each disease detection model
+/// Note: These are for reference only. The ModelService class
+/// handles all image resizing internally.
 final Map<String, List<int>> inputShapeMap = {
   'Rice': [1, 224, 224, 3],
   'Sugarcane': [1, 224, 224, 3],
