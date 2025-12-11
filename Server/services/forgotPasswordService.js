@@ -2,7 +2,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const pool = require("../db/database");
-const emailService = require("./emailServices");
+const emailService = require("../utils/emailSender"); // CHANGE THIS - point to emailSender
 
 class ForgotPasswordService {
   /**
@@ -79,17 +79,21 @@ class ForgotPasswordService {
       // Mask email for response
       const maskedEmail = this._maskEmail(user.email);
 
-      // Send reset email
-      const emailSent = await emailService.sendPasswordResetEmail({
-        to: user.email,
-        username: username,
-        resetToken: resetToken,
-        mobile: mobile,
-        ipAddress: ipAddress,
-      });
-
-      if (!emailSent) {
-        console.error(`Failed to send password reset email to ${user.email}`);
+      // Send email using emailService
+      try {
+        await emailService.sendPasswordResetEmail({
+          to: user.email,
+          username: username,
+          resetToken: resetToken,
+          mobile: mobile,
+          ipAddress: ipAddress,
+        });
+      } catch (emailError) {
+        console.error(
+          `Failed to send password reset email to ${user.email}:`,
+          emailError
+        );
+        // Still return success to prevent email enumeration
       }
 
       return {
@@ -326,6 +330,8 @@ class ForgotPasswordService {
           ipAddress: ipAddress,
           timestamp: new Date().toLocaleString("en-IN", {
             timeZone: "Asia/Kolkata",
+            dateStyle: "medium",
+            timeStyle: "short",
           }),
         });
       }

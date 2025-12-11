@@ -1,10 +1,20 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const requestIp = require("request-ip");
+const emailService = require("./utils/emailSender");
+
 const app = express();
+
+// CRITICAL: Enable trust proxy BEFORE other middleware
+app.set("trust proxy", true);
+
+// Middleware
 app.use(cors());
 app.use(express.json());
+app.use(requestIp.mw()); // Extracts real client IP (works behind WiFi/proxy/NAT)
 
+// Routes
 const loginRoutes = require("./routes/loginRoutes");
 const userRoutes = require("./routes/userManageRoutes");
 const subsidiesRoutes = require("./routes/subsidiesRoutes");
@@ -31,6 +41,13 @@ app.use("/api/email-verification", emailVerificationRoutes);
 
 const PORT = process.env.PORT;
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(PORT, async () => {
+  console.log(`\n🚀 Server is running on port ${PORT}`);
+  console.log(`📍 Server URL: http://localhost:${PORT}`);
+
+  // Test email service connection
+  console.log("📧 Testing email service...");
+  await emailService.testConnection();
+
+  console.log("✅ Server initialization complete\n");
 });

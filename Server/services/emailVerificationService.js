@@ -1,7 +1,7 @@
 // services/emailVerificationService.js
 const crypto = require("crypto");
 const pool = require("../db/database");
-const emailService = require("../services/emailServices");
+const emailService = require("../utils/emailSender");
 
 class EmailVerificationService {
   /**
@@ -80,12 +80,12 @@ class EmailVerificationService {
         [userId, otpHash, expiresAt]
       );
 
-      // Send OTP email
+      // Send OTP email with IP address
       const emailSent = await emailService.sendEmailVerificationOTP({
         to: user.email,
         username: username,
         otp: otp,
-        ipAddress: ipAddress,
+        ipAddress: ipAddress, // This now includes location tracking
       });
 
       if (!emailSent) {
@@ -189,7 +189,7 @@ class EmailVerificationService {
 
       await client.query("COMMIT");
 
-      // Send confirmation email (async)
+      // Send confirmation email with IP and location (async)
       this._sendVerificationConfirmationEmail(userId, ipAddress);
 
       return {
@@ -387,9 +387,11 @@ class EmailVerificationService {
         await emailService.sendEmailVerifiedConfirmation({
           to: user.email,
           username: username,
-          ipAddress: ipAddress,
+          ipAddress: ipAddress, // This now includes location tracking
           timestamp: new Date().toLocaleString("en-IN", {
             timeZone: "Asia/Kolkata",
+            dateStyle: "medium",
+            timeStyle: "short",
           }),
         });
       }

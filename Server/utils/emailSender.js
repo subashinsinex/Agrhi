@@ -1,6 +1,7 @@
-// services/emailServices.js
+// utils/emailSender.js
 const nodemailer = require("nodemailer");
-const emailTemplates = require("../utils/emailTemplates");
+const emailTemplates = require("./emailTemplates");
+const { getLocationFromIP } = require("./ipGeolocation");
 
 class EmailService {
   constructor() {
@@ -24,25 +25,35 @@ class EmailService {
     ipAddress,
   }) {
     try {
-      const resetUrl = `http://14.139.161.69:8080/reset-password?token=${resetToken}`;
+      const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+      // Get location from IP
+      const location = await getLocationFromIP(ipAddress);
+
+      // Generate timestamp
+      const timestamp = new Date().toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
 
       const html = emailTemplates.passwordResetTemplate({
         username,
         resetUrl,
         mobile,
         ipAddress,
-        timestamp: new Date().toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-        }),
+        location,
+        timestamp,
       });
 
       await this.transporter.sendMail({
         from: `"Agrhi - No Reply" <${process.env.EMAIL_USER}>`,
         to,
-        subject: "Reset Your Agrhi Password",
+        subject: "Reset Your Password - Agrhi",
         html,
       });
 
+      console.log(`✅ Password reset email sent to ${to}`);
       return true;
     } catch (error) {
       console.error("Send password reset email error:", error);
@@ -55,19 +66,33 @@ class EmailService {
    */
   async sendPasswordChangedEmail({ to, username, ipAddress, timestamp }) {
     try {
+      // Get location from IP
+      const location = await getLocationFromIP(ipAddress);
+
+      // Generate timestamp if not provided
+      const formattedTimestamp =
+        timestamp ||
+        new Date().toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          dateStyle: "medium",
+          timeStyle: "short",
+        });
+
       const html = emailTemplates.passwordChangedTemplate({
         username,
         ipAddress,
-        timestamp,
+        location,
+        timestamp: formattedTimestamp,
       });
 
       await this.transporter.sendMail({
         from: `"Agrhi - No Reply" <${process.env.EMAIL_USER}>`,
         to,
-        subject: "Your Agrhi Password Was Changed",
+        subject: "Password Changed Successfully - Agrhi",
         html,
       });
 
+      console.log(`✅ Password changed email sent to ${to}`);
       return true;
     } catch (error) {
       console.error("Send password changed email error:", error);
@@ -80,22 +105,32 @@ class EmailService {
    */
   async sendEmailVerificationOTP({ to, username, otp, ipAddress }) {
     try {
+      // Get location from IP
+      const location = await getLocationFromIP(ipAddress);
+
+      // Generate timestamp
+      const timestamp = new Date().toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+
       const html = emailTemplates.emailVerificationOTPTemplate({
         username,
         otp,
         ipAddress,
-        timestamp: new Date().toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-        }),
+        location,
+        timestamp,
       });
 
       await this.transporter.sendMail({
         from: `"Agrhi - No Reply" <${process.env.EMAIL_USER}>`,
         to,
-        subject: "Verify Your Agrhi Email Address",
+        subject: "Verify Your Email - Agrhi",
         html,
       });
 
+      console.log(`✅ Email verification OTP sent to ${to}`);
       return true;
     } catch (error) {
       console.error("Send email verification OTP error:", error);
@@ -108,10 +143,23 @@ class EmailService {
    */
   async sendEmailVerifiedConfirmation({ to, username, ipAddress, timestamp }) {
     try {
+      // Get location from IP
+      const location = await getLocationFromIP(ipAddress);
+
+      // Generate timestamp if not provided
+      const formattedTimestamp =
+        timestamp ||
+        new Date().toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          dateStyle: "medium",
+          timeStyle: "short",
+        });
+
       const html = emailTemplates.emailVerifiedTemplate({
         username,
         ipAddress,
-        timestamp,
+        location,
+        timestamp: formattedTimestamp,
       });
 
       await this.transporter.sendMail({
@@ -121,6 +169,7 @@ class EmailService {
         html,
       });
 
+      console.log(`✅ Email verified confirmation sent to ${to}`);
       return true;
     } catch (error) {
       console.error("Send email verified confirmation error:", error);
@@ -143,4 +192,5 @@ class EmailService {
   }
 }
 
+// IMPORTANT: Export as instance (not class)
 module.exports = new EmailService();

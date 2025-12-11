@@ -4,7 +4,14 @@ class EmailTemplates {
   /**
    * Password reset email template
    */
-  passwordResetTemplate({ username, resetUrl, mobile, ipAddress, timestamp }) {
+  passwordResetTemplate({
+    username,
+    resetUrl,
+    mobile,
+    ipAddress,
+    location,
+    timestamp,
+  }) {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -147,6 +154,9 @@ class EmailTemplates {
                     <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 12px;">
                       <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">📅</span><span style="display: inline-block; vertical-align: middle;">Time: ${timestamp}</span>
                     </p>
+                    <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 12px;">
+                      <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">📍</span><span style="display: inline-block; vertical-align: middle;">Location: ${location}</span>
+                    </p>
                     <p style="margin: 0; color: #9ca3af; font-size: 12px;">
                       <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">🌐</span><span style="display: inline-block; vertical-align: middle;">IP Address: ${ipAddress}</span>
                     </p>
@@ -189,7 +199,7 @@ class EmailTemplates {
   /**
    * Password changed confirmation template
    */
-  passwordChangedTemplate({ username, ipAddress, timestamp }) {
+  passwordChangedTemplate({ username, ipAddress, location, timestamp }) {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -313,6 +323,9 @@ class EmailTemplates {
                     <p style="margin: 0 0 8px 0; color: #9ca3af; font-size: 12px; line-height: 1.5;">
                       <strong style="color: #6b7280;">Change Details:</strong>
                     </p>
+                    <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 12px;">
+                      <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">📍</span><span style="display: inline-block; vertical-align: middle;">Location: ${location}</span>
+                    </p>
                     <p style="margin: 0; color: #9ca3af; font-size: 12px;">
                       <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">🌐</span><span style="display: inline-block; vertical-align: middle;">IP Address: ${ipAddress}</span>
                     </p>
@@ -355,7 +368,13 @@ class EmailTemplates {
   /**
    * Email verification OTP template
    */
-  emailVerificationOTPTemplate({ username, otp, ipAddress, timestamp }) {
+  emailVerificationOTPTemplate({
+    username,
+    otp,
+    ipAddress,
+    location,
+    timestamp,
+  }) {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -475,6 +494,9 @@ class EmailTemplates {
                     <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 12px;">
                       <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">📅</span><span style="display: inline-block; vertical-align: middle;">Time: ${timestamp}</span>
                     </p>
+                    <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 12px;">
+                      <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">📍</span><span style="display: inline-block; vertical-align: middle;">Location: ${location}</span>
+                    </p>
                     <p style="margin: 0; color: #9ca3af; font-size: 12px;">
                       <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">🌐</span><span style="display: inline-block; vertical-align: middle;">IP Address: ${ipAddress}</span>
                     </p>
@@ -517,7 +539,7 @@ class EmailTemplates {
   /**
    * Email verified confirmation template
    */
-  emailVerifiedTemplate({ username, ipAddress, timestamp }) {
+  emailVerifiedTemplate({ username, ipAddress, location, timestamp }) {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -653,6 +675,9 @@ class EmailTemplates {
                   <td>
                     <p style="margin: 0 0 8px 0; color: #9ca3af; font-size: 12px; line-height: 1.5;">
                       <strong style="color: #6b7280;">Verification Details:</strong>
+                    </p>
+                    <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 12px;">
+                      <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">📍</span><span style="display: inline-block; vertical-align: middle;">Location: ${location}</span>
                     </p>
                     <p style="margin: 0; color: #9ca3af; font-size: 12px;">
                       <span style="display: inline-block; vertical-align: middle; margin-right: 6px;">🌐</span><span style="display: inline-block; vertical-align: middle;">IP Address: ${ipAddress}</span>

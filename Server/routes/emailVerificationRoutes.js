@@ -13,9 +13,12 @@ router.post("/send-otp", jwt, async (req, res) => {
   try {
     const userId = req.user_id; // From JWT token
 
+    // Get real client IP (works behind WiFi/proxy/NAT)
+    const ipAddress = req.clientIp || req.ip;
+
     const result = await emailVerificationService.sendVerificationOTP({
       userId,
-      ipAddress: req.ip || req.connection.remoteAddress,
+      ipAddress,
     });
 
     if (!result.success) {
@@ -57,10 +60,13 @@ router.post("/verify-otp", jwt, async (req, res) => {
       });
     }
 
+    // Get real client IP
+    const ipAddress = req.clientIp || req.ip;
+
     const result = await emailVerificationService.verifyOTP({
       userId,
       otp,
-      ipAddress: req.ip || req.connection.remoteAddress,
+      ipAddress,
     });
 
     if (!result.success) {
@@ -86,9 +92,12 @@ router.post("/resend-otp", jwt, async (req, res) => {
   try {
     const userId = req.user_id;
 
+    // Get real client IP
+    const ipAddress = req.clientIp || req.ip;
+
     const result = await emailVerificationService.resendOTP({
       userId,
-      ipAddress: req.ip || req.connection.remoteAddress,
+      ipAddress,
     });
 
     if (!result.success) {

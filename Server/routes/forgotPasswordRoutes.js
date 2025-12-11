@@ -28,8 +28,8 @@ router.post("/request", async (req, res) => {
       });
     }
 
-    // Get IP address for security logging
-    const ipAddress = req.ip || req.connection.remoteAddress;
+    // Get real client IP (works behind WiFi/proxy/NAT)
+    const ipAddress = req.clientIp || req.ip;
     const userAgent = req.headers["user-agent"];
 
     const result = await forgotPasswordService.requestPasswordReset({
@@ -114,7 +114,8 @@ router.post("/reset", async (req, res) => {
       });
     }
 
-    const ipAddress = req.ip || req.connection.remoteAddress;
+    // Get real client IP
+    const ipAddress = req.clientIp || req.ip;
 
     const result = await forgotPasswordService.resetPassword({
       token,
