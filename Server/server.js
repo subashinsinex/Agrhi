@@ -13,6 +13,8 @@ const diseaseRemediesRoutes = require("./routes/diseaseRemediesRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const syncRoutes = require("./routes/syncRoutes");
+const forgotPasswordRoutes = require("./routes/forgotPasswordRoutes");
+const emailVerificationRoutes = require("./routes/emailVerificationRoutes");
 
 app.use("/api", loginRoutes);
 app.use("/api/users", userRoutes);
@@ -24,6 +26,8 @@ app.use("/uploads", express.static("uploads"));
 app.use("/models", express.static("models"));
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/sync", syncRoutes);
+app.use("/api/forgot-password", forgotPasswordRoutes);
+app.use("/api/email-verification", emailVerificationRoutes);
 
 const PORT = process.env.PORT;
 
