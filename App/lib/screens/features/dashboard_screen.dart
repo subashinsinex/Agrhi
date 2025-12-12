@@ -6,7 +6,6 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-// Remove: import '../shared/sidebar.dart';
 import '../shared/widgets/custom_app_bar.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
@@ -25,6 +24,7 @@ import '../../src/services/crop_care_sync_service.dart';
 import '../../src/database/database_helper.dart';
 import '../features/feedback_screen.dart';
 import '../auth/login_screen.dart';
+import 'profile_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -141,6 +141,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'phone': profile['phone_number'],
               'category': profile['user_category'],
               'address': profile['address'],
+              'email_verified': profile['email_verified'] ?? false,
             };
             _isLoadingProfile = false;
           });
@@ -880,9 +881,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           key: const ValueKey('profile_card'),
                           name: userData?['name'] ?? 'Guest User',
                           email: userData?['email'],
-                          phone: userData?['phone'],
                           category: userData?['category'],
-                          address: userData?['address'],
+                          emailVerified:
+                              userData?['email_verified'] ??
+                              false, // ✅ PASS THIS
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProfileScreen(),
+                              ),
+                            );
+                          },
                         ),
                 ),
                 const SizedBox(height: 20),
@@ -924,64 +934,87 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildProfileSkeleton() {
     return Container(
       key: const ValueKey('profile_skeleton'),
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.primaryGreen,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primaryGreen.withOpacity(0.8),
+            AppColors.primaryGreen,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
         ],
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: AppColors.mediumGreenAccent,
-              shape: BoxShape.circle,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        child: Row(
+          children: [
+            // Avatar skeleton
+            Container(
+              width: 75,
+              height: 75,
+              decoration: BoxDecoration(
+                color: AppColors.mediumGreenAccent.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: AppColors.mediumGreenAccent,
-                    borderRadius: BorderRadius.circular(4),
+            const SizedBox(width: 16),
+
+            // Content skeleton
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Name skeleton
+                  Container(
+                    width: double.infinity,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryWhite.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  width: 150,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: AppColors.mediumGreenAccent,
-                    borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 8),
+                  // Email skeleton
+                  Container(
+                    width: 180,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryWhite.withOpacity(0.25),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  width: 120,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: AppColors.mediumGreenAccent,
-                    borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 8),
+                  // Category skeleton
+                  Container(
+                    width: 80,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryWhite.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+
+            const SizedBox(width: 10),
+
+            // Arrow icon skeleton
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primaryWhite.withOpacity(0.2),
+              ),
+              child: const SizedBox(width: 18, height: 18),
+            ),
+          ],
+        ),
       ),
     );
   }

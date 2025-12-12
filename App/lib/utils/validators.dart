@@ -24,7 +24,7 @@ class Validators {
     return null;
   }
 
-  // Password validation
+  // Password validation - UPDATED WITH NEW REQUIREMENTS
   static String? validatePassword(String? value) {
     if (value == null || value.isEmpty) {
       return 'Please enter your password';
@@ -36,6 +36,21 @@ class Validators {
 
     if (value.length > AppConstants.maxPasswordLength) {
       return 'Password must not exceed ${AppConstants.maxPasswordLength} characters';
+    }
+
+    // Check for at least one uppercase letter
+    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+      return 'Password must contain at least one uppercase letter';
+    }
+
+    // Check for at least one lowercase letter
+    if (!RegExp(r'[a-z]').hasMatch(value)) {
+      return 'Password must contain at least one lowercase letter';
+    }
+
+    // Check for at least one number
+    if (!RegExp(r'[0-9]').hasMatch(value)) {
+      return 'Password must contain at least one number';
     }
 
     return null;
@@ -64,7 +79,7 @@ class Validators {
     return null;
   }
 
-  // Email validation (for future use)
+  // Email validation
   static String? validateEmail(String? value) {
     final v = value?.trim() ?? '';
 
@@ -132,8 +147,6 @@ class Validators {
 
     return null;
   }
-
-  // Additional validators you might need:
 
   // OTP validation
   static String? validateOTP(String? value) {
@@ -246,5 +259,21 @@ class Validators {
     }
 
     return null;
+  }
+
+  // Password strength checker (helper method)
+  static Map<String, bool> getPasswordStrength(String password) {
+    return {
+      'hasMinLength': password.length >= AppConstants.minPasswordLength,
+      'hasUppercase': RegExp(r'[A-Z]').hasMatch(password),
+      'hasLowercase': RegExp(r'[a-z]').hasMatch(password),
+      'hasNumber': RegExp(r'[0-9]').hasMatch(password),
+    };
+  }
+
+  // Check if password meets all requirements
+  static bool isPasswordStrong(String password) {
+    final strength = getPasswordStrength(password);
+    return strength.values.every((met) => met);
   }
 }

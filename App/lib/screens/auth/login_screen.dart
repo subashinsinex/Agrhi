@@ -552,13 +552,6 @@ class _PasswordField extends StatelessWidget {
         ),
       ),
       obscureText: obscurePassword,
-      validator: (value) {
-        final error = Validators.validatePassword(value);
-        if (error != null) {
-          return error;
-        }
-        return null;
-      },
       enabled: enabled,
     );
   }

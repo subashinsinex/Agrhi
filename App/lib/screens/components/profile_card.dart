@@ -4,161 +4,191 @@ import '../../utils/colors.dart';
 class ProfileCard extends StatelessWidget {
   final String name;
   final String? email;
-  final String? phone;
   final String? category;
-  final String? address;
+  final bool emailVerified;
+  final VoidCallback? onTap;
 
   const ProfileCard({
     super.key,
     required this.name,
     this.email,
-    this.phone,
     this.category,
-    this.address,
+    this.emailVerified = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 3,
-      color: AppColors.primaryGreen, // Very light green background
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                _buildAvatar(),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primaryWhite, // Dark green text
-                        ),
-                      ),
-                      if (category != null) ...[
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.secondaryGreen, // Medium green background
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.primaryGreen.withOpacity(0.8),
+              AppColors.primaryGreen,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 8,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          child: Row(
+            children: [
+              // Avatar with verification badge
+              _buildAvatar(),
+              const SizedBox(width: 16),
+
+              // Name, Email & Category
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Name with verification
+                    Row(
+                      children: [
+                        Flexible(
                           child: Text(
-                            category!,
+                            name,
                             style: const TextStyle(
-                              fontSize: 11,
+                              fontSize: 20,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                              letterSpacing: 0.3,
+                              color: AppColors.primaryWhite,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
+                        if (emailVerified) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              color: AppColors.successColor.withOpacity(0.9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.verified,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ],
                       ],
+                    ),
+
+                    // Email
+                    if (email != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        email!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.primaryWhite,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
-                  ),
+
+                    // Category Badge
+                    if (category != null) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryWhite.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          category!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primaryWhite,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Divider(
-              height: 1,
-              color: AppColors.mediumGreenAccent, // Soft green divider
-              thickness: 1,
-            ),
-            const SizedBox(height: 18),
-            if (email != null) _buildInfoRow(Icons.email_outlined, email!),
-            if (phone != null) ...[
-              const SizedBox(height: 14),
-              _buildInfoRow(Icons.phone_outlined, phone!),
+              ),
+
+              const SizedBox(width: 10),
+
+              // Arrow Icon
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primaryWhite.withOpacity(0.2),
+                ),
+                child: const Icon(
+                  Icons.arrow_forward_ios,
+                  color: AppColors.primaryWhite,
+                  size: 18,
+                ),
+              ),
             ],
-            if (address != null) ...[
-              const SizedBox(height: 14),
-              _buildInfoRow(Icons.location_on_outlined, address!, maxLines: 2),
-            ],
-          ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildAvatar() {
-    return Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
-        color: AppColors.mediumGreenAccent, // Soft green background
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AppColors.secondaryGreen, // Medium green border
-          width: 2.5,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: const TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primaryGreen, // Dark green letter
+    return Stack(
+      children: [
+        Container(
+          width: 75,
+          height: 75,
+          decoration: BoxDecoration(
+            color: AppColors.mediumGreenAccent,
+            borderRadius: BorderRadius.circular(14),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(IconData icon, String text, {int maxLines = 1}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white, // White containers for better readability
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.mediumGreenAccent, // Soft green border
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: AppColors.mediumGreenAccent, // Soft green icon background
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(
-              icon,
-              color: AppColors.primaryGreen, // Dark green icon
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
+          child: Center(
             child: Text(
-              text,
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
               style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textPrimary, // Dark text
-                fontWeight: FontWeight.w500,
-                height: 1.4,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryGreen,
               ),
-              maxLines: maxLines,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
-        ],
-      ),
+        ),
+        // Verification badge on avatar
+        if (emailVerified)
+          Positioned(
+            bottom: 2,
+            right: 2,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: AppColors.successColor,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.mediumGreenAccent,
+                  width: 2,
+                ),
+              ),
+              child: const Icon(Icons.check, color: Colors.white, size: 12),
+            ),
+          ),
+      ],
     );
   }
 }

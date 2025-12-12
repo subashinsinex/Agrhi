@@ -25,6 +25,7 @@ class _WeatherCardState extends State<WeatherCard> {
   String? condition;
   String? wind;
   String? displayLocation;
+  String? originalLocationName; // ✅ NEW: Store original location name
   IconData weatherIcon = Icons.cloud;
   bool isLoading = true;
 
@@ -45,12 +46,12 @@ class _WeatherCardState extends State<WeatherCard> {
     final langService = Provider.of<LanguageService>(context);
     if (_currentLanguage != langService.currentLocale.languageCode) {
       _currentLanguage = langService.currentLocale.languageCode;
-      // ✅ FIXED: Reload translations and refresh weather display
+      // ✅ Reload translations and refresh weather display
       _loadTranslationsAndFetchWeather();
     }
   }
 
-  // ✅ NEW: Combined method to load translations and fetch weather
+  // ✅ Combined method to load translations and fetch weather
   Future<void> _loadTranslationsAndFetchWeather() async {
     await _loadTranslations();
     await _fetchWeather();
@@ -72,15 +73,29 @@ class _WeatherCardState extends State<WeatherCard> {
       'unknown': 'Unknown',
       'currentLocation': 'Current Location',
       'locationError': 'Location unavailable',
+      'loading': 'Loading...', // ✅ NEW
     };
 
     final Map<String, String> newTranslations = {};
     for (var entry in keys.entries) {
       newTranslations[entry.key] = await langService.translate(entry.value);
     }
+
+    // ✅ NEW: Translate location name if we have one
+    if (originalLocationName != null && originalLocationName!.isNotEmpty) {
+      newTranslations['locationName'] = await langService.translate(
+        originalLocationName!,
+      );
+    }
+
     if (!mounted) return;
     setState(() {
       translatedTexts = newTranslations;
+      // ✅ Update display location with translated name
+      if (originalLocationName != null &&
+          newTranslations['locationName'] != null) {
+        displayLocation = newTranslations['locationName'];
+      }
     });
   }
 
@@ -126,8 +141,17 @@ class _WeatherCardState extends State<WeatherCard> {
 
       final conditionStr = _translateCondition(weather.weatherCode);
 
+      // ✅ NEW: Store original location name
+      originalLocationName = weather.locationName;
+
+      // ✅ NEW: Translate location name
+      final langService = Provider.of<LanguageService>(context, listen: false);
+      final translatedLocationName = await langService.translate(
+        weather.locationName,
+      );
+
       setState(() {
-        displayLocation = weather.locationName;
+        displayLocation = translatedLocationName;
         temperature =
             "${weather.temperature.toStringAsFixed(1)}${translatedTexts['degreeCelsius'] ?? '°C'}";
         condition = conditionStr;
@@ -145,6 +169,7 @@ class _WeatherCardState extends State<WeatherCard> {
         temperature = "--";
         condition = translatedTexts['unavailable'] ?? 'Unavailable';
         wind = "--";
+        originalLocationName = null;
       });
     }
   }
@@ -268,7 +293,10 @@ class _WeatherCardState extends State<WeatherCard> {
                         if (widget.useDeviceLocation) const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            displayLocation ?? widget.location ?? 'Loading...',
+                            displayLocation ??
+                                widget.location ??
+                                translatedTexts['loading'] ??
+                                'Loading...',
                             style: const TextStyle(
                               fontSize: 20,
                               color: AppColors.primaryWhite,
@@ -281,7 +309,7 @@ class _WeatherCardState extends State<WeatherCard> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      condition ?? "Loading...",
+                      condition ?? translatedTexts['loading'] ?? "Loading...",
                       style: const TextStyle(
                         fontSize: 14,
                         color: AppColors.primaryWhite,

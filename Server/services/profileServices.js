@@ -20,7 +20,8 @@ async function getUserById(userId) {
     SELECT 
       ua.user_id, 
       ua.phone_number, 
-      ua.email, 
+      ua.email,
+      ua.email_verified,
       uc.category AS user_category,
       ud.name, 
       ud.dob, 
