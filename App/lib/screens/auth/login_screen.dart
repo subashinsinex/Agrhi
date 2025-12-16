@@ -13,6 +13,7 @@ import '../../utils/routes.dart';
 import '../../utils/validators.dart';
 import '../../src/services/language_service.dart';
 import '../../src/database/database_helper.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -330,7 +331,27 @@ class _LoginScreenState extends State<LoginScreen> {
                                     });
                                   },
                                 ),
-                                const SizedBox(height: 24),
+                                // Add after _PasswordField widget, before Sign In button
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: _isLoading
+                                        ? null
+                                        : () => Navigator.of(
+                                            context,
+                                          ).push(ForgotPasswordScreen.route()),
+                                    child: const SmartReTranslator(
+                                      text: 'Forgot Password?',
+                                      style: TextStyle(
+                                        color: AppColors.primaryGreen,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
                                 SizedBox(
                                   width: double.infinity,
                                   height: 56,
