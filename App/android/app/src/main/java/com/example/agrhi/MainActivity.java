@@ -1,4 +1,4 @@
-package com.example.agrhi;
+package app.agrhi.com;
 
 import io.flutter.embedding.android.FlutterActivity;
 

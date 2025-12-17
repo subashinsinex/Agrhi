@@ -1,6 +1,7 @@
 // lib/src/screens/splash/splash_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:convert';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
@@ -30,6 +31,8 @@ class _SplashScreenState extends State<SplashScreen>
   String _statusMessage = 'Initializing...';
   bool _showOfflineBadge = false;
 
+  PackageInfo? _packageInfo;
+
   // ✅ ADDED: Secure storage instance
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -43,8 +46,31 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _setupAnimations();
+    _initPackageInfo();
     _checkAuthAndNavigate();
   }
+
+  Future<void> _initPackageInfo() async {
+    if (_packageInfo != null) return;
+
+    final info = await PackageInfo.fromPlatform();
+
+    if (mounted) {
+      setState(() {
+        _packageInfo = info;
+      });
+
+      debugPrint('========== COMPLETE APP INFO ==========');
+      debugPrint('App Name: ${info.appName}');
+      debugPrint('Package Name: ${info.packageName}');
+      debugPrint('Version: ${info.version}');
+      debugPrint('Build Number: ${info.buildNumber}');
+      debugPrint('Build Signature: ${info.buildSignature}');
+      debugPrint('Installer Store: ${info.installerStore ?? "Unknown"}');
+      debugPrint('=======================================');
+    }
+  }
+
 
   void _setupAnimations() {
     // Fade animation

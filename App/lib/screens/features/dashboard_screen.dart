@@ -23,6 +23,7 @@ import '../../src/services/sync_service.dart';
 import '../../src/services/crop_care_sync_service.dart';
 import '../../src/database/database_helper.dart';
 import '../features/feedback_screen.dart';
+import '../features/map.dart';
 import '../auth/login_screen.dart';
 import 'profile_screen.dart';
 
@@ -822,6 +823,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const ModelManagerScreen()),
+        ),
+      ),
+      FeatureItem(
+        icon: Icons.map,
+        title: 'Map',
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const MapScreen()),
         ),
       ),
     ];
