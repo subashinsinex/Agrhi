@@ -60,7 +60,7 @@ const ResetPasswordPage = () => {
         if (response.data.success) {
           setIsTokenValid(true);
           const mobileEnd = response.data.mobile
-            ? response.data.mobile.slice(-4)
+            ? response.data.mobile
             : "****";
           setStatus({
             type: "success",
