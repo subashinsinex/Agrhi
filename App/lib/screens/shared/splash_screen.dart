@@ -1,13 +1,17 @@
 // lib/src/screens/splash/splash_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' show join;
 import 'dart:convert';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/sync_service.dart';
 import '../../src/services/crop_care_sync_service.dart';
+import '../../src/services/app_config_service.dart';
+import '../../src/database/database_helper.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -30,10 +34,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   String _statusMessage = 'Initializing...';
   bool _showOfflineBadge = false;
+  bool _configChecked = false;
 
-  PackageInfo? _packageInfo;
-
-  // ✅ ADDED: Secure storage instance
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
@@ -46,34 +48,10 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _setupAnimations();
-    _initPackageInfo();
     _checkAuthAndNavigate();
   }
 
-  Future<void> _initPackageInfo() async {
-    if (_packageInfo != null) return;
-
-    final info = await PackageInfo.fromPlatform();
-
-    if (mounted) {
-      setState(() {
-        _packageInfo = info;
-      });
-
-      debugPrint('========== COMPLETE APP INFO ==========');
-      debugPrint('App Name: ${info.appName}');
-      debugPrint('Package Name: ${info.packageName}');
-      debugPrint('Version: ${info.version}');
-      debugPrint('Build Number: ${info.buildNumber}');
-      debugPrint('Build Signature: ${info.buildSignature}');
-      debugPrint('Installer Store: ${info.installerStore ?? "Unknown"}');
-      debugPrint('=======================================');
-    }
-  }
-
-
   void _setupAnimations() {
-    // Fade animation
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
@@ -83,7 +61,6 @@ class _SplashScreenState extends State<SplashScreen>
       CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
     );
 
-    // Pulse animation for loading indicator
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
@@ -96,7 +73,6 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeController.forward();
   }
 
-  // ✅ ADDED: Helper method to read from storage with retry logic
   Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
     for (int i = 0; i < maxRetries; i++) {
       try {
@@ -117,7 +93,6 @@ class _SplashScreenState extends State<SplashScreen>
     return null;
   }
 
-  // ✅ ADDED: Decode JWT payload to get expiry
   Map<String, dynamic>? _decodeJwtPayload(String token) {
     try {
       final parts = token.split('.');
@@ -140,7 +115,6 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  // ✅ ADDED: Get JWT expiry in UTC
   DateTime? _getJwtExpiryUtc(String token) {
     final payload = _decodeJwtPayload(token);
     if (payload == null) return null;
@@ -159,7 +133,6 @@ class _SplashScreenState extends State<SplashScreen>
     return null;
   }
 
-  // ✅ ADDED: Get valid access token with refresh logic
   Future<String?> _getValidAccessTokenForSync() async {
     String? accessToken =
         await _readWithRetry('access_token') ??
@@ -207,7 +180,6 @@ class _SplashScreenState extends State<SplashScreen>
       return accessToken;
     }
 
-    // Token is expired, try to refresh
     try {
       await _authService.refreshAccessToken();
       accessToken =
@@ -232,11 +204,457 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
+  // ✅ Check if there's unsynced data using your DatabaseHelper
+  Future<bool> _hasUnsyncedData() async {
+    try {
+      final db = DatabaseHelper.instance;
+
+      // Check pending farms
+      final pendingFarms = await db.getPendingFarms();
+
+      // Check pending crops
+      final pendingCrops = await db.getPendingCrops();
+
+      // Check pending disease analyses
+      final pendingAnalyses = await db.getPendingAnalyses();
+
+      // Check pending deletions
+      final pendingFarmDeletions = await db.getPendingFarmDeletions();
+      final pendingCropDeletions = await db.getPendingCropDeletions();
+
+      final hasUnsynced =
+          pendingFarms.isNotEmpty ||
+          pendingCrops.isNotEmpty ||
+          pendingAnalyses.isNotEmpty ||
+          pendingFarmDeletions.isNotEmpty ||
+          pendingCropDeletions.isNotEmpty;
+
+      debugPrint('📊 Unsynced data check:');
+      debugPrint('  Farms: ${pendingFarms.length}');
+      debugPrint('  Crops: ${pendingCrops.length}');
+      debugPrint('  Analyses: ${pendingAnalyses.length}');
+      debugPrint('  Farm deletions: ${pendingFarmDeletions.length}');
+      debugPrint('  Crop deletions: ${pendingCropDeletions.length}');
+
+      return hasUnsynced;
+    } catch (e) {
+      debugPrint('❌ Error checking unsynced data: $e');
+      return false;
+    }
+  }
+
+  // ✅ Drop database after successful sync
+  Future<void> _dropDatabase() async {
+    try {
+      // Close existing database
+      await DatabaseHelper.instance.close();
+
+      // Delete the database file
+      final dbPath = await getDatabasesPath();
+      final path = join(dbPath, 'agrhi_offline.db');
+      await deleteDatabase(path);
+
+      debugPrint('✅ Database dropped successfully');
+    } catch (e) {
+      debugPrint('❌ Error dropping database: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _checkAuthAndNavigate() async {
     await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
 
+    if (_configChecked) {
+      debugPrint('⚠️ Config already checked, skipping...');
+      return;
+    }
+    _configChecked = true;
+
+    // ✅ STEP 1: Check if update is needed
+    setState(() => _statusMessage = 'Checking for updates...');
+
+    final serverConfig = await AppConfigService.checkAppConfig();
+
+    if (serverConfig != null && mounted) {
+      final needsUpdate = serverConfig['needs_update'] == true;
+
+      if (needsUpdate) {
+        // ✅ Update is required - start update flow
+        await _handleUpdateFlow(serverConfig);
+        return;
+      }
+    }
+
+    // ✅ STEP 2: No update needed, proceed with auth
+    if (!mounted) return;
+    await _proceedWithAuth();
+  }
+
+  // ✅ Handle complete update flow with sync
+  Future<void> _handleUpdateFlow(Map<String, dynamic> config) async {
+    try {
+      setState(
+        () => _statusMessage = 'Update required. Checking offline data...',
+      );
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // ✅ Check if there's unsynced data
+      final hasUnsynced = await _hasUnsyncedData();
+
+      if (!mounted) return;
+
+      if (hasUnsynced) {
+        // ✅ Has unsynced data - must sync first
+        final syncSuccess = await _showSyncBeforeUpdateDialog(config);
+
+        if (!syncSuccess) {
+          // Sync failed or user skipped - show warning
+          await _showForceUpdateWarningDialog(config);
+        } else {
+          // Sync successful - drop database and update
+          await _dropDatabaseAndUpdate(config);
+        }
+      } else {
+        // ✅ No unsynced data - safe to update directly
+        await _showDirectUpdateDialog(config);
+      }
+    } catch (e) {
+      debugPrint('❌ Error in update flow: $e');
+      if (mounted) {
+        await _showDirectUpdateDialog(config);
+      }
+    }
+  }
+
+  // ✅ Show dialog: Sync required before update
+  Future<bool> _showSyncBeforeUpdateDialog(Map<String, dynamic> config) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.sync, color: AppColors.primaryGreen, size: 28),
+              const SizedBox(width: 12),
+              const Expanded(child: Text('Sync Required')),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You have offline data that needs to be synced before updating.',
+                style: TextStyle(fontSize: 15, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'This ensures your data is safely stored on the server.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                'Skip',
+                style: TextStyle(color: AppColors.errorColor),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                foregroundColor: AppColors.primaryWhite,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 14,
+                ),
+              ),
+              onPressed: () async {
+                Navigator.pop(context, true);
+              },
+              child: const Text('Sync Now'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == true) {
+      // User chose to sync - perform sync
+      return await _performUpdateSync();
+    }
+
+    return false;
+  }
+
+  // ✅ Perform sync before update
+  Future<bool> _performUpdateSync() async {
+    try {
+      setState(() => _statusMessage = 'Syncing offline data...');
+
+      final accessToken = await _getValidAccessTokenForSync();
+
+      if (accessToken == null || accessToken.isEmpty) {
+        debugPrint('⚠️ No valid access token for sync');
+        if (mounted) {
+          _showErrorDialog(
+            'Sync Failed',
+            'Unable to authenticate. Please login again.',
+          );
+        }
+        return false;
+      }
+
+      final results =
+          await Future.wait([
+            SyncService.instance.performFullSync(accessToken),
+            CropCareSyncService.instance.performFullSync(accessToken),
+          ]).timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              debugPrint('⚠️ Sync timeout');
+              return [
+                {'success': false, 'error': 'timeout'},
+                {'success': false, 'error': 'timeout'},
+              ];
+            },
+          );
+
+      final diseaseSync = results[0];
+      final cropCareSync = results[1];
+
+      final syncSuccess =
+          diseaseSync['success'] == true && cropCareSync['success'] == true;
+
+      if (!syncSuccess) {
+        debugPrint('❌ Sync failed');
+        if (mounted) {
+          _showErrorDialog(
+            'Sync Failed',
+            'Unable to sync all data. Please check your connection and try again.',
+          );
+        }
+        return false;
+      }
+
+      debugPrint('✅ Sync completed successfully');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Sync error: $e');
+      if (mounted) {
+        _showErrorDialog('Sync Error', 'An error occurred during sync: $e');
+      }
+      return false;
+    }
+  }
+
+  // ✅ Drop database and proceed to update
+  Future<void> _dropDatabaseAndUpdate(Map<String, dynamic> config) async {
+    try {
+      setState(() => _statusMessage = 'Preparing for update...');
+
+      await _dropDatabase();
+
+      debugPrint('✅ Database dropped successfully');
+
+      if (mounted) {
+        await _showDirectUpdateDialog(config);
+      }
+    } catch (e) {
+      debugPrint('❌ Error dropping database: $e');
+      if (mounted) {
+        await _showDirectUpdateDialog(config);
+      }
+    }
+  }
+
+  // ✅ Show warning: Force update will lose data
+  Future<void> _showForceUpdateWarningDialog(
+    Map<String, dynamic> config,
+  ) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: AppColors.warningColor,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              const Text('Warning'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Updating without syncing will permanently delete all offline data.',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: AppColors.errorColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'This cannot be undone. We strongly recommend syncing first.',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                // Try sync again
+                final syncSuccess = await _performUpdateSync();
+                if (syncSuccess) {
+                  await _dropDatabaseAndUpdate(config);
+                } else {
+                  await _showForceUpdateWarningDialog(config);
+                }
+              },
+              child: Text(
+                'Try Sync Again',
+                style: TextStyle(color: AppColors.primaryGreen),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.errorColor,
+                foregroundColor: AppColors.primaryWhite,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                Navigator.pop(context);
+                await _dropDatabaseAndUpdate(config);
+              },
+              child: const Text('Update Anyway'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ Show direct update dialog (no sync needed)
+  Future<void> _showDirectUpdateDialog(Map<String, dynamic> config) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.system_update,
+                color: AppColors.primaryGreen,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              const Text('Update Required'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                config['update_message'] ?? 'A new version is available.',
+                style: TextStyle(fontSize: 15, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Please update to continue using Agrhi.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                foregroundColor: AppColors.primaryWhite,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 14,
+                ),
+              ),
+              onPressed: () async {
+                final storeUrl = config['store_url'] ?? '';
+                if (storeUrl.isNotEmpty) {
+                  final uri = Uri.parse(storeUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                }
+              },
+              child: const Text('Update Now', style: TextStyle(fontSize: 16)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ Show error dialog
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ Proceed with normal auth flow
+  Future<void> _proceedWithAuth() async {
     setState(() => _statusMessage = 'Checking authentication...');
     await Future.delayed(const Duration(milliseconds: 500));
 
@@ -248,10 +666,7 @@ class _SplashScreenState extends State<SplashScreen>
       case AuthStatus.authenticated:
         setState(() => _statusMessage = 'Welcome back!');
         await Future.delayed(const Duration(milliseconds: 500));
-
-        // ✅ Perform background sync before navigating
         await _performBackgroundSync();
-
         if (mounted) Routes.navigateToDashboard(context);
         break;
 
@@ -274,14 +689,12 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  /// ✅ UPDATED: Perform background sync with secure storage access token
   Future<void> _performBackgroundSync() async {
     try {
       if (!mounted) return;
 
       setState(() => _statusMessage = 'Syncing data...');
 
-      // ✅ CHANGED: Get valid access token from secure storage
       final accessToken = await _getValidAccessTokenForSync();
 
       if (accessToken == null || accessToken.isEmpty) {
@@ -292,7 +705,6 @@ class _SplashScreenState extends State<SplashScreen>
         return;
       }
 
-      // ✅ Run both syncs in parallel for faster completion
       final results =
           await Future.wait([
             SyncService.instance.performFullSync(accessToken),
@@ -311,42 +723,12 @@ class _SplashScreenState extends State<SplashScreen>
       final diseaseSync = results[0];
       final cropCareSync = results[1];
 
-      // Log disease analysis sync results
       if (diseaseSync['success'] == true) {
         debugPrint('✅ Disease analysis sync completed');
-        final catalogsResult = diseaseSync['catalogs'] as Map<String, dynamic>?;
-        final twoWayResult =
-            diseaseSync['two_way_sync'] as Map<String, dynamic>?;
-
-        final catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
-        final uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
-        final downloaded =
-            (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
-        final imagesUploaded =
-            (twoWayResult?['images']?['upload'] as int?) ?? 0;
-
-        debugPrint(
-          '  - Catalogs: $catalogsUpdated, Upload: $uploaded, Download: $downloaded, Images: $imagesUploaded',
-        );
-      } else {
-        debugPrint('⚠️ Disease analysis sync failed: ${diseaseSync['error']}');
       }
 
-      // Log crop care sync results
       if (cropCareSync['success'] == true) {
         debugPrint('✅ Crop care sync completed');
-        final sync = cropCareSync['sync'] as Map<String, dynamic>?;
-        if (sync != null) {
-          final farmsUploaded = sync['farmUpload']?['uploaded'] ?? 0;
-          final cropsUploaded = sync['cropUpload']?['uploaded'] ?? 0;
-          final historyDownloaded = sync['historyDownload']?['downloaded'] ?? 0;
-
-          debugPrint(
-            '  - Farms uploaded: $farmsUploaded, Crops uploaded: $cropsUploaded, History downloaded: $historyDownloaded',
-          );
-        }
-      } else {
-        debugPrint('⚠️ Crop care sync failed: ${cropCareSync['error']}');
       }
 
       if (mounted) {
@@ -356,7 +738,6 @@ class _SplashScreenState extends State<SplashScreen>
       await Future.delayed(const Duration(milliseconds: 300));
     } catch (e) {
       debugPrint('❌ Background sync error: $e');
-      // Don't block navigation on sync failure
       if (mounted) {
         setState(() => _statusMessage = 'Welcome back!');
       }
@@ -390,25 +771,13 @@ class _SplashScreenState extends State<SplashScreen>
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Spacer(flex: 3),
-
-                  // Logo - simple and clean
                   _buildLogo(isSmallScreen),
-
                   SizedBox(height: isSmallScreen ? 32 : 40),
-
-                  // App Title
                   _buildTitle(),
-
                   SizedBox(height: isSmallScreen ? 12 : 16),
-
-                  // Subtitle badge
                   _buildSubtitle(),
-
                   const Spacer(flex: 4),
-
-                  // Status section
                   _buildStatusSection(),
-
                   SizedBox(height: isSmallScreen ? 50 : 70),
                 ],
               ),
@@ -492,7 +861,6 @@ class _SplashScreenState extends State<SplashScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Offline badge
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
           transitionBuilder: (child, animation) {
@@ -505,10 +873,7 @@ class _SplashScreenState extends State<SplashScreen>
               ? _buildOfflineBadge()
               : const SizedBox.shrink(),
         ),
-
         SizedBox(height: _showOfflineBadge ? 24 : 0),
-
-        // Status message
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
           transitionBuilder: (child, animation) {
@@ -542,10 +907,7 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
         ),
-
         const SizedBox(height: 28),
-
-        // Loading indicator
         ScaleTransition(
           scale: _pulseAnimation,
           child: Container(

@@ -4,9 +4,6 @@ const pool = require("../db/database");
 exports.getAppConfig = async () => {
   const sql = `
     SELECT
-      maintenance_mode,
-      maintenance_message,
-      minimum_build_number,
       latest_build_number,
       latest_version,
       update_message,
@@ -19,34 +16,20 @@ exports.getAppConfig = async () => {
   return result.rows[0];
 };
 
-// Update app config (force_update / update_available are handled in API layer)
+// Update app config
 exports.updateAppConfig = async (config) => {
-  const {
-    maintenance_mode,
-    maintenance_message,
-    minimum_build_number,
-    latest_build_number,
-    latest_version,
-    update_message,
-    url,
-  } = config;
+  const { latest_build_number, latest_version, update_message, url } = config;
 
   const sql = `
     UPDATE app_config
     SET
-      maintenance_mode = COALESCE($1, maintenance_mode),
-      maintenance_message = COALESCE($2, maintenance_message),
-      minimum_build_number = COALESCE($3, minimum_build_number),
-      latest_build_number = COALESCE($4, latest_build_number),
-      latest_version = COALESCE($5, latest_version),
-      update_message = COALESCE($6, update_message),
-      url = COALESCE($7, url),
+      latest_build_number = COALESCE($1, latest_build_number),
+      latest_version = COALESCE($2, latest_version),
+      update_message = COALESCE($3, update_message),
+      url = COALESCE($4, url),
       updated_at = CURRENT_TIMESTAMP
     WHERE id = 1
     RETURNING
-      maintenance_mode,
-      maintenance_message,
-      minimum_build_number,
       latest_build_number,
       latest_version,
       update_message,
@@ -54,15 +37,7 @@ exports.updateAppConfig = async (config) => {
       updated_at
   `;
 
-  const values = [
-    maintenance_mode,
-    maintenance_message,
-    minimum_build_number,
-    latest_build_number,
-    latest_version,
-    update_message,
-    url,
-  ];
+  const values = [latest_build_number, latest_version, update_message, url];
 
   const result = await pool.query(sql, values);
   return result.rows[0];
