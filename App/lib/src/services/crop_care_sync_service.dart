@@ -320,7 +320,6 @@ class CropCareSyncService {
               'soil_type_ids': farmWithRelations['soil_type_ids'] ?? [],
               'irrigation_ids': farmWithRelations['irrigation_ids'] ?? [],
               'water_src_ids': farmWithRelations['water_source_ids'] ?? [],
-              'is_delete': 0,
             };
             debugPrint('📝 Updating farm $farmId');
 
@@ -345,7 +344,6 @@ class CropCareSyncService {
               'soil_type_ids': farmWithRelations['soil_type_ids'] ?? [],
               'irrigation_ids': farmWithRelations['irrigation_ids'] ?? [],
               'water_src_ids': farmWithRelations['water_source_ids'] ?? [],
-              'is_delete': 0,
             };
             debugPrint('➕ Adding new farm $farmId');
 
@@ -436,6 +434,7 @@ class CropCareSyncService {
 
           if (wasUploaded) {
             // ✅ UPDATE existing crop with PUT
+            debugPrint('📝 Updating crop $cropId');
             endpoint = '$baseUrl/farmcrop/updatecrops/$cropId';
             payload = {
               'farm_id': crop['farmid'],
@@ -445,9 +444,8 @@ class CropCareSyncService {
               'field_size': crop['fieldsize'],
               'status': crop['status'],
               'is_active': crop['isactive'] == 1,
-              'is_delete': crop['isdeleted'] == 0,
+              'is_delete': crop['isdeleted'] == 1,
             };
-            debugPrint('📝 Updating crop $cropId');
 
             response = await http
                 .put(
@@ -461,6 +459,7 @@ class CropCareSyncService {
                 .timeout(const Duration(seconds: 30));
           } else {
             // ✅ ADD new crop with POST - SEND LOCAL CROP ID
+            debugPrint('➕ Adding crop $cropId');
             endpoint = '$baseUrl/farmcrop/addcrops';
             payload = {
               'user_crop_id': cropId,
@@ -586,7 +585,8 @@ class CropCareSyncService {
                   'harvest_date': crop['harvestdate'],
                   'field_size': crop['fieldsize'],
                   'status': crop['status'],
-                  'is_active': true, // ✅ Reactivate on server
+                  'is_active': true,
+                  'is_delete': crop['isdeleted'] == 1,
                 }),
               )
               .timeout(const Duration(seconds: 30));
@@ -1055,8 +1055,9 @@ class CropCareSyncService {
                 whereArgs: [name],
                 limit: 1,
               );
-              if (result.isNotEmpty)
-              {soilTypeIds.add(result.first['soiltypeid'].toString());}
+              if (result.isNotEmpty) {
+                soilTypeIds.add(result.first['soiltypeid'].toString());
+              }
             }
           }
           if (farm['irrigation_ids'] != null) {
@@ -1079,8 +1080,9 @@ class CropCareSyncService {
                 whereArgs: [name],
                 limit: 1,
               );
-              if (result.isNotEmpty)
-              {irrigationIds.add(result.first['irrigationid'].toString());}
+              if (result.isNotEmpty) {
+                irrigationIds.add(result.first['irrigationid'].toString());
+              }
             }
           }
           if (farm['water_src_ids'] != null ||
@@ -1104,8 +1106,9 @@ class CropCareSyncService {
                 whereArgs: [name],
                 limit: 1,
               );
-              if (result.isNotEmpty)
-              {waterSourceIds.add(result.first['watersrcid'].toString());}
+              if (result.isNotEmpty) {
+                waterSourceIds.add(result.first['watersrcid'].toString());
+              }
             }
           }
 
@@ -1274,7 +1277,7 @@ class CropCareSyncService {
                 DateTime.now().toIso8601String(),
             'isuploaded': 1,
             'isdirty': 0,
-            'isdeleted': 0, // ✅ Ensure not deleted
+            'isdeleted': 0,
           };
 
           if (exists.isEmpty) {
