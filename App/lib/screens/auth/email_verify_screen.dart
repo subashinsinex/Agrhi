@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../shared/widgets/smart_retranslator.dart';
+import '../shared/smart_retranslator.dart';
 import '../../utils/colors.dart';
 import '../../utils/constants.dart';
 

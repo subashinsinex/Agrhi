@@ -9,16 +9,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
-import '../../src/services/disease_analysis_service.dart';
-import '../../src/services/sync_service.dart';
-import '../../src/models/model_service.dart';
-import '../../src/models/crop_preprocessors.dart';
-import '../../src/models/disease_labels.dart';
-import '../../src/services/language_service.dart';
-import '../../src/services/model_download_service.dart';
-import '../shared/widgets/custom_app_bar.dart';
-import '../shared/widgets/smart_retranslator.dart';
-import '../../utils/colors.dart';
+import '../../../src/services/disease_analysis_service.dart';
+import '../../../src/services/sync_service.dart';
+import '../../../src/models/model_service.dart';
+import '../../../src/models/crop_preprocessors.dart';
+import '../../../src/models/disease_labels.dart';
+import '../../../src/services/language_service.dart';
+import '../../../src/services/model_download_service.dart';
+import '../../shared/custom_app_bar.dart';
+import '../../shared/smart_retranslator.dart';
+import '../../../utils/colors.dart';
 
 class DetectDiseaseScreen extends StatefulWidget {
   const DetectDiseaseScreen({super.key});

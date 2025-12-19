@@ -3,7 +3,7 @@ import '../screens/shared/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/signup_screen.dart';
 import '../screens/features/dashboard_screen.dart';
-import '../screens/features/model_manager_screen.dart'; // ADD THIS
+import '../screens/features/disease_detection/model_manager_screen.dart'; // ADD THIS
 
 class Routes {
   // Route names

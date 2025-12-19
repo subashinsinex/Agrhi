@@ -1,10 +1,10 @@
 // lib/screens/features/crop_care_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../utils/colors.dart';
-import '../../src/services/crop_care_sync_service.dart';
-import '../../src/database/database_helper.dart';
-import '../shared/widgets/smart_retranslator.dart';
+import '../../../utils/colors.dart';
+import '../../../src/services/crop_care_sync_service.dart';
+import '../../../src/database/database_helper.dart';
+import '../../shared/smart_retranslator.dart';
 import 'add_farm_screen.dart';
 import 'add_crop_screen.dart';
 

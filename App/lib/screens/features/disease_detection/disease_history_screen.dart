@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../utils/colors.dart';
-import '../../src/database/database_helper.dart';
-import '../../utils/storage_helper.dart';
-import '../shared/widgets/smart_retranslator.dart';
+import '../../../utils/colors.dart';
+import '../../../src/database/database_helper.dart';
+import '../../../utils/storage_helper.dart';
+import '../../shared/smart_retranslator.dart';
 
 /// Model for Disease History Item
 class DiseaseHistoryItem {

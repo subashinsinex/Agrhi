@@ -1,9 +1,9 @@
 // lib/screens/features/crop_history_screen.dart
 import 'package:flutter/material.dart';
-import '../../utils/colors.dart';
-import '../../src/database/database_helper.dart';
-import '../shared/widgets/custom_app_bar.dart';
-import '../shared/widgets/smart_retranslator.dart';
+import '../../../utils/colors.dart';
+import '../../../src/database/database_helper.dart';
+import '../../shared/custom_app_bar.dart';
+import '../../shared/smart_retranslator.dart';
 
 class CropHistoryScreen extends StatefulWidget {
   const CropHistoryScreen({super.key});

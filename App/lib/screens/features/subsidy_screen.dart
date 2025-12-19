@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/colors.dart';
-import '../shared/widgets/smart_retranslator.dart';
+import '../shared/smart_retranslator.dart';
 import '../../utils/storage_helper.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/connectivity_service.dart';

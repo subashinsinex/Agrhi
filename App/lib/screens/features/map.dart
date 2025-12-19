@@ -3,7 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../shared/widgets/custom_app_bar.dart';
+import '../shared/custom_app_bar.dart';
 import '../../../utils/colors.dart';
 
 class MapScreen extends StatefulWidget {

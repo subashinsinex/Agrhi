@@ -1,5 +1,6 @@
 // lib/src/services/auth_service.dart
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:jwt_decoder/jwt_decoder.dart';
@@ -8,7 +9,6 @@ import '../../utils/storage_helper.dart';
 import '../../utils/constants.dart';
 
 class AuthService {
-  // Use StorageHelper singleton instead of direct FlutterSecureStorage
   final _storageHelper = StorageHelper();
   final _connectivityService = ConnectivityService();
 
@@ -27,7 +27,6 @@ class AuthService {
   /// Check authentication status on app startup
   Future<AuthStatus> checkAuthStatus() async {
     try {
-      // Use StorageHelper to read tokens
       final accessToken = await _storageHelper.getAccessToken();
       final refreshToken = await _storageHelper.getRefreshToken();
 
@@ -67,28 +66,35 @@ class AuthService {
           print('⚠️ Access token expired - attempting refresh...');
 
           // Access token is expired - MUST refresh
-          final success = await _refreshToken(refreshToken);
+          final refreshResult = await _refreshToken(refreshToken);
 
-          if (!success) {
-            print('❌ Failed to refresh expired access token');
-            await clearTokens();
-            return AuthStatus.unauthenticated;
+          // ✅ Check if it's a network error vs auth error
+          if (!refreshResult.success) {
+            if (refreshResult.isNetworkError) {
+              // Network error - allow offline mode
+              print(
+                '⚠️ Refresh failed (network error) - switching to offline mode',
+              );
+              return AuthStatus.authenticatedOffline;
+            } else {
+              // Auth error - clear tokens
+              print('❌ Failed to refresh expired access token');
+              await clearTokens();
+              return AuthStatus.unauthenticated;
+            }
           }
 
           print('✅ Tokens refreshed - authenticated');
           return AuthStatus.authenticated;
         } else {
-          // Access token is still valid - just check if it needs preemptive refresh
+          // Access token is still valid - try preemptive refresh
           print('✅ Access token valid');
 
-          // Try to refresh if expiring soon (non-blocking)
           final refreshed = await _refreshTokensIfNeeded(
             accessToken,
             refreshToken,
           );
 
-          // Even if preemptive refresh fails, we're still authenticated
-          // because the current token is valid
           print(
             '✅ Authenticated ${refreshed ? "(tokens refreshed)" : "(using current tokens)"}',
           );
@@ -96,14 +102,27 @@ class AuthService {
         }
       } else {
         // Offline mode
-        print('📴 Offline mode');
-
-        // In offline mode, we allow expired access tokens
-        // as long as refresh token is valid
+        print('📴 Offline mode - using cached authentication');
         return AuthStatus.authenticatedOffline;
       }
     } catch (e) {
       print('❌ checkAuthStatus error: $e');
+
+      // ✅ On error, check if we have valid tokens for offline mode
+      try {
+        final refreshToken = await _storageHelper.getRefreshToken();
+        if (refreshToken != null &&
+            _isValidJwtFormat(refreshToken) &&
+            !JwtDecoder.isExpired(refreshToken)) {
+          print(
+            '⚠️ Error during check, but tokens valid - allowing offline mode',
+          );
+          return AuthStatus.authenticatedOffline;
+        }
+      } catch (_) {
+        // Ignore token check errors
+      }
+
       return AuthStatus.unauthenticated;
     }
   }
@@ -111,7 +130,6 @@ class AuthService {
   /// Public method to refresh access token (called by TokenRefreshService)
   Future<void> refreshAccessToken() async {
     try {
-      // Use StorageHelper to get refresh token
       final refreshToken = await _storageHelper.getRefreshToken();
 
       if (refreshToken == null) {
@@ -125,11 +143,16 @@ class AuthService {
       }
 
       // Call server to refresh tokens
-      final success = await _refreshToken(refreshToken);
+      final result = await _refreshToken(refreshToken);
 
-      if (!success) {
-        await clearTokens();
-        throw Exception('Failed to refresh tokens from server');
+      if (!result.success) {
+        // ✅ Only clear tokens on auth errors, not network errors
+        if (result.isNetworkError) {
+          throw Exception('Network error: ${result.error}');
+        } else {
+          await clearTokens();
+          throw Exception('Failed to refresh tokens from server');
+        }
       }
 
       print('✅ Access token refreshed successfully');
@@ -145,10 +168,7 @@ class AuthService {
     String refreshToken,
   ) async {
     try {
-      // Check if access token needs refresh (expired or expiring within 5 minutes)
       final shouldRefreshAccess = _shouldRefreshToken(accessToken, minutes: 5);
-
-      // Check if refresh token needs refresh (within 3 days of expiry)
       final shouldRefreshRefreshToken = _shouldRefreshToken(
         refreshToken,
         days: 3,
@@ -157,22 +177,27 @@ class AuthService {
       if (shouldRefreshAccess || shouldRefreshRefreshToken) {
         print('🔄 Token refresh needed - attempting preemptive refresh...');
 
-        // Refresh tokens
-        final success = await _refreshToken(refreshToken);
+        final result = await _refreshToken(refreshToken);
 
-        if (!success) {
-          print('❌ Server returned error - possible network or server issue');
-          // DON'T clear tokens here - might just be temporary network issue
+        if (!result.success) {
+          // ✅ Network error - keep using current tokens
+          if (result.isNetworkError) {
+            print(
+              '⚠️ Refresh failed (network) - continuing with current tokens',
+            );
 
-          // Check if access token is completely expired
-          if (JwtDecoder.isExpired(accessToken)) {
-            print('⚠️ Access token expired and refresh failed');
+            // Check if access token is completely expired
+            if (JwtDecoder.isExpired(accessToken)) {
+              print('⚠️ Access token expired and refresh failed');
+              return false;
+            }
+
+            return true; // Token still valid, continue
+          } else {
+            // Auth error
+            print('❌ Refresh failed with auth error');
             return false;
           }
-
-          // Access token still valid (just expiring soon), allow it
-          print('✅ Access token still valid - continuing with current token');
-          return true;
         }
 
         print('✅ Tokens refreshed successfully');
@@ -182,9 +207,8 @@ class AuthService {
     } catch (e) {
       print('❌ Error in _refreshTokensIfNeeded: $e');
 
-      // Don't immediately fail - check if current tokens are still usable
+      // Check if current tokens are still usable
       try {
-        // If access token is still valid (not expired), allow it
         if (!JwtDecoder.isExpired(accessToken)) {
           print('✅ Access token still valid despite refresh error');
           return true;
@@ -193,7 +217,6 @@ class AuthService {
         // Token parsing failed
       }
 
-      // Access token is expired and refresh failed
       return false;
     }
   }
@@ -223,8 +246,9 @@ class AuthService {
     }
   }
 
-  /// Call server to refresh access token (only returns access_token, no refresh_token)
-  Future<bool> _refreshToken(String refreshToken) async {
+  /// Call server to refresh access token
+  /// ✅ Returns RefreshResult to distinguish network errors from auth errors
+  Future<RefreshResult> _refreshToken(String refreshToken) async {
     try {
       print('🔄 Calling refresh token API...');
       print('🔄 Endpoint: $_baseUrl/refreshtoken');
@@ -233,10 +257,7 @@ class AuthService {
           .post(
             Uri.parse('$_baseUrl/refreshtoken'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'refresh_token':
-                  refreshToken, // Send as camelCase or snake_case based on your API
-            }),
+            body: jsonEncode({'refresh_token': refreshToken}),
           )
           .timeout(const Duration(seconds: 10));
 
@@ -245,35 +266,46 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-
-        // Server only sends access_token (snake_case), not refresh_token
         final newAccessToken = data['access_token'];
 
         if (newAccessToken == null) {
           print('❌ Missing access_token in response');
-          return false;
+          return RefreshResult.failure('Missing access_token');
         }
 
-        // Store only the new access token (refresh token stays the same)
         await _storageHelper.write('access_token', newAccessToken as String);
         print('✅ New access token stored successfully');
 
-        // Note: refresh_token is NOT updated since server doesn't send a new one
-        return true;
-      } else {
-        print('❌ Refresh failed with status: ${response.statusCode}');
-        print('❌ Response body: ${response.body}');
-        return false;
+        return RefreshResult.success();
+      }
+      // ✅ Auth errors - tokens are invalid
+      else if (response.statusCode == 401 || response.statusCode == 403) {
+        print('❌ Refresh token invalid or expired (${response.statusCode})');
+        return RefreshResult.authError('Invalid or expired refresh token');
+      }
+      // ✅ Server errors - temporary issue
+      else {
+        print('⚠️ Refresh failed with status: ${response.statusCode}');
+        return RefreshResult.serverError(
+          'Server error: ${response.statusCode}',
+        );
       }
     } on SocketException catch (e) {
+      // ✅ Network error - keep tokens for offline mode
       print('❌ Network error calling refresh API: $e');
-      return false;
+      return RefreshResult.networkError('No internet connection');
+    } on TimeoutException catch (e) {
+      // ✅ Timeout - keep tokens
+      print('❌ Timeout calling refresh API: $e');
+      return RefreshResult.networkError('Request timeout');
     } on FormatException catch (e) {
+      // ✅ Invalid response format
       print('❌ Invalid JSON response from refresh API: $e');
-      return false;
+      return RefreshResult.serverError('Invalid server response');
     } catch (e) {
       print('❌ Error calling refresh API: $e');
-      return false;
+      // ✅ Unknown errors - treat as network issue to be safe
+      return RefreshResult.networkError(e.toString());
     }
   }
 
@@ -330,7 +362,6 @@ class AuthService {
 
         print('💾 Storing tokens...');
 
-        // Use StorageHelper to store tokens
         await _storageHelper.write('access_token', accessToken);
         await _storageHelper.write('refresh_token', refreshToken);
 
@@ -381,7 +412,6 @@ class AuthService {
       final accessToken = await _storageHelper.getAccessToken();
 
       if (accessToken != null) {
-        // Try to call logout API
         try {
           await http
               .post(
@@ -395,15 +425,53 @@ class AuthService {
           print('✅ Logout API called successfully');
         } catch (e) {
           print('⚠️ Logout API call failed: $e');
-          // Continue with local logout even if API fails
         }
       }
     } finally {
-      // Always clear tokens regardless of API call result
       await clearTokens();
       print('✅ Logout complete');
     }
   }
+}
+
+// ✅ NEW: RefreshResult class to distinguish error types
+class RefreshResult {
+  final bool success;
+  final String? error;
+  final RefreshErrorType errorType;
+
+  RefreshResult.success()
+    : success = true,
+      error = null,
+      errorType = RefreshErrorType.none;
+
+  RefreshResult.failure(this.error)
+    : success = false,
+      errorType = RefreshErrorType.unknown;
+
+  RefreshResult.networkError(this.error)
+    : success = false,
+      errorType = RefreshErrorType.network;
+
+  RefreshResult.authError(this.error)
+    : success = false,
+      errorType = RefreshErrorType.auth;
+
+  RefreshResult.serverError(this.error)
+    : success = false,
+      errorType = RefreshErrorType.server;
+
+  bool get isNetworkError => errorType == RefreshErrorType.network;
+  bool get isAuthError => errorType == RefreshErrorType.auth;
+  bool get isServerError => errorType == RefreshErrorType.server;
+}
+
+enum RefreshErrorType {
+  none,
+  network, // Network issues - keep tokens
+  auth, // Authentication failed - clear tokens
+  server, // Server error - keep tokens (temporary issue)
+  unknown,
 }
 
 enum AuthStatus { authenticated, authenticatedOffline, unauthenticated }
@@ -413,6 +481,5 @@ class LoginResult {
   final String? message;
 
   LoginResult.success() : isSuccess = true, message = null;
-
   LoginResult.failure(this.message) : isSuccess = false;
 }

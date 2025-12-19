@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
-import '../shared/widgets/smart_retranslator.dart';
+import '../shared/smart_retranslator.dart';
 import '../auth/email_verify_screen.dart';
 import '../../utils/colors.dart';
 

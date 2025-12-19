@@ -1,7 +1,7 @@
 // lib/screens/shared/widgets/smart_retranslator.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../src/services/language_service.dart';
+import '../../src/services/language_service.dart';
 
 /// Optimized translation widget with strict validation
 class SmartReTranslator extends StatefulWidget {

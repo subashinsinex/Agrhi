@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../utils/colors.dart';
-import '../../../src/services/language_service.dart';
+import '../../utils/colors.dart';
+import '../../src/services/language_service.dart';
 import 'language_switcher.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {

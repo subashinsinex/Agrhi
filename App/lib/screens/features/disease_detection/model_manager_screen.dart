@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../src/services/model_manager_provider.dart';
-import '../../src/services/model_download_service.dart';
-import '../../src/services/language_service.dart';
-import '../../screens/shared/widgets/smart_retranslator.dart'; // ✅ ADD THIS
-import '../../utils/colors.dart';
+import '../../../src/services/model_manager_provider.dart';
+import '../../../src/services/model_download_service.dart';
+import '../../../src/services/language_service.dart';
+import '../../shared/smart_retranslator.dart'; // ✅ ADD THIS
+import '../../../utils/colors.dart';
 
 class ModelManagerScreen extends StatefulWidget {
   const ModelManagerScreen({super.key});

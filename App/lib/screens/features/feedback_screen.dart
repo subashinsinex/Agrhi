@@ -9,7 +9,7 @@ import '../../src/services/language_service.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/connectivity_service.dart';
 import '../../utils/constants.dart';
-import '../../screens/shared/widgets/smart_retranslator.dart'; // ✅ ADD THIS
+import '../shared/smart_retranslator.dart'; // ✅ ADD THIS
 
 class FeedbackItem {
   final String id;

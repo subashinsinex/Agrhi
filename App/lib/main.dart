@@ -7,6 +7,7 @@ import 'utils/colors.dart';
 import 'utils/routes.dart';
 import 'src/services/language_service.dart';
 import 'src/services/model_manager_provider.dart';
+import 'src/services/connectivity_manager.dart';
 import 'src/database/database_helper.dart';
 
 void main() async {
@@ -17,13 +18,15 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // ✅ Initialize Hive for fast translation caching
   await Hive.initFlutter();
   await Hive.openBox('translation_cache');
   print('✅ Hive cache initialized successfully.');
 
   await DatabaseHelper.instance.database;
   print('✅ Database initialized successfully.');
+
+  ConnectivityManager.instance;
+  print('✅ Connectivity manager initialized.');
 
   runApp(const MyApp());
 }
@@ -37,6 +40,9 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (context) => LanguageService()),
         ChangeNotifierProvider(create: (context) => ModelManagerProvider()),
+        ChangeNotifierProvider<ConnectivityManager>.value(
+          value: ConnectivityManager.instance,
+        ),
       ],
       child: Consumer<LanguageService>(
         builder: (context, languageService, child) {
