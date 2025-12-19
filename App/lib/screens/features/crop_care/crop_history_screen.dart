@@ -425,7 +425,7 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Crop History'),
+      appBar: const CustomAppBar(title: 'Crop History', showOnlineStatus: true),
       backgroundColor: AppColors.backgroundColor,
       body: _isLoading
           ? Center(

@@ -3,12 +3,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' show join;
-import 'dart:convert';
 import '../../utils/colors.dart';
 import '../../src/services/sync_service.dart';
 import '../../src/services/crop_care_sync_service.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/database/database_helper.dart';
+import '../shared/smart_retranslator.dart';
 
 class UpdateScreen extends StatefulWidget {
   final Map<String, dynamic> config;
@@ -47,6 +47,7 @@ class _UpdateScreenState extends State<UpdateScreen>
     super.initState();
     _setupAnimation();
     _determineInitialPhase();
+    _preloadPhrases();
   }
 
   void _setupAnimation() {
@@ -69,135 +70,10 @@ class _UpdateScreenState extends State<UpdateScreen>
     });
   }
 
-  Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
-    for (int i = 0; i < maxRetries; i++) {
-      try {
-        final value = await _storage.read(key: key);
-        if (value != null && value.isNotEmpty) {
-          return value;
-        }
-        if (i < maxRetries - 1) {
-          await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
-        }
-      } catch (e) {
-        if (i == maxRetries - 1) {
-          debugPrint('Storage read failed for $key: $e');
-          rethrow;
-        }
-      }
-    }
-    return null;
-  }
-
-  Map<String, dynamic>? _decodeJwtPayload(String token) {
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3) return null;
-      String payload = parts[1];
-
-      int mod4 = payload.length % 4;
-      if (mod4 > 0) {
-        payload += '=' * (4 - mod4);
-      }
-
-      final decoded = utf8.decode(base64Url.decode(payload));
-      final map = jsonDecode(decoded);
-      if (map is Map<String, dynamic>) return map;
-      if (map is Map) return Map<String, dynamic>.from(map);
-      return null;
-    } catch (e) {
-      debugPrint('JWT decode error: $e');
-      return null;
-    }
-  }
-
-  DateTime? _getJwtExpiryUtc(String token) {
-    final payload = _decodeJwtPayload(token);
-    if (payload == null) return null;
-
-    final exp = payload['exp'];
-
-    if (exp is int) {
-      return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
-    } else if (exp is String) {
-      final n = int.tryParse(exp);
-      if (n != null) {
-        return DateTime.fromMillisecondsSinceEpoch(n * 1000, isUtc: true);
-      }
-    }
-
-    return null;
-  }
-
-  Future<String?> _getValidAccessToken() async {
-    String? accessToken =
-        await _readWithRetry('access_token') ??
-        await _storage.read(key: 'access_token');
-
-    String? expiryIso =
-        await _readWithRetry('access_token_expires_at') ??
-        await _storage.read(key: 'access_token_expires_at');
-
-    String? expiryEpochMsStr =
-        await _readWithRetry('access_token_expiry') ??
-        await _storage.read(key: 'access_token_expiry');
-
-    bool isExpired = false;
-    final now = DateTime.now().toUtc();
-    const skew = Duration(seconds: 60);
-
-    if (accessToken != null && accessToken.isNotEmpty) {
-      final jwtExp = _getJwtExpiryUtc(accessToken);
-      if (jwtExp != null) {
-        isExpired = now.add(skew).isAfter(jwtExp);
-      } else {
-        try {
-          if (expiryIso != null && expiryIso.isNotEmpty) {
-            final exp = DateTime.tryParse(expiryIso)?.toUtc();
-            if (exp != null) isExpired = now.add(skew).isAfter(exp);
-          } else if (expiryEpochMsStr != null && expiryEpochMsStr.isNotEmpty) {
-            final ms = int.tryParse(expiryEpochMsStr);
-            if (ms != null) {
-              final exp = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
-              isExpired = now.add(skew).isAfter(exp);
-            }
-          } else {
-            isExpired = false;
-          }
-        } catch (_) {
-          isExpired = true;
-        }
-      }
-    } else {
-      isExpired = true;
-    }
-
-    if (!isExpired && accessToken != null && accessToken.isNotEmpty) {
-      return accessToken;
-    }
-
-    try {
-      await _authService.refreshAccessToken();
-      accessToken =
-          await _readWithRetry('access_token') ??
-          await _storage.read(key: 'access_token');
-
-      if (accessToken == null || accessToken.isEmpty) {
-        debugPrint('Token refresh succeeded but no access_token found');
-        return null;
-      }
-
-      final jwtExp = _getJwtExpiryUtc(accessToken);
-      if (jwtExp != null) {
-        final stillExpired = now.add(skew).isAfter(jwtExp);
-        return stillExpired ? null : accessToken;
-      }
-
-      return accessToken;
-    } catch (e) {
-      debugPrint('Failed to refresh access token: $e');
-      return null;
-    }
+  // ✅ NEW: Preload translations
+  Future<void> _preloadPhrases() async {
+    // Translation preloading can be added here if needed
+    // For now, SmartReTranslator handles it automatically
   }
 
   Future<void> _performSync() async {
@@ -208,32 +84,51 @@ class _UpdateScreenState extends State<UpdateScreen>
     });
 
     try {
-      final accessToken = await _getValidAccessToken();
+      // ✅ Use AuthService to get valid token (it handles refresh automatically)
+      final accessToken = await _storage.read(key: 'access_token');
 
-      if (accessToken == null) {
-        setState(() {
-          _phase = UpdatePhase.syncFailed;
-          _syncStatus = 'Authentication failed';
-        });
-        return;
+      if (accessToken == null || accessToken.isEmpty) {
+        // Try to refresh token
+        try {
+          await _authService.refreshAccessToken();
+          final newToken = await _storage.read(key: 'access_token');
+
+          if (newToken == null || newToken.isEmpty) {
+            setState(() {
+              _phase = UpdatePhase.syncFailed;
+              _syncStatus = 'Authentication failed';
+            });
+            return;
+          }
+        } catch (e) {
+          setState(() {
+            _phase = UpdatePhase.syncFailed;
+            _syncStatus = 'Authentication failed';
+          });
+          return;
+        }
       }
 
-      setState(() {
-        _syncStatus = 'Syncing farms and crops...';
-        _syncProgress = 0.3;
-      });
-
-      final diseaseResult = await SyncService.instance.performFullSync(
-        accessToken,
-      );
+      final validToken = await _storage.read(key: 'access_token');
 
       setState(() {
         _syncStatus = 'Syncing disease analyses...';
+        _syncProgress = 0.3;
+      });
+
+      // ✅ Sync disease analyses first
+      final diseaseResult = await SyncService.instance.performFullSync(
+        validToken!,
+      );
+
+      setState(() {
+        _syncStatus = 'Syncing farms and crops...';
         _syncProgress = 0.6;
       });
 
+      // ✅ Sync farms and crops
       final cropCareResult = await CropCareSyncService.instance.performFullSync(
-        accessToken,
+        validToken,
       );
 
       if (diseaseResult['success'] == true &&
@@ -263,14 +158,14 @@ class _UpdateScreenState extends State<UpdateScreen>
       } else {
         setState(() {
           _phase = UpdatePhase.syncFailed;
-          _syncStatus = 'Sync failed';
+          _syncStatus = 'Sync failed - please check your internet connection';
         });
       }
     } catch (e) {
-      debugPrint('Sync error: $e');
+      debugPrint('❌ Sync error: $e');
       setState(() {
         _phase = UpdatePhase.syncFailed;
-        _syncStatus = 'An error occurred';
+        _syncStatus = 'An error occurred during sync';
       });
     }
   }
@@ -281,6 +176,19 @@ class _UpdateScreenState extends State<UpdateScreen>
       final uri = Uri.parse(storeUrl);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const SmartReTranslator(
+                text: 'Could not open app store',
+                style: TextStyle(color: Colors.white),
+              ),
+              backgroundColor: AppColors.errorColor,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     }
   }
@@ -301,7 +209,7 @@ class _UpdateScreenState extends State<UpdateScreen>
         setState(() => _phase = UpdatePhase.readyToUpdate);
       }
     } catch (e) {
-      debugPrint('Error dropping database: $e');
+      debugPrint('❌ Error dropping database: $e');
       if (mounted) {
         setState(() => _phase = UpdatePhase.readyToUpdate);
       }
@@ -316,8 +224,8 @@ class _UpdateScreenState extends State<UpdateScreen>
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async => false, // Prevent back button
+    return PopScope(
+      canPop: false, // ✅ Updated from WillPopScope
       child: Scaffold(
         backgroundColor: AppColors.backgroundColor,
         body: SafeArea(
@@ -371,15 +279,15 @@ class _UpdateScreenState extends State<UpdateScreen>
             color: AppColors.primaryGreen.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
+          child: const Icon(
             Icons.sync_rounded,
             size: 64,
             color: AppColors.primaryGreen,
           ),
         ),
         const SizedBox(height: 32),
-        Text(
-          'Update Available',
+        const SmartReTranslator(
+          text: 'Update Available',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
@@ -394,13 +302,14 @@ class _UpdateScreenState extends State<UpdateScreen>
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppColors.primaryGreen.withOpacity(0.2)),
           ),
-          child: Row(
+          child: const Row(
             children: [
               Icon(Icons.info_outline, color: AppColors.primaryGreen, size: 24),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'You have offline data that needs to be synced before updating.',
+                child: SmartReTranslator(
+                  text:
+                      'You have offline data that needs to be synced before updating.',
                   style: TextStyle(
                     fontSize: 14,
                     color: AppColors.textSecondary,
@@ -412,11 +321,12 @@ class _UpdateScreenState extends State<UpdateScreen>
           ),
         ),
         const SizedBox(height: 24),
-        Text(
-          widget.config['update_message'] ??
+        SmartReTranslator(
+          text:
+              widget.config['update_message'] ??
               'A new version is available with improvements and bug fixes.',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 15,
             color: AppColors.textSecondary,
             height: 1.5,
@@ -447,12 +357,14 @@ class _UpdateScreenState extends State<UpdateScreen>
                   value: _syncProgress,
                   strokeWidth: 6,
                   backgroundColor: AppColors.primaryGreen.withOpacity(0.2),
-                  valueColor: AlwaysStoppedAnimation(AppColors.primaryGreen),
+                  valueColor: const AlwaysStoppedAnimation(
+                    AppColors.primaryGreen,
+                  ),
                 ),
               ),
               Text(
                 '${(_syncProgress * 100).toInt()}%',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: AppColors.primaryGreen,
@@ -462,8 +374,8 @@ class _UpdateScreenState extends State<UpdateScreen>
           ),
         ),
         const SizedBox(height: 32),
-        Text(
-          'Syncing Data',
+        const SmartReTranslator(
+          text: 'Syncing Data',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
@@ -471,10 +383,10 @@ class _UpdateScreenState extends State<UpdateScreen>
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          _syncStatus,
+        SmartReTranslator(
+          text: _syncStatus,
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 15,
             color: AppColors.textSecondary,
             height: 1.5,
@@ -487,7 +399,7 @@ class _UpdateScreenState extends State<UpdateScreen>
             color: AppColors.warningColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
@@ -495,9 +407,9 @@ class _UpdateScreenState extends State<UpdateScreen>
                 size: 16,
                 color: AppColors.warningColor,
               ),
-              const SizedBox(width: 8),
-              Text(
-                'Please wait, do not close the app',
+              SizedBox(width: 8),
+              SmartReTranslator(
+                text: 'Please wait, do not close the app',
                 style: TextStyle(
                   fontSize: 13,
                   color: AppColors.warningColor,
@@ -522,15 +434,15 @@ class _UpdateScreenState extends State<UpdateScreen>
             color: AppColors.successColor.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
+          child: const Icon(
             Icons.check_circle_rounded,
             size: 64,
             color: AppColors.successColor,
           ),
         ),
         const SizedBox(height: 32),
-        Text(
-          'Sync Complete!',
+        const SmartReTranslator(
+          text: 'Sync Complete!',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
@@ -538,8 +450,8 @@ class _UpdateScreenState extends State<UpdateScreen>
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          'Your data has been safely synced to the server.',
+        const SmartReTranslator(
+          text: 'Your data has been safely synced to the server.',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 15,
@@ -562,15 +474,15 @@ class _UpdateScreenState extends State<UpdateScreen>
             color: AppColors.errorColor.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
+          child: const Icon(
             Icons.error_outline_rounded,
             size: 64,
             color: AppColors.errorColor,
           ),
         ),
         const SizedBox(height: 32),
-        Text(
-          'Sync Failed',
+        const SmartReTranslator(
+          text: 'Sync Failed',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
@@ -578,10 +490,12 @@ class _UpdateScreenState extends State<UpdateScreen>
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          'Unable to sync your data. Please check your internet connection and try again.',
+        SmartReTranslator(
+          text: _syncStatus.isNotEmpty
+              ? _syncStatus
+              : 'Unable to sync your data. Please check your internet connection and try again.',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 15,
             color: AppColors.textSecondary,
             height: 1.5,
@@ -602,15 +516,15 @@ class _UpdateScreenState extends State<UpdateScreen>
             color: AppColors.warningColor.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
+          child: const Icon(
             Icons.warning_amber_rounded,
             size: 64,
             color: AppColors.warningColor,
           ),
         ),
         const SizedBox(height: 32),
-        Text(
-          'Data Loss Warning',
+        const SmartReTranslator(
+          text: 'Data Loss Warning',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
@@ -628,16 +542,17 @@ class _UpdateScreenState extends State<UpdateScreen>
               width: 2,
             ),
           ),
-          child: Column(
+          child: const Column(
             children: [
               Icon(
                 Icons.delete_forever_rounded,
                 size: 40,
                 color: AppColors.errorColor,
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Updating without syncing will permanently delete all offline data.',
+              SizedBox(height: 12),
+              SmartReTranslator(
+                text:
+                    'Updating without syncing will permanently delete all offline data.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
@@ -646,9 +561,9 @@ class _UpdateScreenState extends State<UpdateScreen>
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'This action cannot be undone.',
+              SizedBox(height: 8),
+              SmartReTranslator(
+                text: 'This action cannot be undone.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13,
@@ -674,15 +589,15 @@ class _UpdateScreenState extends State<UpdateScreen>
             color: AppColors.primaryGreen.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
+          child: const Icon(
             Icons.system_update_rounded,
             size: 64,
             color: AppColors.primaryGreen,
           ),
         ),
         const SizedBox(height: 32),
-        Text(
-          'Ready to Update',
+        const SmartReTranslator(
+          text: 'Ready to Update',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
@@ -690,11 +605,12 @@ class _UpdateScreenState extends State<UpdateScreen>
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          widget.config['update_message'] ??
+        SmartReTranslator(
+          text:
+              widget.config['update_message'] ??
               'A new version of Agrhi is available with improvements and new features.',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 15,
             color: AppColors.textSecondary,
             height: 1.5,
@@ -705,7 +621,7 @@ class _UpdateScreenState extends State<UpdateScreen>
   }
 
   Widget _buildLoadingState() {
-    return Center(
+    return const Center(
       child: CircularProgressIndicator(
         valueColor: AlwaysStoppedAnimation(AppColors.primaryGreen),
       ),
@@ -730,8 +646,8 @@ class _UpdateScreenState extends State<UpdateScreen>
                   ),
                   elevation: 2,
                 ),
-                child: const Text(
-                  'Sync & Update',
+                child: const SmartReTranslator(
+                  text: 'Sync & Update',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -739,8 +655,8 @@ class _UpdateScreenState extends State<UpdateScreen>
             const SizedBox(height: 12),
             TextButton(
               onPressed: _skipSync,
-              child: Text(
-                'Skip Sync (Not Recommended)',
+              child: const SmartReTranslator(
+                text: 'Skip Sync (Not Recommended)',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
               ),
             ),
@@ -765,8 +681,8 @@ class _UpdateScreenState extends State<UpdateScreen>
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                child: const Text(
-                  'Retry Sync',
+                child: const SmartReTranslator(
+                  text: 'Retry Sync',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -774,8 +690,8 @@ class _UpdateScreenState extends State<UpdateScreen>
             const SizedBox(height: 12),
             TextButton(
               onPressed: _skipSync,
-              child: Text(
-                'Continue Without Syncing',
+              child: const SmartReTranslator(
+                text: 'Continue Without Syncing',
                 style: TextStyle(color: AppColors.errorColor, fontSize: 14),
               ),
             ),
@@ -797,8 +713,8 @@ class _UpdateScreenState extends State<UpdateScreen>
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                child: const Text(
-                  'Go Back & Sync',
+                child: const SmartReTranslator(
+                  text: 'Go Back & Sync',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -811,13 +727,13 @@ class _UpdateScreenState extends State<UpdateScreen>
                 onPressed: _proceedWithoutSync,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.errorColor,
-                  side: BorderSide(color: AppColors.errorColor, width: 2),
+                  side: const BorderSide(color: AppColors.errorColor, width: 2),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                child: const Text(
-                  'Delete Data & Update',
+                child: const SmartReTranslator(
+                  text: 'Delete Data & Update',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -839,8 +755,8 @@ class _UpdateScreenState extends State<UpdateScreen>
               ),
               elevation: 2,
             ),
-            child: const Text(
-              'Update Now',
+            child: const SmartReTranslator(
+              text: 'Update Now',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
           ),

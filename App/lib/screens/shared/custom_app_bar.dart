@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
+import '../../src/services/connectivity_manager.dart';
 import 'language_switcher.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -17,6 +18,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onBackPressed;
   final VoidCallback? onMenuPressed;
   final bool showLanguageSwitcher;
+  final bool showOnlineStatus;
 
   const CustomAppBar({
     super.key,
@@ -32,6 +34,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.onBackPressed,
     this.onMenuPressed,
     this.showLanguageSwitcher = false,
+    this.showOnlineStatus = true,
   });
 
   @override
@@ -48,12 +51,17 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       scrolledUnderElevation: elevation ?? 4,
       centerTitle: centerTitle,
       surfaceTintColor: Colors.transparent,
-      toolbarHeight: 70, // ✅ INCREASED: Default is 56, now 70
+      toolbarHeight: 70,
     );
   }
 
   List<Widget>? _buildActions() {
     final actionsList = <Widget>[];
+
+    // ✅ Add online status icon first
+    if (showOnlineStatus) {
+      actionsList.add(const _OnlineStatusIcon());
+    }
 
     if (showLanguageSwitcher) {
       actionsList.add(const LanguageSwitcher(showAsIcon: true));
@@ -86,7 +94,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: foregroundColor ?? AppColors.textWhite,
                   fontWeight: FontWeight.w600,
-                  fontSize: 22, // ✅ INCREASED: From 20 to 22
+                  fontSize: 22,
                   letterSpacing: 0.15,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -94,7 +102,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
               );
             },
           ),
-          const SizedBox(height: 4), // ✅ INCREASED: From 2 to 4
+          const SizedBox(height: 4),
           FutureBuilder<String>(
             future: languageService.translate(subtitle!),
             builder: (context, snapshot) {
@@ -105,7 +113,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                     0.85,
                   ),
                   fontWeight: FontWeight.w400,
-                  fontSize: 14, // ✅ INCREASED: From 13 to 14
+                  fontSize: 14,
                   letterSpacing: 0.1,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -126,7 +134,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               color: foregroundColor ?? AppColors.textWhite,
               fontWeight: FontWeight.w600,
-              fontSize: 22, // ✅ INCREASED: From 20 to 22
+              fontSize: 22,
               letterSpacing: 0.15,
             ),
             overflow: TextOverflow.ellipsis,
@@ -145,7 +153,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         icon: Icon(
           Icons.menu,
           color: foregroundColor ?? AppColors.textWhite,
-          size: 26, // ✅ INCREASED: From 24 to 26
+          size: 26,
         ),
         onPressed: onMenuPressed,
         tooltip: 'Menu',
@@ -156,7 +164,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         icon: Icon(
           Icons.arrow_back,
           color: foregroundColor ?? AppColors.textWhite,
-          size: 26, // ✅ INCREASED: From 24 to 26
+          size: 26,
         ),
         onPressed: onBackPressed,
         tooltip: 'Back',
@@ -167,7 +175,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         icon: Icon(
           Icons.arrow_back,
           color: foregroundColor ?? AppColors.textWhite,
-          size: 26, // ✅ INCREASED: From 24 to 26
+          size: 26,
         ),
         onPressed: () => Navigator.of(context).pop(),
         tooltip: 'Back',
@@ -178,7 +186,123 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(70); // ✅ INCREASED: From kToolbarHeight (56) to 70
+  Size get preferredSize => const Size.fromHeight(70);
+}
+
+// ✅ Online Status Icon Widget
+class _OnlineStatusIcon extends StatelessWidget {
+  const _OnlineStatusIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ConnectivityManager>(
+      builder: (context, connectivityManager, _) {
+        final isOnline = connectivityManager.isOnline;
+        final isSyncing = connectivityManager.isSyncing;
+
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Tooltip(
+            message: _getTooltipMessage(isOnline, isSyncing),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _getBackgroundColor(isOnline, isSyncing),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ✅ Animated Icon
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    transitionBuilder: (child, animation) {
+                      return ScaleTransition(scale: animation, child: child);
+                    },
+                    child: _buildStatusIcon(isOnline, isSyncing),
+                  ),
+                  const SizedBox(width: 6),
+                  // ✅ Status Text
+                  Text(
+                    _getStatusText(isOnline, isSyncing),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusIcon(bool isOnline, bool isSyncing) {
+    if (isSyncing) {
+      return const SizedBox(
+        key: ValueKey('syncing'),
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation(Colors.white),
+        ),
+      );
+    } else if (isOnline) {
+      return const Icon(
+        key: ValueKey('online'),
+        Icons.cloud_done_rounded,
+        color: Colors.white,
+        size: 16,
+      );
+    } else {
+      return const Icon(
+        key: ValueKey('offline'),
+        Icons.cloud_off_rounded,
+        color: Colors.white,
+        size: 16,
+      );
+    }
+  }
+
+  Color _getBackgroundColor(bool isOnline, bool isSyncing) {
+    if (isSyncing) {
+      return Colors.blue.shade600.withOpacity(0.9);
+    } else if (isOnline) {
+      return AppColors.successColor.withOpacity(0.9);
+    } else {
+      return AppColors.errorColor.withOpacity(0.9);
+    }
+  }
+
+  String _getStatusText(bool isOnline, bool isSyncing) {
+    if (isSyncing) {
+      return 'Syncing';
+    } else if (isOnline) {
+      return 'Online';
+    } else {
+      return 'Offline';
+    }
+  }
+
+  String _getTooltipMessage(bool isOnline, bool isSyncing) {
+    if (isSyncing) {
+      return 'Syncing data with server...';
+    } else if (isOnline) {
+      return 'Connected to internet';
+    } else {
+      return 'No internet connection';
+    }
+  }
 }
 
 class DashboardAppBar extends CustomAppBar {
@@ -189,6 +313,7 @@ class DashboardAppBar extends CustomAppBar {
         automaticallyImplyLeading: false,
         onMenuPressed: null,
         showLanguageSwitcher: false,
+        showOnlineStatus: true,
       );
 
   DashboardAppBar.withSettings({
@@ -202,6 +327,7 @@ class DashboardAppBar extends CustomAppBar {
          subtitle: 'Enjoy our Services',
          automaticallyImplyLeading: false,
          showLanguageSwitcher: true,
+         showOnlineStatus: true,
          actions: [
            _SettingsDropdownButton(
              onSyncPressed: onSyncPressed,
@@ -236,86 +362,88 @@ class _SettingsDropdownButton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: PopupMenuButton<String>(
-        icon: Icon(
+        icon: const Icon(
           Icons.settings_outlined,
           color: AppColors.textWhite,
-          size: 26, // ✅ INCREASED: From 24 to 26
+          size: 26,
         ),
         tooltip: 'Settings',
-        offset: const Offset(
-          0,
-          60,
-        ), // ✅ ADJUSTED: Increased from 52 to 60 to match new height
+        offset: const Offset(0, 60),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         color: AppColors.primaryWhite.withOpacity(0.95),
         elevation: 8,
         splashRadius: 24,
         padding: EdgeInsets.zero,
         itemBuilder: (BuildContext context) => [
-          // ✅ Sync Option
+          // ✅ Sync Option with real-time status
           PopupMenuItem<String>(
             value: 'sync',
             enabled: !isSyncing,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: FutureBuilder<String>(
-              future: languageService.translate('Sync'),
-              builder: (context, snapshot) {
-                return Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: isSyncing
-                            ? AppColors.textSecondary.withOpacity(0.1)
-                            : AppColors.primaryGreen.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: isSyncing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.textSecondary,
-                                ),
-                              )
-                            : Icon(
-                                Icons.sync_outlined,
-                                color: AppColors.primaryGreen,
-                                size: 20,
-                              ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            snapshot.data ?? 'Sync',
-                            style: TextStyle(
-                              color: isSyncing
-                                  ? AppColors.textSecondary.withOpacity(0.5)
-                                  : AppColors.textPrimary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
+            child: Consumer<ConnectivityManager>(
+              builder: (context, connectivityManager, _) {
+                return FutureBuilder<String>(
+                  future: languageService.translate('Sync'),
+                  builder: (context, snapshot) {
+                    return Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: isSyncing
+                                ? AppColors.textSecondary.withOpacity(0.1)
+                                : AppColors.primaryGreen.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          if (isSyncing)
-                            Text(
-                              'In progress...',
-                              style: TextStyle(
-                                color: AppColors.textSecondary.withOpacity(0.7),
-                                fontSize: 12,
+                          child: Center(
+                            child: isSyncing
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.sync_outlined,
+                                    color: AppColors.primaryGreen,
+                                    size: 20,
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                snapshot.data ?? 'Sync',
+                                style: TextStyle(
+                                  color: isSyncing
+                                      ? AppColors.textSecondary.withOpacity(0.5)
+                                      : AppColors.textPrimary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
+                              Text(
+                                connectivityManager.syncStatusMessage,
+                                style: TextStyle(
+                                  color: AppColors.textSecondary.withOpacity(
+                                    0.7,
+                                  ),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -362,7 +490,6 @@ class _SettingsDropdownButton extends StatelessWidget {
             ),
           ),
 
-          // ✅ Divider with proper spacing
           const PopupMenuDivider(height: 1),
 
           // ✅ Logout Option
@@ -381,7 +508,7 @@ class _SettingsDropdownButton extends StatelessWidget {
                         color: AppColors.errorColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Center(
+                      child: const Center(
                         child: Icon(
                           Icons.logout,
                           color: AppColors.errorColor,
@@ -393,7 +520,7 @@ class _SettingsDropdownButton extends StatelessWidget {
                     Expanded(
                       child: Text(
                         snapshot.data ?? 'Logout',
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: AppColors.errorColor,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -431,6 +558,7 @@ class FeatureAppBar extends CustomAppBar {
     super.actions,
     super.onBackPressed,
     super.showLanguageSwitcher,
+    super.showOnlineStatus = true,
   }) : super(title: featureName, centerTitle: true);
 }
 
@@ -443,6 +571,7 @@ class ProfileAppBar extends CustomAppBar {
     super.actions,
     super.onBackPressed,
     super.showLanguageSwitcher,
+    super.showOnlineStatus = true,
   }) : super(title: 'Profile', subtitle: 'Hello, $userName');
 }
 
@@ -454,6 +583,7 @@ class MenuAppBar extends CustomAppBar {
     super.actions,
     required VoidCallback super.onMenuPressed,
     super.showLanguageSwitcher = true,
+    super.showOnlineStatus = true,
   }) : super(automaticallyImplyLeading: false);
 }
 
@@ -465,5 +595,6 @@ class BackAppBar extends CustomAppBar {
     super.actions,
     super.onBackPressed,
     super.showLanguageSwitcher,
+    super.showOnlineStatus = true,
   });
 }

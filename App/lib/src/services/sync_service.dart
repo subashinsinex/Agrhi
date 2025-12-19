@@ -1,4 +1,5 @@
 // lib/src/services/sync_service.dart
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../database/database_helper.dart';
 import '../../utils/constants.dart';
+import 'api_service.dart';
 
 /// Service for two-way sync of disease analysis and images
 class SyncService {
@@ -16,7 +18,9 @@ class SyncService {
   final DatabaseHelper _db = DatabaseHelper.instance;
   static const String baseUrl = AppConstants.baseUrl;
 
-  // ⭐ ADD: Secure storage for sync timestamps
+  // ✅ Sync lock to prevent duplicate syncs
+  bool _isSyncing = false;
+
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
@@ -29,6 +33,18 @@ class SyncService {
 
   /// Perform full sync: catalogs + analyses + images
   Future<Map<String, dynamic>> performFullSync(String accessToken) async {
+    // ✅ Check if already syncing
+    if (_isSyncing) {
+      debugPrint('⏭️ Disease sync already in progress - skipping');
+      return {
+        'success': false,
+        'error': 'Sync already in progress',
+        'skipped': true,
+      };
+    }
+
+    _isSyncing = true; // ✅ Lock sync
+
     try {
       debugPrint('🔄 Starting full sync...');
 
@@ -38,8 +54,14 @@ class SyncService {
       // Step 2: Two-way sync for analyses and images
       final twoWayResult = await performTwoWaySync(accessToken);
 
+      final success = catalogResult['success'] && twoWayResult['success'];
+
+      if (success) {
+        debugPrint('✅ Disease analysis sync completed');
+      }
+
       return {
-        'success': catalogResult['success'] && twoWayResult['success'],
+        'success': success,
         'catalogs': catalogResult,
         'two_way_sync': twoWayResult,
         'timestamp': DateTime.now().toIso8601String(),
@@ -47,6 +69,8 @@ class SyncService {
     } catch (e) {
       debugPrint('❌ Full sync error: $e');
       return {'success': false, 'error': e.toString()};
+    } finally {
+      _isSyncing = false; // ✅ Unlock sync
     }
   }
 
@@ -119,22 +143,17 @@ class SyncService {
         });
       }
 
-      // Send batch upload as JSON
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/sync/batch-upload'),
-            headers: {
-              'Authorization': 'Bearer $accessToken',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'analyses': analysesToUpload}),
-          )
-          .timeout(const Duration(seconds: 30));
+      // ✅ USE ApiService
+      final response = await ApiService.instance.post(
+        '/sync/batch-upload',
+        body: {'analyses': analysesToUpload},
+        requiresAuth: true,
+      );
 
       debugPrint('📡 Upload response: ${response.statusCode}');
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
+      if (response.isSuccess) {
+        final responseData = response.data;
         final uploadedIds =
             (responseData['uploaded_ids'] as List?)
                 ?.map((id) => id.toString())
@@ -156,10 +175,10 @@ class SyncService {
       }
 
       debugPrint('❌ Upload failed: ${response.statusCode}');
-      debugPrint('Response body: ${response.body}');
+      debugPrint('Response error: ${response.error}');
       return {
         'success': false,
-        'message': 'Upload failed: ${response.statusCode}',
+        'message': 'Upload failed: ${response.error}',
         'uploaded': 0,
       };
     } catch (e) {
@@ -176,23 +195,21 @@ class SyncService {
     String? since,
   }) async {
     try {
-      // ⭐ CHANGED: Get last sync timestamp from secure storage
       final lastSync = since ?? await _getLastSyncTimestamp();
-
-      final uri = lastSync != null
-          ? Uri.parse('$baseUrl/sync/changes?since=$lastSync')
-          : Uri.parse('$baseUrl/sync/changes');
 
       debugPrint('📥 Downloading analyses since: ${lastSync ?? "beginning"}');
 
-      final response = await http
-          .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
-          .timeout(const Duration(seconds: 30));
+      // ✅ USE ApiService
+      final response = await ApiService.instance.get(
+        '/sync/changes',
+        queryParams: lastSync != null ? {'since': lastSync} : null,
+        requiresAuth: true,
+      );
 
       debugPrint('📡 Download response: ${response.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      if (response.isSuccess) {
+        final data = response.data;
         final analyses =
             (data['analyses'] as List?)?.cast<Map<String, dynamic>>() ?? [];
         final deletedIds =
@@ -208,7 +225,7 @@ class SyncService {
         // Apply server changes locally
         await _applyServerChanges(analyses, deletedIds);
 
-        // ⭐ CHANGED: Update sync timestamp in secure storage
+        // Update sync timestamp in secure storage
         await _updateLastSyncTimestamp(data['server_timestamp']);
 
         return {
@@ -219,10 +236,10 @@ class SyncService {
       }
 
       debugPrint('❌ Download failed: ${response.statusCode}');
-      debugPrint('Response body: ${response.body}');
+      debugPrint('Response error: ${response.error}');
       return {
         'success': false,
-        'message': 'Download failed: ${response.statusCode}',
+        'message': 'Download failed: ${response.error}',
         'downloaded': 0,
         'deleted': 0,
       };
@@ -238,7 +255,6 @@ class SyncService {
   }
 
   /// Apply server changes to local database
-  /// ⭐ Smart handling of placeholder URLs
   Future<void> _applyServerChanges(
     List<Map<String, dynamic>> analyses,
     List<String> deletedIds,
@@ -259,7 +275,7 @@ class SyncService {
 
           final serverImageUrl = analysis['server_image_url'] as String?;
 
-          // ⭐ CHECK: Is this a placeholder URL or real URL?
+          // Check: Is this a placeholder URL or real URL?
           final isPlaceholder =
               serverImageUrl == null ||
               serverImageUrl == '/uploads/images/pending' ||
@@ -269,11 +285,9 @@ class SyncService {
             // Insert new image record
             await txn.insert('images', {
               'image_id': analysis['image_id'],
-              'local_path': '', // Empty for server-only images
+              'local_path': '',
               'server_image_url': serverImageUrl,
-              'is_uploaded': isPlaceholder
-                  ? 0
-                  : 1, // ⭐ Only mark as uploaded if real URL
+              'is_uploaded': isPlaceholder ? 0 : 1,
             });
             debugPrint(
               '📥 Created image record: ${analysis['image_id']} (uploaded: ${!isPlaceholder})',
@@ -287,10 +301,7 @@ class SyncService {
               'images',
               {
                 'server_image_url': serverImageUrl,
-                'is_uploaded': isPlaceholder
-                    ? 0
-                    : 1, // ⭐ Only mark as uploaded if real URL
-                // ⭐ PRESERVE: Keep local_path if it exists
+                'is_uploaded': isPlaceholder ? 0 : 1,
                 if (existingLocalPath != null && existingLocalPath.isNotEmpty)
                   'local_path': existingLocalPath,
               },
@@ -359,12 +370,11 @@ class SyncService {
   // ================= IMAGE UPLOAD (LOCAL TO SERVER) =================
 
   /// Sync images: upload local images to server
-  /// ⭐ Comprehensive query to catch all pending images
   Future<Map<String, dynamic>> syncImages(String accessToken) async {
     try {
       final db = await _db.database;
 
-      // ⭐ COMPREHENSIVE QUERY: Find all images that need uploading
+      // Find all images that need uploading
       final pendingImages = await db.query(
         'images',
         where: """
@@ -378,7 +388,7 @@ class SyncService {
         """,
       );
 
-      debugPrint('🖼️ Syncing ${pendingImages.length} images...');
+      debugPrint('📤 Syncing ${pendingImages.length} images...');
 
       int uploaded = 0;
 
@@ -412,6 +422,7 @@ class SyncService {
   }
 
   /// Upload single image file to server
+  /// Note: Multipart uploads still use raw http since ApiService doesn't support it yet
   Future<Map<String, dynamic>> _uploadImage(
     String imageId,
     String localPath,
@@ -465,7 +476,6 @@ class SyncService {
   // ================= IMAGE DOWNLOAD (SERVER TO LOCAL) =================
 
   /// Download images from server that don't exist locally
-  /// ⭐ Download server images to local storage
   Future<Map<String, dynamic>> downloadServerImages(String accessToken) async {
     try {
       final db = await _db.database;
@@ -521,7 +531,7 @@ class SyncService {
   }
 
   /// Download single image from server and save locally
-  /// ⭐ FIX: Removes /api from baseUrl for image downloads
+  /// Note: Binary downloads still use raw http for streaming
   Future<String?> _downloadImage(
     String imageId,
     String serverUrl,
@@ -531,17 +541,14 @@ class SyncService {
       // Construct full URL
       String fullUrl;
       if (serverUrl.startsWith('http')) {
-        // Already a full URL
         fullUrl = serverUrl;
       } else {
-        // ⭐ FIX: Remove '/api' from baseUrl for image downloads
         final imageBaseUrl = baseUrl.replaceAll('/api', '');
         fullUrl = '$imageBaseUrl$serverUrl';
       }
 
       debugPrint('📥 Downloading image from: $fullUrl');
 
-      // Download image
       final response = await http
           .get(
             Uri.parse(fullUrl),
@@ -558,7 +565,6 @@ class SyncService {
       final directory = await getApplicationDocumentsDirectory();
       final imagesDir = Directory('${directory.path}/disease_images');
 
-      // Create directory if it doesn't exist
       if (!await imagesDir.exists()) {
         await imagesDir.create(recursive: true);
       }
@@ -591,7 +597,6 @@ class SyncService {
   }
 
   // ================= SYNC TIMESTAMP MANAGEMENT =================
-  // ⭐ CHANGED: Use Flutter Secure Storage instead of database
 
   /// Get last sync timestamp from secure storage
   Future<String?> _getLastSyncTimestamp() async {

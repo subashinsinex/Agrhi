@@ -1,10 +1,10 @@
-// lib/screens/features/crop_care_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../utils/colors.dart';
 import '../../../src/services/crop_care_sync_service.dart';
 import '../../../src/database/database_helper.dart';
 import '../../shared/smart_retranslator.dart';
+import '../../shared/custom_app_bar.dart';
 import 'add_farm_screen.dart';
 import 'add_crop_screen.dart';
 
@@ -42,52 +42,11 @@ class _CropCareScreenState extends State<CropCareScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const SmartReTranslator(
-          text: 'Crop Care Manager',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: AppColors.primaryGreen,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.sync, color: Colors.white),
-            onPressed: () => _performManualSync(),
-            tooltip: 'Sync',
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          tabs: const [
-            Tab(
-              icon: Icon(Icons.eco, size: 20),
-              child: SmartReTranslator(
-                text: 'Crops',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Tab(
-              icon: Icon(Icons.agriculture, size: 20),
-              child: SmartReTranslator(
-                text: 'Farms',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
+      // ✅ CustomAppBar WITHOUT TabBar
+      appBar: CustomAppBar(
+        title: 'Crop Care Manager',
+        showOnlineStatus: true,
+        showLanguageSwitcher: false,
       ),
       backgroundColor: AppColors.backgroundColor,
       floatingActionButton: FloatingActionButton(
@@ -111,77 +70,58 @@ class _CropCareScreenState extends State<CropCareScreen>
         backgroundColor: AppColors.primaryGreen,
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          CropsManagerTab(key: _cropsTabKey, onDataChanged: _refreshBothTabs),
-          FarmsManagerTab(key: _farmsTabKey, onDataChanged: _refreshBothTabs),
+          // ✅ TabBar BELOW AppBar
+          Container(
+            color: AppColors.primaryGreen,
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: Colors.white,
+              indicatorWeight: 3,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              tabs: const [
+                Tab(
+                  icon: Icon(Icons.eco, size: 20),
+                  child: SmartReTranslator(
+                    text: 'Crops',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Tab(
+                  icon: Icon(Icons.agriculture, size: 20),
+                  child: SmartReTranslator(
+                    text: 'Farms',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // ✅ TabBarView takes remaining space
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                CropsManagerTab(
+                  key: _cropsTabKey,
+                  onDataChanged: _refreshBothTabs,
+                ),
+                FarmsManagerTab(
+                  key: _farmsTabKey,
+                  onDataChanged: _refreshBothTabs,
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
-  }
-
-  Future<void> _performManualSync() async {
-    final storage = const FlutterSecureStorage(
-      aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    );
-    try {
-      final token = await storage.read(key: 'access_token');
-      if (token == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Not authenticated')));
-        return;
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              SizedBox(width: 16),
-              Text('Syncing...'),
-            ],
-          ),
-          duration: Duration(seconds: 30),
-        ),
-      );
-      final result = await CropCareSyncService.instance.performFullSync(token);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Sync completed successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _refreshBothTabs();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '❌ Sync failed: ${result['error'] ?? 'Unknown error'}',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
-      );
-    }
   }
 }
 
@@ -257,49 +197,60 @@ class _CropsManagerTabState extends State<CropsManagerTab>
       _isLoading = true;
       _error = null;
     });
-    try {
-      final token = await _getAccessToken();
-      if (token == null) throw Exception('Not authenticated');
 
-      await CropCareSyncService.instance.performFullSync(token);
+    try {
       final db = DatabaseHelper.instance;
       final allCrops = await db.getAllCrops();
-
-      // ✅ Filter to show only active crops (isactive = 1)
       final activeCrops = allCrops
           .where((crop) => crop['isactive'] == 1)
           .toList();
-
       final pending = await db.getPendingCrops();
+
       setState(() {
-        _crops = activeCrops; // ✅ Show only active crops
+        _crops = activeCrops;
         _pendingCount = pending.length;
         _isLoading = false;
       });
+
+      final token = await _getAccessToken();
+      if (token != null) {
+        CropCareSyncService.instance
+            .performFullSync(token)
+            .then((result) {
+              if (result['success'] == true && mounted) {
+                _refreshDataSilently();
+              }
+            })
+            .catchError((e) {
+              debugPrint('⚠️ Background sync error: $e');
+            });
+      }
     } catch (e) {
-      try {
-        final db = DatabaseHelper.instance;
-        final allCrops = await db.getAllCrops();
-
-        // ✅ Filter to show only active crops (isactive = 1)
-        final activeCrops = allCrops
-            .where((crop) => crop['isactive'] == 1)
-            .toList();
-
-        final pending = await db.getPendingCrops();
-        setState(() {
-          _crops = activeCrops; // ✅ Show only active crops
-          _pendingCount = pending.length;
-          _isLoading = false;
-          _error = 'Using offline data';
-        });
-        return;
-      } catch (_) {}
-
       setState(() {
         _error = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _refreshDataSilently() async {
+    try {
+      final db = DatabaseHelper.instance;
+      final allCrops = await db.getAllCrops();
+      final activeCrops = allCrops
+          .where((crop) => crop['isactive'] == 1)
+          .toList();
+      final pending = await db.getPendingCrops();
+
+      if (mounted) {
+        setState(() {
+          _crops = activeCrops;
+          _pendingCount = pending.length;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Silent refresh error: $e');
     }
   }
 
@@ -348,9 +299,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
 
     try {
       final db = DatabaseHelper.instance;
-
       await db.updateCropActiveStatus(cropId: cropId, isActive: 0);
-
       debugPrint('✅ Crop $cropId deactivated');
 
       if (mounted) {
@@ -362,7 +311,6 @@ class _CropsManagerTabState extends State<CropsManagerTab>
             backgroundColor: Colors.orange,
           ),
         );
-
         _loadCrops();
       }
     } catch (e) {
@@ -390,7 +338,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
             CircularProgressIndicator(color: AppColors.primaryGreen),
             const SizedBox(height: 16),
             const SmartReTranslator(
-              text: 'Syncing crops...',
+              text: 'Loading crops...',
               style: TextStyle(fontSize: 16, color: Colors.grey),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -766,7 +714,6 @@ class _CropsManagerTabState extends State<CropsManagerTab>
               ],
             ),
             const SizedBox(height: 10),
-
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -973,7 +920,6 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                 ],
               ),
             ),
-
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
@@ -1097,48 +1043,30 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
     });
 
     try {
-      final token = await _getAccessToken();
-      if (token == null) {
-        throw Exception('Not authenticated');
-      }
-
-      debugPrint('🔄 Starting farm sync...');
-
-      final syncResult = await CropCareSyncService.instance.performFullSync(
-        token,
-      );
-      debugPrint('📊 Sync result: $syncResult');
-
       final db = DatabaseHelper.instance;
       final farmsList = await db.getAllFarmsWithRelations();
       final pending = await db.getPendingFarms();
-
-      debugPrint(
-        '✅ Loaded ${farmsList.length} farms (${pending.length} pending)',
-      );
 
       setState(() {
         _farms = farmsList;
         _pendingCount = pending.length;
         _isLoading = false;
       });
+
+      final token = await _getAccessToken();
+      if (token != null) {
+        CropCareSyncService.instance
+            .performFullSync(token)
+            .then((result) {
+              if (result['success'] == true && mounted) {
+                _refreshDataSilently();
+              }
+            })
+            .catchError((e) {
+              debugPrint('⚠️ Background sync error: $e');
+            });
+      }
     } catch (e) {
-      debugPrint('❌ Error loading farms: $e');
-
-      try {
-        final db = DatabaseHelper.instance;
-        final farmsList = await db.getAllFarmsWithRelations();
-        final pending = await db.getPendingFarms();
-
-        setState(() {
-          _farms = farmsList;
-          _pendingCount = pending.length;
-          _isLoading = false;
-          _error = 'Using offline data: ${e.toString()}';
-        });
-        return;
-      } catch (_) {}
-
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -1146,13 +1074,22 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
     }
   }
 
-  void _addFarm() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const AddFarmScreen()),
-    ).then((added) {
-      if (added == true) widget.onDataChanged();
-    });
+  Future<void> _refreshDataSilently() async {
+    try {
+      final db = DatabaseHelper.instance;
+      final farmsList = await db.getAllFarmsWithRelations();
+      final pending = await db.getPendingFarms();
+
+      if (mounted) {
+        setState(() {
+          _farms = farmsList;
+          _pendingCount = pending.length;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Silent refresh error: $e');
+    }
   }
 
   void _editFarm(Map<String, dynamic> farm) {
@@ -1164,7 +1101,80 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
     });
   }
 
-  // ✅ UPDATED: Only count active crops
+  Future<void> _deleteFarm(Map<String, dynamic> farm) async {
+    final farmId = farm['farmid'].toString();
+    final surveyNumber = farm['surveynumber']?.toString() ?? 'this farm';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const SmartReTranslator(
+          text: 'Delete Farm?',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: SmartReTranslator(
+          text:
+              'Are you sure you want to delete farm $surveyNumber? This will also delete all associated crops.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const SmartReTranslator(text: 'Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.errorColor),
+            child: const SmartReTranslator(text: 'Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final db = DatabaseHelper.instance;
+      final result = await db.markFarmAsDeleted(farmId);
+
+      if (result['success'] == true) {
+        debugPrint('✅ Farm deletion: ${result['message']}');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: SmartReTranslator(
+                text: result['message'] ?? 'Farm deleted',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+          widget.onDataChanged();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: SmartReTranslator(
+                text: result['message'] ?? 'Failed to delete farm',
+              ),
+              backgroundColor: AppColors.errorColor,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error deleting farm: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: SmartReTranslator(text: 'Error: $e'),
+            backgroundColor: AppColors.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
   Future<Map<String, dynamic>> _calculateFarmStatistics() async {
     int totalCrops = 0;
     double totalUsedArea = 0.0;
@@ -1176,14 +1186,12 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
     for (var farm in _farms) {
       final farmId = farm['farmid']?.toString() ?? '';
       final allCrops = await DatabaseHelper.instance.getCropsByFarmId(farmId);
-
-      // ✅ Filter to count only active crops
       final activeCrops = allCrops
           .where((crop) => crop['isactive'] == 1)
           .toList();
 
       totalCrops += activeCrops.length;
-      totalUsedArea += activeCrops.fold<double>(
+      totalUsedArea += activeCrops.fold(
         0.0,
         (sum, crop) => sum + _toDouble(crop['fieldsize']),
       );
@@ -1191,7 +1199,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
 
     final availableArea = totalArea - totalUsedArea;
     final avgUtilization = totalArea > 0
-        ? (totalUsedArea / totalArea * 100)
+        ? (totalUsedArea / totalArea) * 100
         : 0.0;
 
     return {
@@ -1216,7 +1224,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
             CircularProgressIndicator(color: AppColors.primaryGreen),
             const SizedBox(height: 16),
             const SmartReTranslator(
-              text: 'Syncing farms...',
+              text: 'Loading farms...',
               style: TextStyle(fontSize: 16, color: Colors.grey),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1514,7 +1522,15 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                         ),
                         const SizedBox(height: 32),
                         ElevatedButton.icon(
-                          onPressed: _addFarm,
+                          onPressed: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const AddFarmScreen(),
+                              ),
+                            );
+                            if (result == true) widget.onDataChanged();
+                          },
                           icon: const Icon(Icons.add, color: Colors.white),
                           label: const SmartReTranslator(
                             text: 'Create Your First Farm',
@@ -1556,7 +1572,6 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
     );
   }
 
-  // ✅ UPDATED: Only count active crops in farm card
   Widget _buildFarmCard(Map<String, dynamic> farm) {
     final farmId = farm['farmid']?.toString() ?? '';
     final isPending = (farm['isdirty'] == 1 || farm['isuploaded'] == 0);
@@ -1584,19 +1599,17 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
       future: DatabaseHelper.instance.getCropsByFarmId(farmId),
       builder: (context, snapshot) {
         final allCrops = snapshot.data ?? [];
-
-        // ✅ Filter to count only active crops
         final activeCrops = allCrops
             .where((crop) => crop['isactive'] == 1)
             .toList();
 
         final totalFarmArea = _toDouble(farm['farmsize']);
-        final usedArea = activeCrops.fold<double>(
+        final usedArea = activeCrops.fold(
           0.0,
           (sum, crop) => sum + _toDouble(crop['fieldsize']),
         );
         final usagePercentage = totalFarmArea > 0
-            ? ((usedArea / totalFarmArea) * 100).clamp(0, 100)
+            ? (usedArea / totalFarmArea * 100).clamp(0, 100)
             : 0.0;
 
         return Container(
@@ -1725,9 +1738,9 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: usagePercentage > 90
+                        color: usagePercentage >= 90
                             ? Colors.red
-                            : usagePercentage > 70
+                            : usagePercentage >= 70
                             ? Colors.orange
                             : AppColors.successColor,
                         borderRadius: BorderRadius.circular(6),
@@ -1743,7 +1756,6 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                     ),
                   ],
                 ),
-
                 if (soilTypeNames.isNotEmpty ||
                     irrigationNames.isNotEmpty ||
                     waterSourceNames.isNotEmpty) ...[
@@ -1762,22 +1774,18 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                             soilTypeNames,
                             Colors.brown.shade700,
                           ),
-
                         if (soilTypeNames.isNotEmpty &&
                             irrigationNames.isNotEmpty)
                           const SizedBox(height: 6),
-
                         if (irrigationNames.isNotEmpty)
                           _buildCompactInfo(
                             Icons.water_drop,
                             irrigationNames,
                             Colors.blue.shade700,
                           ),
-
                         if (irrigationNames.isNotEmpty &&
                             waterSourceNames.isNotEmpty)
                           const SizedBox(height: 6),
-
                         if (waterSourceNames.isNotEmpty)
                           _buildCompactInfo(
                             Icons.water,
@@ -1788,29 +1796,50 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: () => _editFarm(farm),
-                    icon: const Icon(Icons.edit, size: 16),
-                    label: const SmartReTranslator(
-                      text: 'Edit',
-                      style: TextStyle(fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.primaryGreen,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => _editFarm(farm),
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const SmartReTranslator(
+                        text: 'Edit',
+                        style: TextStyle(fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primaryGreen,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: () => _deleteFarm(farm),
+                      icon: const Icon(Icons.delete, size: 16),
+                      label: const SmartReTranslator(
+                        text: 'Delete',
+                        style: TextStyle(fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.errorColor,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

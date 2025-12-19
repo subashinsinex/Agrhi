@@ -2289,4 +2289,23 @@ class DatabaseHelper {
       whereArgs: [cropId],
     );
   }
+
+  /// Cache subsidies
+  Future<void> cacheSubsidies(List<Map<String, dynamic>> subsidies) async {
+    final db = await database;
+    await db.delete('subsidies_cache'); // Clear old cache
+
+    for (final subsidy in subsidies) {
+      await db.insert('subsidies_cache', {
+        ...subsidy,
+        'cached_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  /// Get cached subsidies
+  Future<List<Map<String, dynamic>>> getCachedSubsidies() async {
+    final db = await database;
+    return await db.query('subsidies_cache', orderBy: 'title ASC');
+  }
 }

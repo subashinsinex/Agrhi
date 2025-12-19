@@ -1,15 +1,12 @@
 // lib/src/screens/features/feedback_screen.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
 import '../../utils/colors.dart';
 import '../../utils/storage_helper.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/auth_service.dart';
-import '../../src/services/connectivity_service.dart';
-import '../../utils/constants.dart';
-import '../shared/smart_retranslator.dart'; // ✅ ADD THIS
+import '../../src/services/api_service.dart';
+import '../shared/smart_retranslator.dart';
 
 class FeedbackItem {
   final String id;
@@ -55,7 +52,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
   late TabController _tabController;
   final StorageHelper _storage = StorageHelper();
   final AuthService _authService = AuthService();
-  final ConnectivityService _connectivityService = ConnectivityService();
 
   // Form state
   final _formKey = GlobalKey<FormState>();
@@ -77,13 +73,11 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     _tabController.addListener(_onTabChanged);
     _futureFeedbackHistory = fetchFeedbackHistory();
 
-    // ✅ NEW: Preload translations
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _preloadPhrases();
     });
   }
 
-  // ✅ NEW: Preload all phrases
   Future<void> _preloadPhrases() async {
     final languageService = Provider.of<LanguageService>(
       context,
@@ -158,56 +152,25 @@ class _FeedbackScreenState extends State<FeedbackScreen>
       _isSubmitting = true;
     });
 
-    final hasInternet = await _connectivityService.hasInternetConnection();
-
-    if (!hasInternet) {
-      setState(() {
-        _isSubmitting = false;
-      });
-      _showSnackBar(
-        'No internet connection. Please check your network.',
-        isError: true,
-      );
-      return;
-    }
-
     try {
-      final accessToken = await _storage.getAccessToken();
       final userId = await _storage.getUserId();
 
-      print(
-        '🔍 Submit Feedback - Access Token: ${accessToken != null ? "Found (${accessToken.length} chars)" : "NULL"}',
-      );
-      print('🔍 Submit Feedback - User ID: ${userId ?? "NULL"}');
-
-      if (accessToken == null || userId == null) {
+      if (userId == null) {
         throw Exception('Authentication required');
       }
 
-      final url = Uri.parse('${AppConstants.baseUrl}/feedback/addfeedback');
-
-      final requestBody = {
-        'user_id': userId,
-        'message': _messageController.text.trim(),
-        'isproblem': _isProblem,
-      };
-
-      print('🔗 Request URL: $url');
-      print('📤 Request Body (JSON): ${jsonEncode(requestBody)}');
-
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
+      // ✅ USE ApiService
+      final response = await ApiService.instance.post(
+        '/feedback/addfeedback',
+        body: {
+          'user_id': userId,
+          'message': _messageController.text.trim(),
+          'isproblem': _isProblem,
         },
-        body: jsonEncode(requestBody),
+        requiresAuth: true,
       );
 
-      print('📥 Response Status Code: ${response.statusCode}');
-      print('📥 Response Body: ${response.body}');
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (response.isSuccess) {
         print('✅ Feedback submitted successfully');
         _showSnackBar('Feedback submitted successfully!', isError: false);
 
@@ -222,69 +185,53 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         print('⚠️ 401 Unauthorized - attempting to refresh token');
         await _authService.refreshAccessToken();
         await _submitFeedback();
+      } else if (response.isOffline) {
+        throw Exception('No internet connection. Please check your network.');
       } else {
-        print('❌ Failed with status code: ${response.statusCode}');
-        throw Exception('Failed to submit feedback: ${response.statusCode}');
+        throw Exception(
+          response.error ?? 'Failed to submit feedback: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('❌ Error submitting feedback: $e');
       setState(() {
         _isSubmitting = false;
       });
-      _showSnackBar(
-        'Failed to submit feedback. Please try again.',
-        isError: true,
-      );
+
+      String errorMessage = e.toString();
+      if (errorMessage.contains('internet') ||
+          errorMessage.contains('network')) {
+        errorMessage = 'No internet connection. Please check your network.';
+      } else {
+        errorMessage = 'Failed to submit feedback. Please try again.';
+      }
+
+      _showSnackBar(errorMessage, isError: true);
     }
   }
 
   Future<List<FeedbackItem>> fetchFeedbackHistory() async {
-    final accessToken = await _storage.getAccessToken();
     final userId = await _storage.getUserId();
 
-    print(
-      '🔍 Feedback History - Access Token: ${accessToken != null ? "Found" : "NULL"}',
-    );
-    print('🔍 User ID: ${userId ?? "NULL"}');
-
-    if (accessToken == null || userId == null) {
+    if (userId == null) {
       throw Exception('Authentication required');
     }
 
     try {
       print('🔄 Fetching feedback history for user ID: $userId');
-      final url = Uri.parse(
-        '${AppConstants.baseUrl}/feedback/getfeedback/$userId',
-      );
-      print('🔗 Request URL: $url');
 
-      final response = await http.get(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
+      // ✅ USE ApiService
+      final response = await ApiService.instance.get(
+        '/feedback/getfeedback/$userId',
+        requiresAuth: true,
       );
 
-      print('📥 Response Status Code: ${response.statusCode}');
-      print('📥 Response Body: ${response.body}');
-
-      if (response.statusCode == 200) {
+      if (response.isSuccess) {
         setState(() {
           _hasHistoryError = false;
         });
 
-        final responseBody = response.body.trim();
-
-        if (responseBody.isEmpty || responseBody == '[]') {
-          print('✅ No feedback history found - returning empty list');
-          setState(() {
-            _feedbackHistory = [];
-          });
-          return [];
-        }
-
-        final dynamic jsonData = jsonDecode(responseBody);
+        final dynamic jsonData = response.data;
 
         List<dynamic> data;
         if (jsonData is List) {
@@ -319,9 +266,12 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         _setHistoryError();
         print('❌ Unauthorized - access token may be invalid or expired');
         throw Exception('Session expired - please log in again');
+      } else if (response.isOffline) {
+        _setHistoryError();
+        throw Exception('No internet connection');
       } else {
         _setHistoryError();
-        print('❌ HTTP Error ${response.statusCode}: ${response.body}');
+        print('❌ HTTP Error ${response.statusCode}: ${response.error}');
         throw Exception(
           'Failed to load feedback history: ${response.statusCode}',
         );
@@ -349,20 +299,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
     print('🔄 Retry initiated - checking internet connectivity...');
 
-    final hasInternet = await _connectivityService.hasInternetConnection();
-
-    if (!hasInternet) {
-      print('❌ No internet connection available');
-      setState(() {
-        _isRetryingHistory = false;
-        _historyErrorMessage =
-            'No internet connection. Please check your network and try again.';
-      });
-      return;
-    }
-
-    print('✅ Internet connection available');
-
+    // ApiService automatically checks connectivity
     setState(() {
       _historyErrorMessage = 'Refreshing access token...';
     });

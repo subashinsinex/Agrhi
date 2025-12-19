@@ -322,6 +322,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CustomAppBar(
+        showOnlineStatus: true,
         title: _isEditing ? 'Edit Crop' : 'Add Crop',
         actions: _isEditing
             ? [

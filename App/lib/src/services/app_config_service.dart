@@ -1,40 +1,32 @@
 // lib/src/services/app_config_service.dart
-import 'package:http/http.dart' as http;
+
 import 'package:package_info_plus/package_info_plus.dart';
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../utils/constants.dart';
+import 'api_service.dart';
 
 class AppConfigService {
-  static const String baseUrl = AppConstants.baseUrl;
-
-  // ✅ Send app info to server, get instructions back
   static Future<Map<String, dynamic>?> checkAppConfig() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-
-      // ✅ SEND APP INFO TO SERVER
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/developer/config'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'build_number': packageInfo.buildNumber,
-              'platform': Platform.isAndroid ? 'android' : 'ios',
-              'package_name': packageInfo.packageName,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final config = jsonDecode(response.body);
-        debugPrint('✅ Server says: $config');
-
-        // ✅ SERVER TOLD US WHAT TO DO
-        return config;
+      final response = await ApiService.instance.post(
+        '/developer/config',
+        body: {
+          'build_number': packageInfo.buildNumber,
+          'platform': Platform.isAndroid ? 'android' : 'ios',
+          'package_name': packageInfo.packageName,
+        },
+        timeout: const Duration(seconds: 10),
+        requiresAuth: false,
+      );
+      if (response.isSuccess) {
+        debugPrint('✅ Server says: ${response.data}');
+        return response.data as Map<String, dynamic>?;
+      } else if (response.isOffline) {
+        debugPrint('⚠️ Offline - skipping config check');
+        return null;
       } else {
-        debugPrint('⚠️ Server check failed: ${response.statusCode}');
+        debugPrint('⚠️ Server check failed: ${response.error}');
         return null;
       }
     } catch (e) {

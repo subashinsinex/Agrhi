@@ -229,7 +229,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       extendBodyBehindAppBar: true,
       backgroundColor: _isLoading ? AppColors.backgroundColor : null,
       appBar: BackAppBar(
-        title: 'Farm Location',
+        title: 'Map Service',
         actions: [
           if (_currentPosition != null)
             IconButton(
@@ -244,26 +244,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 });
               },
               tooltip: _showLocationCard ? 'Hide Info' : 'Show Info',
-            ),
-          if (_currentPosition != null)
-            IconButton(
-              icon: Icon(
-                _isTracking ? Icons.gps_fixed : Icons.gps_not_fixed,
-                color: _isTracking
-                    ? AppColors.textWhite
-                    : AppColors.textWhite.withOpacity(0.7),
-                size: 24,
-              ),
-              onPressed: () {
-                setState(() {
-                  _isTracking = !_isTracking;
-                });
-                if (_isTracking) {
-                  _recenterMap();
-                }
-              },
-              tooltip: _isTracking ? 'Tracking On' : 'Tracking Off',
-            ),
+            ), 
         ],
       ),
       body: Stack(

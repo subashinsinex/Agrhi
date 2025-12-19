@@ -1,14 +1,12 @@
 // lib/src/screens/features/subsidy_screen.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/colors.dart';
 import '../shared/smart_retranslator.dart';
-import '../../utils/storage_helper.dart';
+import '../shared/custom_app_bar.dart';
 import '../../src/services/auth_service.dart';
-import '../../src/services/connectivity_service.dart';
-import '../../utils/constants.dart';
+import '../../src/services/api_service.dart';
+import '../../src/database/database_helper.dart';
 
 class Subsidy {
   final String id;
@@ -27,12 +25,22 @@ class Subsidy {
 
   factory Subsidy.fromJson(Map<String, dynamic> json) {
     return Subsidy(
-      id: json['id'] ?? 0,
+      id: json['id']?.toString() ?? '0',
       title: json['title'] ?? 'Untitled',
       description: json['description'] ?? '',
       link: json['link'] ?? '',
       stateName: json['state_name'] ?? '',
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'link': link,
+      'state_name': stateName,
+    };
   }
 }
 
@@ -44,24 +52,24 @@ class SubsidyScreen extends StatefulWidget {
 }
 
 class _SubsidyScreenState extends State<SubsidyScreen> {
-  late Future<List<Subsidy>> _futureSubsidies;
   List<Subsidy> _allSubsidies = [];
   List<Subsidy> _filteredSubsidies = [];
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final StorageHelper _storage = StorageHelper();
   final AuthService _authService = AuthService();
-  final ConnectivityService _connectivityService = ConnectivityService();
+  final DatabaseHelper _db = DatabaseHelper.instance;
 
   bool _hasError = false;
   bool _showScrollToTop = false;
   bool _isRetrying = false;
+  bool _isRefreshing = false;
+  bool _isInitialLoading = true; // ✅ NEW: Track initial loading
   String _errorMessage = 'Please connect to the internet and try again.';
 
   @override
   void initState() {
     super.initState();
-    _fetchData();
+    _loadData();
     _searchController.addListener(_filterSubsidies);
     _scrollController.addListener(_onScroll);
   }
@@ -93,13 +101,104 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     );
   }
 
-  void _fetchData() {
-    _futureSubsidies = fetchSubsidies();
+  /// ✅ Load data with cache-first strategy
+  Future<void> _loadData() async {
+    try {
+      print('📦 Loading subsidies...');
+
+      // ✅ 1. Load from cache first (instant display)
+      final cachedSubsidies = await _loadFromCache();
+
+      if (cachedSubsidies.isNotEmpty) {
+        print('✅ Loaded ${cachedSubsidies.length} subsidies from cache');
+
+        setState(() {
+          _allSubsidies = cachedSubsidies;
+          _filteredSubsidies = List.of(_allSubsidies);
+          _hasError = false;
+          _isInitialLoading = false; // ✅ Hide initial loading
+        });
+
+        // ✅ 2. Fetch fresh data in background
+        _refreshInBackground();
+      } else {
+        // ✅ 3. No cache - fetch from server
+        print('⚠️ No cache found - fetching from server');
+        await fetchSubsidies();
+
+        setState(() {
+          _isInitialLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading subsidies: $e');
+
+      // Try to load from cache as fallback
+      final cachedSubsidies = await _loadFromCache();
+      if (cachedSubsidies.isNotEmpty) {
+        setState(() {
+          _allSubsidies = cachedSubsidies;
+          _filteredSubsidies = List.of(_allSubsidies);
+          _isInitialLoading = false;
+        });
+      } else {
+        setState(() {
+          _hasError = true;
+          _isInitialLoading = false;
+        });
+      }
+    }
+  }
+
+  /// ✅ Load subsidies from local cache
+  Future<List<Subsidy>> _loadFromCache() async {
+    try {
+      final cachedData = await _db.getCachedSubsidies();
+      return cachedData.map((json) => Subsidy.fromJson(json)).toList();
+    } catch (e) {
+      print('⚠️ Error loading from cache: $e');
+      return [];
+    }
+  }
+
+  /// ✅ Save subsidies to local cache
+  Future<void> _saveToCache(List<Subsidy> subsidies) async {
+    try {
+      await _db.cacheSubsidies(subsidies.map((s) => s.toJson()).toList());
+      print('✅ Saved ${subsidies.length} subsidies to cache');
+    } catch (e) {
+      print('⚠️ Error saving to cache: $e');
+    }
+  }
+
+  /// ✅ Refresh data in background without blocking UI
+  Future<void> _refreshInBackground() async {
+    if (_isRefreshing) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    try {
+      print('🔄 Refreshing subsidies in background...');
+
+      await fetchSubsidies();
+
+      print('✅ Background refresh completed');
+    } catch (e) {
+      print('⚠️ Background refresh failed (using cached data): $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
+    }
   }
 
   /// Intelligent retry with connectivity check and token refresh
   Future<void> _handleRetry() async {
-    if (_isRetrying) return; // Prevent multiple simultaneous retries
+    if (_isRetrying) return;
 
     setState(() {
       _isRetrying = true;
@@ -108,32 +207,15 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
 
     print('🔄 Retry initiated - checking internet connectivity...');
 
-    // Step 1: Check internet connectivity
-    final hasInternet = await _connectivityService.hasInternetConnection();
-
-    if (!hasInternet) {
-      print('❌ No internet connection available');
-      setState(() {
-        _isRetrying = false;
-        _errorMessage =
-            'No internet connection. Please check your network and try again.';
-      });
-      return;
-    }
-
-    print('✅ Internet connection available');
-
     setState(() {
       _errorMessage = 'Refreshing access token...';
     });
 
-    // Step 2: Try to refresh access token
     try {
       print('🔄 Attempting to refresh access token...');
       await _authService.refreshAccessToken();
       print('✅ Access token refreshed successfully');
 
-      // Step 3: Reload the page
       setState(() {
         _hasError = false;
         _isRetrying = false;
@@ -141,11 +223,10 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
       });
 
       print('🔄 Reloading subsidies...');
-      _fetchData();
+      await _loadData();
     } catch (e) {
       print('❌ Failed to refresh access token: $e');
 
-      // Check if it's an auth error or server error
       final errorMsg = e.toString();
       if (errorMsg.contains('expired') || errorMsg.contains('invalid')) {
         setState(() {
@@ -161,43 +242,55 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     }
   }
 
-  Future<List<Subsidy>> fetchSubsidies() async {
-    final accessToken = await _storage.getAccessToken();
-
-    print(
-      '🔍 Subsidy Screen - Access Token: ${accessToken != null ? "Found (${accessToken.length} chars)" : "NULL"}',
-    );
-
-    final headers = <String, String>{'Content-Type': 'application/json'};
-
-    if (accessToken != null) {
-      headers['Authorization'] = 'Bearer $accessToken';
-    } else {
-      print('⚠️ No access token found - API call will likely fail');
-    }
-
+  Future<void> fetchSubsidies() async {
     try {
-      final url = Uri.parse('${AppConstants.baseUrl}/subsidies/getSubsidy');
+      print('🔄 Fetching subsidies from server...');
 
-      final response = await http.get(url, headers: headers);
+      final response = await ApiService.instance.get(
+        '/subsidies/getSubsidy',
+        requiresAuth: true,
+      );
 
-      if (response.statusCode == 200) {
+      if (response.isSuccess) {
         _hasError = false;
-        final List<dynamic> data = jsonDecode(response.body);
-        final subsidies = data.map((json) => Subsidy.fromJson(json)).toList();
+
+        final dynamic data = response.data;
+
+        List<dynamic> subsidyList;
+        if (data is List) {
+          subsidyList = data;
+        } else if (data is Map && data['data'] != null) {
+          subsidyList = data['data'] as List;
+        } else {
+          print('⚠️ Unexpected response format');
+          subsidyList = [];
+        }
+
+        final subsidies = subsidyList
+            .map((json) => Subsidy.fromJson(json))
+            .toList();
+
         setState(() {
           _allSubsidies = subsidies;
           _filteredSubsidies = List.of(_allSubsidies);
         });
+
+        // ✅ Save to cache
+        await _saveToCache(subsidies);
+
         print('✅ Subsidies loaded successfully: ${subsidies.length} items');
-        return subsidies;
       } else if (response.statusCode == 401) {
         _setError();
         print('❌ Unauthorized - access token may be invalid or expired');
         throw Exception('Session expired - please log in again');
+      } else if (response.isOffline) {
+        _setError();
+        throw Exception('No internet connection');
       } else {
         _setError();
-        throw Exception('Failed to load subsidies: ${response.statusCode}');
+        throw Exception(
+          response.error ?? 'Failed to load subsidies: ${response.statusCode}',
+        );
       }
     } catch (e) {
       _setError();
@@ -230,17 +323,27 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
-      appBar: AppBar(
-        title: SmartReTranslator(
-          text: 'Subsidy',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: AppColors.primaryGreen,
-        foregroundColor: AppColors.textWhite,
-        elevation: 8,
-        shadowColor: AppColors.shadowColor,
+      appBar: CustomAppBar(
+        title: 'Subsidy',
+        showOnlineStatus: true,
+        showLanguageSwitcher: false,
+        actions: [
+          // ✅ Show refresh indicator when background refresh is active
+          if (_isRefreshing)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ),
+        ],
       ),
-      body: _hasError
+      body: _hasError && _allSubsidies.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -296,123 +399,116 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
                 ],
               ),
             )
-          : FutureBuilder<List<Subsidy>>(
-              future: _futureSubsidies,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  _setError();
-                  return const SizedBox.shrink();
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Center(
-                    child: SmartReTranslator(
-                      text: 'No subsidies found',
-                      style: const TextStyle(),
+          : _isInitialLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            ) // ✅ Only show on very first load
+          : _allSubsidies.isEmpty
+          ? const Center(
+              child: SmartReTranslator(
+                text: 'No subsidies found',
+                style: TextStyle(),
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _refreshInBackground,
+              child: CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SmartReTranslator(
+                            text: 'Search by title or state',
+                            style: TextStyle(
+                              color: AppColors.primaryGreen,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: AppColors.primaryGreen,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 0,
+                                horizontal: 14,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  );
-                } else {
-                  return CustomScrollView(
-                    controller: _scrollController,
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SmartReTranslator(
-                                text: 'Search by title or state',
-                                style: const TextStyle(
-                                  color: AppColors.primaryGreen,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
+                  ),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final subsidy = _filteredSubsidies[index];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 0,
+                          vertical: 4,
+                        ),
+                        child: Card(
+                          key: ValueKey(subsidy.id),
+                          color: Colors.white,
+                          elevation: 3,
+                          shadowColor: AppColors.primaryGreen.withOpacity(0.13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            title: SmartReTranslator(
+                              text: subsidy.title,
+                              style: const TextStyle(
+                                color: AppColors.primaryGreen,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
-                              const SizedBox(height: 4),
-                              TextField(
-                                controller: _searchController,
-                                decoration: InputDecoration(
-                                  prefixIcon: Icon(
-                                    Icons.search,
-                                    color: AppColors.primaryGreen,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 0,
-                                    horizontal: 14,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                ),
+                            ),
+                            subtitle: SmartReTranslator(
+                              text: subsidy.stateName,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: AppColors.textSecondary,
                               ),
-                            ],
+                            ),
+                            trailing: const Icon(
+                              Icons.arrow_forward_ios,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      SubsidyDetailScreen(subsidy: subsidy),
+                                ),
+                              );
+                            },
                           ),
                         ),
-                      ),
-                      SliverList(
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final subsidy = _filteredSubsidies[index];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 0,
-                              vertical: 4,
-                            ),
-                            child: Card(
-                              key: ValueKey(subsidy.id),
-                              color: Colors.white,
-                              elevation: 3,
-                              shadowColor: AppColors.primaryGreen.withOpacity(
-                                0.13,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 12,
-                                ),
-                                title: SmartReTranslator(
-                                  text: subsidy.title,
-                                  style: TextStyle(
-                                    color: AppColors.primaryGreen,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                subtitle: SmartReTranslator(
-                                  text: subsidy.stateName,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                                trailing: const Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 16,
-                                  color: Colors.grey,
-                                ),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          SubsidyDetailScreen(subsidy: subsidy),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          );
-                        }, childCount: _filteredSubsidies.length),
-                      ),
-                    ],
-                  );
-                }
-              },
+                      );
+                    }, childCount: _filteredSubsidies.length),
+                  ),
+                ],
+              ),
             ),
       floatingActionButton: _showScrollToTop
           ? FloatingActionButton(
@@ -425,7 +521,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
   }
 }
 
-// SubsidyDetailScreen with improved dialog visibility
+// SubsidyDetailScreen remains the same...
 class SubsidyDetailScreen extends StatelessWidget {
   final Subsidy subsidy;
   const SubsidyDetailScreen({super.key, required this.subsidy});
@@ -440,16 +536,16 @@ class SubsidyDetailScreen extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: Row(
+            title: const Row(
               children: [
                 Icon(
                   Icons.open_in_browser,
                   color: AppColors.primaryGreen,
                   size: 28,
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  'Open Link',
+                SizedBox(width: 12),
+                SmartReTranslator(
+                  text: 'Open Link',
                   style: TextStyle(
                     color: AppColors.primaryGreen,
                     fontWeight: FontWeight.bold,
@@ -458,10 +554,10 @@ class SubsidyDetailScreen extends StatelessWidget {
                 ),
               ],
             ),
-            content: Text(
-              'Do you want to open the link in your browser?',
+            content: const SmartReTranslator(
+              text: 'Do you want to open the link in your browser?',
               style: TextStyle(
-                color: Colors.grey[800],
+                color: Colors.black87,
                 fontSize: 16,
                 height: 1.4,
               ),
@@ -476,16 +572,16 @@ class SubsidyDetailScreen extends StatelessWidget {
                     vertical: 12,
                   ),
                 ),
-                child: const Text(
-                  'Cancel',
+                child: const SmartReTranslator(
+                  text: 'Cancel',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
               ElevatedButton.icon(
                 onPressed: () => Navigator.pop(context, true),
                 icon: const Icon(Icons.open_in_new, size: 18),
-                label: const Text(
-                  'Open',
+                label: const SmartReTranslator(
+                  text: 'Open',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -516,8 +612,8 @@ class SubsidyDetailScreen extends StatelessWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text(
-                'Could not open the link',
+              content: const SmartReTranslator(
+                text: 'Could not open the link',
                 style: TextStyle(color: Colors.white),
               ),
               backgroundColor: Colors.red[700],
@@ -537,18 +633,10 @@ class SubsidyDetailScreen extends StatelessWidget {
     final descriptionText = subsidy.description.replaceAll(r'\n', '\n');
 
     return Scaffold(
-      appBar: AppBar(
-        title: SmartReTranslator(
-          text: subsidy.title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: AppColors.primaryGreen,
-        foregroundColor: AppColors.textWhite,
-        elevation: 8,
-        shadowColor: AppColors.shadowColor,
+      appBar: CustomAppBar(
+        title: subsidy.title,
+        showOnlineStatus: true,
+        showLanguageSwitcher: false,
       ),
       backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(
@@ -574,7 +662,7 @@ class SubsidyDetailScreen extends StatelessWidget {
                           padding: const EdgeInsets.all(18),
                           child: SmartReTranslator(
                             text: descriptionText,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 16,
                               color: AppColors.textPrimary,
                               height: 1.5,
@@ -594,7 +682,7 @@ class SubsidyDetailScreen extends StatelessWidget {
                         ),
                         child: SmartReTranslator(
                           text: subsidy.stateName,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: AppColors.primaryGreen,
                             fontWeight: FontWeight.w600,
                             fontStyle: FontStyle.italic,
@@ -607,9 +695,9 @@ class SubsidyDetailScreen extends StatelessWidget {
                         Center(
                           child: ElevatedButton.icon(
                             icon: const Icon(Icons.open_in_new, size: 19),
-                            label: SmartReTranslator(
+                            label: const SmartReTranslator(
                               text: 'More Info',
-                              style: const TextStyle(fontSize: 16),
+                              style: TextStyle(fontSize: 16),
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primaryGreen,

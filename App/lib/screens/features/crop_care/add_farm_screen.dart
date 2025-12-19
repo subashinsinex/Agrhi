@@ -316,6 +316,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CustomAppBar(
+        showOnlineStatus: true,
         title: _isEditing ? 'Edit Farm' : 'Add Farm',
         actions: _isEditing
             ? [

@@ -1,12 +1,10 @@
 // lib/screens/auth/forgot_password_screen.dart
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../shared/smart_retranslator.dart';
 import '../shared/custom_app_bar.dart';
 import '../../utils/colors.dart';
-import '../../utils/constants.dart';
+import '../../src/services/api_service.dart';
 import 'login_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -45,15 +43,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await http
-          .get(
-            Uri.parse('${AppConstants.baseUrl}/forgot-password/status/$mobile'),
-            headers: {'Content-Type': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 15));
+      // ✅ USE ApiService
+      final response = await ApiService.instance.get(
+        '/forgot-password/status/$mobile',
+        requiresAuth: false,
+        timeout: const Duration(seconds: 15),
+      );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      if (response.isSuccess) {
+        final data = response.data;
 
         setState(() {
           _canRequest = data['canRequest'] ?? true;
@@ -87,17 +85,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await http
-          .post(
-            Uri.parse('${AppConstants.baseUrl}/forgot-password/request'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'mobile': int.parse(mobile)}),
-          )
-          .timeout(const Duration(seconds: 30));
+      // ✅ USE ApiService
+      final response = await ApiService.instance.post(
+        '/forgot-password/request',
+        body: {'mobile': int.parse(mobile)},
+        requiresAuth: false,
+        timeout: const Duration(seconds: 30),
+      );
 
-      final data = jsonDecode(response.body);
+      final data = response.data;
 
-      if (response.statusCode == 200 && data['success'] == true) {
+      if (response.isSuccess && data['success'] == true) {
         setState(() {
           _requestSent = true;
           _emailHint = data['emailHint'];

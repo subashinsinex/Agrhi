@@ -1,8 +1,6 @@
 // lib/screens/auth/signup_screen.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '../shared/language_switcher.dart';
 import '../shared/smart_retranslator.dart';
@@ -10,7 +8,7 @@ import '../../utils/colors.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
 import '../../src/services/language_service.dart';
-import '../../utils/constants.dart';
+import '../../src/services/api_service.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -156,26 +154,24 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final url = Uri.parse(AppConstants.signupEndpoint);
+      // ✅ USE ApiService
+      final response = await ApiService.instance.post(
+        '/signup',
+        body: {
+          'name': _nameController.text.trim(),
+          'dob': _dobController.text.trim(),
+          'address': _addressController.text.trim(),
+          'pincode': _pincodeController.text.trim(),
+          'phone_number': _phoneController.text.trim(),
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text.trim(),
+          'category_id': _selectedCategoryId,
+        },
+        requiresAuth: false,
+        timeout: const Duration(seconds: 30),
+      );
 
-      final response = await http
-          .post(
-            url,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'name': _nameController.text.trim(),
-              'dob': _dobController.text.trim(),
-              'address': _addressController.text.trim(),
-              'pincode': _pincodeController.text.trim(),
-              'phone_number': _phoneController.text.trim(),
-              'email': _emailController.text.trim(),
-              'password': _passwordController.text.trim(),
-              'category_id': _selectedCategoryId,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (response.isSuccess || response.statusCode == 201) {
         if (!mounted) return;
 
         _showSuccessSnackBar('Account created successfully!');
@@ -186,12 +182,15 @@ class _SignupScreenState extends State<SignupScreen> {
         }
       } else if (response.statusCode == 409) {
         throw 'User already exists with this phone number or email';
-      } else if (response.statusCode >= 500) {
+      } else if (response.statusCode != null && response.statusCode! >= 500) {
         throw 'Server error. Please try again later';
+      } else if (response.isOffline) {
+        throw 'No internet connection';
+      } else if (response.isTimeout) {
+        throw 'Request timeout. Please try again';
       } else {
-        final responseData = jsonDecode(response.body);
-        throw responseData['message'] ??
-            'Signup failed: ${response.reasonPhrase}';
+        final responseData = response.data;
+        throw responseData['message'] ?? response.error ?? 'Signup failed';
       }
     } catch (e) {
       if (!mounted) return;

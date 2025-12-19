@@ -3,15 +3,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
 import 'package:jwt_decoder/jwt_decoder.dart';
 import '../shared/language_switcher.dart';
 import '../shared/smart_retranslator.dart';
 import '../../utils/colors.dart';
-import '../../utils/constants.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
 import '../../src/services/language_service.dart';
+import '../../src/services/api_service.dart';
 import '../../src/database/database_helper.dart';
 import 'forgot_password_screen.dart';
 
@@ -78,22 +77,15 @@ class _LoginScreenState extends State<LoginScreen> {
     String userId,
   ) async {
     try {
-      final url = Uri.parse(
-        '${AppConstants.baseUrl}/profile/getUserDetails/$userId',
+      // ✅ USE ApiService
+      final response = await ApiService.instance.get(
+        '/profile/getUserDetails/$userId',
+        requiresAuth: true,
+        timeout: const Duration(seconds: 15),
       );
 
-      final response = await http
-          .get(
-            url,
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $accessToken',
-            },
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.isSuccess) {
+        return response.data;
       }
       return null;
     } catch (e) {
@@ -117,22 +109,20 @@ class _LoginScreenState extends State<LoginScreen> {
       final phone = _phoneController.text.trim();
       final password = _passwordController.text.trim();
 
-      final url = Uri.parse(AppConstants.loginEndpoint);
+      // ✅ USE ApiService
+      final response = await ApiService.instance.post(
+        '/login',
+        body: {
+          'phone_number': phone,
+          'password': password,
+          'platform': 'mobile',
+        },
+        requiresAuth: false,
+        timeout: const Duration(seconds: 30),
+      );
 
-      final response = await http
-          .post(
-            url,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'phone_number': phone,
-              'password': password,
-              'platform': 'mobile',
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
+      if (response.isSuccess) {
+        final responseData = response.data;
         final accessToken = responseData['access_token'] as String;
         final refreshToken = responseData['refresh_token'] as String;
 
@@ -185,12 +175,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
         _showSuccessSnackBar('Login Successful');
         Routes.navigateToDashboard(context);
-      } else if (response.statusCode == 401) {
+      } else if (response.isUnauthorized) {
         throw 'Invalid phone number or password';
-      } else if (response.statusCode >= 500) {
+      } else if (response.statusCode != null && response.statusCode! >= 500) {
         throw 'Server error. Please try again later';
+      } else if (response.isOffline) {
+        throw 'No internet connection';
+      } else if (response.isTimeout) {
+        throw 'Request timeout. Please try again';
       } else {
-        throw 'Login failed: ${response.reasonPhrase}';
+        throw response.error ?? 'Login failed';
       }
     } catch (e) {
       if (!mounted) return;
@@ -331,7 +325,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                     });
                                   },
                                 ),
-                                // Add after _PasswordField widget, before Sign In button
                                 const SizedBox(height: 8),
                                 Align(
                                   alignment: Alignment.centerRight,
@@ -509,7 +502,6 @@ class _PhoneNumberField extends StatelessWidget {
       validator: (value) {
         final error = Validators.validatePhone(value);
         if (error != null) {
-          // Validation errors are already in English, will be translated by error display
           return error;
         }
         return null;

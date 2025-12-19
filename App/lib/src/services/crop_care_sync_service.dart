@@ -1,11 +1,7 @@
-// lib/src/services/crop_care_sync_service.dart
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:uuid/uuid.dart';
 import '../database/database_helper.dart';
-import '../../utils/constants.dart';
+import 'api_service.dart';
 
 /// Service for two-way sync of farms, crops, and crop history
 class CropCareSyncService {
@@ -13,7 +9,9 @@ class CropCareSyncService {
   CropCareSyncService._init();
 
   final DatabaseHelper _db = DatabaseHelper.instance;
-  static const String baseUrl = AppConstants.baseUrl;
+
+  // ✅ Sync lock to prevent duplicate syncs
+  bool _isSyncing = false;
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -39,13 +37,31 @@ class CropCareSyncService {
   // ==================== FULL SYNC ====================
 
   Future<Map<String, dynamic>> performFullSync(String accessToken) async {
+    // ✅ Check if already syncing
+    if (_isSyncing) {
+      debugPrint('⏭️ CropCare sync already in progress - skipping');
+      return {
+        'success': false,
+        'error': 'Sync already in progress',
+        'skipped': true,
+      };
+    }
+
+    _isSyncing = true; // ✅ Lock sync
+
     try {
       debugPrint('🔄 Starting CropCare full sync...');
 
       final syncResult = await performTwoWaySync(accessToken);
 
+      final success = syncResult['success'];
+
+      if (success) {
+        debugPrint('✅ Crop care sync completed');
+      }
+
       return {
-        'success': syncResult['success'],
+        'success': success,
         'sync': syncResult,
         'timestamp': DateTime.now().toIso8601String(),
       };
@@ -56,6 +72,8 @@ class CropCareSyncService {
         'error': e.toString(),
         'timestamp': DateTime.now().toIso8601String(),
       };
+    } finally {
+      _isSyncing = false; // ✅ Unlock sync
     }
   }
 
@@ -138,38 +156,23 @@ class CropCareSyncService {
         final farmId = farm['farmid'] as String;
 
         try {
-          // ✅ PUT request to server (soft delete)
-          final response = await http
-              .put(
-                Uri.parse('$baseUrl/farmcrop/isdeletefarms/$farmId'),
-                headers: {
-                  'Authorization': 'Bearer $accessToken',
-                  'Content-Type': 'application/json',
-                },
-              )
-              .timeout(const Duration(seconds: 10));
+          // ✅ USE ApiService
+          final response = await ApiService.instance.put(
+            '/farmcrop/isdeletefarms/$farmId',
+            requiresAuth: true,
+          );
 
           debugPrint('📡 Farm deletion response: ${response.statusCode}');
 
-          if (response.statusCode == 200 ||
-              response.statusCode == 204 ||
-              response.statusCode == 201) {
-            // ✅ Server confirmed deletion, NOW cleanup local database
+          if (response.isSuccess || response.statusCode == 404) {
             await _db.cleanupDeletedFarm(farmId);
             synced++;
             debugPrint('✅ Farm deletion synced and cleaned up: $farmId');
-          } else if (response.statusCode == 404) {
-            // Farm already deleted on server, cleanup locally anyway
-            await _db.cleanupDeletedFarm(farmId);
-            synced++;
-            debugPrint(
-              'ℹ️ Farm already deleted on server, cleaned up locally: $farmId',
-            );
           } else {
             failed++;
             failedIds.add(farmId);
             debugPrint(
-              '❌ Failed to sync farm deletion: $farmId (${response.statusCode})',
+              '❌ Failed to sync farm deletion: $farmId (${response.error})',
             );
           }
         } catch (e) {
@@ -218,38 +221,23 @@ class CropCareSyncService {
         final cropId = crop['usercropid'] as String;
 
         try {
-          // ✅ PUT request to server (soft delete)
-          final response = await http
-              .put(
-                Uri.parse('$baseUrl/farmcrop/isdeletecrops/$cropId'),
-                headers: {
-                  'Authorization': 'Bearer $accessToken',
-                  'Content-Type': 'application/json',
-                },
-              )
-              .timeout(const Duration(seconds: 10));
+          // ✅ USE ApiService
+          final response = await ApiService.instance.put(
+            '/farmcrop/isdeletecrops/$cropId',
+            requiresAuth: true,
+          );
 
           debugPrint('📡 Crop deletion response: ${response.statusCode}');
 
-          if (response.statusCode == 200 ||
-              response.statusCode == 204 ||
-              response.statusCode == 201) {
-            // ✅ Server confirmed deletion, NOW cleanup local database
+          if (response.isSuccess || response.statusCode == 404) {
             await _db.cleanupDeletedCrop(cropId);
             synced++;
             debugPrint('✅ Crop deletion synced and cleaned up: $cropId');
-          } else if (response.statusCode == 404) {
-            // Crop already deleted on server, cleanup locally anyway
-            await _db.cleanupDeletedCrop(cropId);
-            synced++;
-            debugPrint(
-              'ℹ️ Crop already deleted on server, cleaned up locally: $cropId',
-            );
           } else {
             failed++;
             failedIds.add(cropId);
             debugPrint(
-              '❌ Failed to sync crop deletion: $cropId (${response.statusCode})',
+              '❌ Failed to sync crop deletion: $cropId (${response.error})',
             );
           }
         } catch (e) {
@@ -307,13 +295,11 @@ class CropCareSyncService {
 
           final wasUploaded = farm['isuploaded'] == 1;
 
-          String endpoint;
           Map<String, dynamic> payload;
-          http.Response response;
+          ApiResponse response;
 
           if (wasUploaded) {
-            // ✅ UPDATE existing farm with PUT
-            endpoint = '$baseUrl/farmcrop/updatefarms/$farmId';
+            // ✅ UPDATE existing farm
             payload = {
               'farm_size': farmWithRelations['farmsize'],
               'survey_number': farmWithRelations['surveynumber'],
@@ -323,19 +309,13 @@ class CropCareSyncService {
             };
             debugPrint('📝 Updating farm $farmId');
 
-            response = await http
-                .put(
-                  Uri.parse(endpoint),
-                  headers: {
-                    'Authorization': 'Bearer $accessToken',
-                    'Content-Type': 'application/json',
-                  },
-                  body: jsonEncode(payload),
-                )
-                .timeout(const Duration(seconds: 30));
+            response = await ApiService.instance.put(
+              '/farmcrop/updatefarms/$farmId',
+              body: payload,
+              requiresAuth: true,
+            );
           } else {
-            // ✅ ADD new farm with POST
-            endpoint = '$baseUrl/farmcrop/addfarmsbyid';
+            // ✅ ADD new farm
             payload = {
               'user_id': userId,
               'farm_id': farmId,
@@ -347,50 +327,47 @@ class CropCareSyncService {
             };
             debugPrint('➕ Adding new farm $farmId');
 
-            response = await http
-                .post(
-                  Uri.parse(endpoint),
-                  headers: {
-                    'Authorization': 'Bearer $accessToken',
-                    'Content-Type': 'application/json',
-                  },
-                  body: jsonEncode(payload),
-                )
-                .timeout(const Duration(seconds: 30));
+            response = await ApiService.instance.post(
+              '/farmcrop/addfarmsbyid',
+              body: payload,
+              requiresAuth: true,
+            );
           }
 
           debugPrint(
             '📡 Farm ${wasUploaded ? "update" : "add"} response: ${response.statusCode}',
           );
 
-          if (response.statusCode == 200 || response.statusCode == 201) {
+          if (response.isSuccess) {
             await _db.markFarmAsUploaded(farmId);
             uploadedCount++;
             uploadedIds.add(farmId);
             debugPrint('✅ Farm ${wasUploaded ? "updated" : "added"}: $farmId');
           } else if (response.statusCode == 500 || response.statusCode == 409) {
             try {
-              final errorData = jsonDecode(response.body);
-              final errorCode = errorData['error']?['code'];
-              final errorDetail =
-                  errorData['error']?['detail']?.toString() ?? '';
+              final errorData = response.data;
+              if (errorData is Map) {
+                final errorCode = errorData['error']?['code'];
+                final errorDetail =
+                    errorData['error']?['detail']?.toString() ?? '';
 
-              if (errorCode == '23505' ||
-                  errorDetail.contains('already exists')) {
-                debugPrint(
-                  'ℹ️ Farm already exists, marking as uploaded: $farmId',
-                );
-                await _db.markFarmAsUploaded(farmId);
-                uploadedCount++;
-                uploadedIds.add(farmId);
-              } else {
-                debugPrint('❌ Upload failed for $farmId: ${response.body}');
+                if (errorCode == '23505' ||
+                    errorDetail.contains('already exists')) {
+                  debugPrint(
+                    'ℹ️ Farm already exists, marking as uploaded: $farmId',
+                  );
+                  await _db.markFarmAsUploaded(farmId);
+                  uploadedCount++;
+                  uploadedIds.add(farmId);
+                } else {
+                  debugPrint('❌ Upload failed for $farmId: ${response.error}');
+                }
               }
             } catch (e) {
-              debugPrint('❌ Upload failed for $farmId: ${response.body}');
+              debugPrint('❌ Upload failed for $farmId: ${response.error}');
             }
           } else {
-            debugPrint('❌ Upload failed for $farmId: ${response.body}');
+            debugPrint('❌ Upload failed for $farmId: ${response.error}');
           }
         } catch (e) {
           debugPrint('❌ Error uploading farm: $e');
@@ -428,14 +405,12 @@ class CropCareSyncService {
           final cropId = crop['usercropid'] as String;
           final wasUploaded = crop['isuploaded'] == 1;
 
-          String endpoint;
           Map<String, dynamic> payload;
-          http.Response response;
+          ApiResponse response;
 
           if (wasUploaded) {
-            // ✅ UPDATE existing crop with PUT
+            // ✅ UPDATE existing crop
             debugPrint('📝 Updating crop $cropId');
-            endpoint = '$baseUrl/farmcrop/updatecrops/$cropId';
             payload = {
               'farm_id': crop['farmid'],
               'plant_id': crop['plantid'],
@@ -447,20 +422,14 @@ class CropCareSyncService {
               'is_delete': crop['isdeleted'] == 1,
             };
 
-            response = await http
-                .put(
-                  Uri.parse(endpoint),
-                  headers: {
-                    'Authorization': 'Bearer $accessToken',
-                    'Content-Type': 'application/json',
-                  },
-                  body: jsonEncode(payload),
-                )
-                .timeout(const Duration(seconds: 30));
+            response = await ApiService.instance.put(
+              '/farmcrop/updatecrops/$cropId',
+              body: payload,
+              requiresAuth: true,
+            );
           } else {
-            // ✅ ADD new crop with POST - SEND LOCAL CROP ID
+            // ✅ ADD new crop
             debugPrint('➕ Adding crop $cropId');
-            endpoint = '$baseUrl/farmcrop/addcrops';
             payload = {
               'user_crop_id': cropId,
               'farm_id': crop['farmid'],
@@ -472,54 +441,48 @@ class CropCareSyncService {
               'is_active': crop['isactive'] == 1,
               'is_delete': crop['isdeleted'] == 1,
             };
-            debugPrint(
-              '➕ Adding new crop $cropId (sending local ID to server)',
-            );
 
-            response = await http
-                .post(
-                  Uri.parse(endpoint),
-                  headers: {
-                    'Authorization': 'Bearer $accessToken',
-                    'Content-Type': 'application/json',
-                  },
-                  body: jsonEncode(payload),
-                )
-                .timeout(const Duration(seconds: 30));
+            response = await ApiService.instance.post(
+              '/farmcrop/addcrops',
+              body: payload,
+              requiresAuth: true,
+            );
           }
 
           debugPrint(
             '📡 Crop ${wasUploaded ? "update" : "add"} response: ${response.statusCode}',
           );
 
-          if (response.statusCode == 200 || response.statusCode == 201) {
+          if (response.isSuccess) {
             await _db.markCropAsUploaded(cropId);
             uploadedCount++;
             uploadedIds.add(cropId);
             debugPrint('✅ Crop ${wasUploaded ? "updated" : "added"}: $cropId');
           } else if (response.statusCode == 500 || response.statusCode == 409) {
             try {
-              final errorData = jsonDecode(response.body);
-              final errorCode = errorData['error']?['code'];
-              final errorDetail =
-                  errorData['error']?['detail']?.toString() ?? '';
+              final errorData = response.data;
+              if (errorData is Map) {
+                final errorCode = errorData['error']?['code'];
+                final errorDetail =
+                    errorData['error']?['detail']?.toString() ?? '';
 
-              if (errorCode == '23505' ||
-                  errorDetail.contains('already exists')) {
-                debugPrint(
-                  'ℹ️ Crop already exists, marking as uploaded: $cropId',
-                );
-                await _db.markCropAsUploaded(cropId);
-                uploadedCount++;
-                uploadedIds.add(cropId);
-              } else {
-                debugPrint('❌ Upload failed for $cropId: ${response.body}');
+                if (errorCode == '23505' ||
+                    errorDetail.contains('already exists')) {
+                  debugPrint(
+                    'ℹ️ Crop already exists, marking as uploaded: $cropId',
+                  );
+                  await _db.markCropAsUploaded(cropId);
+                  uploadedCount++;
+                  uploadedIds.add(cropId);
+                } else {
+                  debugPrint('❌ Upload failed for $cropId: ${response.error}');
+                }
               }
             } catch (e) {
-              debugPrint('❌ Upload failed for $cropId: ${response.body}');
+              debugPrint('❌ Upload failed for $cropId: ${response.error}');
             }
           } else {
-            debugPrint('❌ Upload failed for $cropId: ${response.body}');
+            debugPrint('❌ Upload failed for $cropId: ${response.error}');
           }
         } catch (e) {
           debugPrint('❌ Error uploading crop: $e');
@@ -547,7 +510,6 @@ class CropCareSyncService {
     String accessToken,
   ) async {
     try {
-      // Get crops that were reactivated locally (isdirty=1 and isactive=1)
       final pendingCrops = await _db.getPendingCrops();
       final reactivated = pendingCrops
           .where((c) => c['isactive'] == 1 && c['isdirty'] == 1)
@@ -570,32 +532,27 @@ class CropCareSyncService {
         try {
           final cropId = crop['usercropid'] as String;
 
-          // Update crop on server to set isactive = true
-          final response = await http
-              .put(
-                Uri.parse('$baseUrl/farmcrop/updatecrops/$cropId'),
-                headers: {
-                  'Authorization': 'Bearer $accessToken',
-                  'Content-Type': 'application/json',
-                },
-                body: jsonEncode({
-                  'farm_id': crop['farmid'],
-                  'plant_id': crop['plantid'],
-                  'planting_date': crop['plantingdate'],
-                  'harvest_date': crop['harvestdate'],
-                  'field_size': crop['fieldsize'],
-                  'status': crop['status'],
-                  'is_active': true,
-                  'is_delete': crop['isdeleted'] == 1,
-                }),
-              )
-              .timeout(const Duration(seconds: 30));
+          // ✅ USE ApiService
+          final response = await ApiService.instance.put(
+            '/farmcrop/updatecrops/$cropId',
+            body: {
+              'farm_id': crop['farmid'],
+              'plant_id': crop['plantid'],
+              'planting_date': crop['plantingdate'],
+              'harvest_date': crop['harvestdate'],
+              'field_size': crop['fieldsize'],
+              'status': crop['status'],
+              'is_active': true,
+              'is_delete': crop['isdeleted'] == 1,
+            },
+            requiresAuth: true,
+          );
 
           debugPrint(
             '📡 Reactivation response for $cropId: ${response.statusCode}',
           );
 
-          if (response.statusCode == 200 || response.statusCode == 201) {
+          if (response.isSuccess) {
             await _db.markCropAsUploaded(cropId);
             uploaded++;
             debugPrint('✅ Reactivated crop synced: $cropId');
@@ -641,20 +598,20 @@ class CropCareSyncService {
         final farmId = farm['farmid'] as String;
 
         try {
-          final uri = Uri.parse('$baseUrl/farmcrop/crophistory/$farmId');
-
           debugPrint('📥 Downloading crop history for farm $farmId');
 
-          final response = await http
-              .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
-              .timeout(const Duration(seconds: 30));
+          // ✅ USE ApiService
+          final response = await ApiService.instance.get(
+            '/farmcrop/crophistory/$farmId',
+            requiresAuth: true,
+          );
 
           debugPrint(
             '📡 Crop history response for farm $farmId: ${response.statusCode}',
           );
 
-          if (response.statusCode == 200) {
-            final data = jsonDecode(response.body);
+          if (response.isSuccess) {
+            final data = response.data;
 
             List<dynamic> historyList;
             if (data is List) {
@@ -667,7 +624,6 @@ class CropCareSyncService {
               historyList = [];
             }
 
-            // ✅ Add farm_id to each history crop
             for (var crop in historyList) {
               if (crop is Map<String, dynamic>) {
                 crop['farm_id'] = farmId;
@@ -690,7 +646,6 @@ class CropCareSyncService {
         await _applyServerCropHistory(allHistoryCrops);
       }
 
-      // Update sync timestamp
       await _updateLastHistorySyncTimestamp(DateTime.now().toIso8601String());
 
       return {'success': true, 'downloaded': totalHistoryCrops};
@@ -707,7 +662,6 @@ class CropCareSyncService {
     await db.transaction((txn) async {
       for (final crop in crops) {
         try {
-          // Crop history should always have isactive = 0
           final isActive = _toBoolInt(crop['is_active'] ?? crop['isactive']);
 
           if (isActive == 1) {
@@ -726,7 +680,6 @@ class CropCareSyncService {
           }
 
           final farmId = farmIdFromServer.toString();
-
           String? plantId = crop['plant_id'] ?? crop['plantid'];
 
           if (plantId == null && crop['plant_name'] != null) {
@@ -747,7 +700,6 @@ class CropCareSyncService {
             continue;
           }
 
-          // Get soil type (required field)
           String? soilTypeId = crop['soil_type_id'] ?? crop['soiltypeid'];
 
           if (soilTypeId == null) {
@@ -776,7 +728,6 @@ class CropCareSyncService {
             }
           }
 
-          // Check if crop exists locally
           final exists = await txn.query(
             'usercrops',
             where: 'usercropid = ?',
@@ -793,7 +744,7 @@ class CropCareSyncService {
             'fieldsize': crop['field_size'] ?? crop['fieldsize'],
             'soiltypeid': soilTypeId,
             'status': crop['status'] ?? 'Completed',
-            'isactive': 0, // ✅ Force inactive for history
+            'isactive': 0,
             'createdat':
                 crop['created_at'] ??
                 crop['createdat'] ??
@@ -807,7 +758,6 @@ class CropCareSyncService {
             await txn.insert('usercrops', row);
             debugPrint('➕ Added history crop: $cropId (${crop['plant_name']})');
           } else {
-            // Only update if not locally modified
             final localCrop = exists.first;
             if (localCrop['isdirty'] == 0) {
               await txn.update(
@@ -843,18 +793,18 @@ class CropCareSyncService {
         throw Exception('User ID not found');
       }
 
-      final uri = Uri.parse('$baseUrl/farmcrop/farms/$userId');
-
       debugPrint('📥 Downloading all farms for user $userId');
 
-      final response = await http
-          .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
-          .timeout(const Duration(seconds: 30));
+      // ✅ USE ApiService
+      final response = await ApiService.instance.get(
+        '/farmcrop/farms/$userId',
+        requiresAuth: true,
+      );
 
       debugPrint('📡 Farm download response: ${response.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      if (response.isSuccess) {
+        final data = response.data;
 
         List<dynamic> farmsList;
         if (data is List) {
@@ -881,7 +831,7 @@ class CropCareSyncService {
 
       return {
         'success': false,
-        'message': 'Download failed: ${response.statusCode}',
+        'message': 'Download failed: ${response.error}',
         'downloaded': 0,
         'deleted': 0,
       };
@@ -918,16 +868,16 @@ class CropCareSyncService {
         final farmId = farm['farmid'] as String;
 
         try {
-          final uri = Uri.parse('$baseUrl/farmcrop/crops/$farmId');
-
           debugPrint('📥 Downloading crops for farm $farmId');
 
-          final response = await http
-              .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
-              .timeout(const Duration(seconds: 30));
+          // ✅ USE ApiService
+          final response = await ApiService.instance.get(
+            '/farmcrop/crops/$farmId',
+            requiresAuth: true,
+          );
 
-          if (response.statusCode == 200) {
-            final data = jsonDecode(response.body);
+          if (response.isSuccess) {
+            final data = response.data;
 
             List<dynamic> cropsList;
             if (data is List) {
@@ -940,7 +890,6 @@ class CropCareSyncService {
               cropsList = [];
             }
 
-            // ✅ Add farm_id to each crop since server doesn't provide it
             for (var crop in cropsList) {
               if (crop is Map<String, dynamic>) {
                 crop['farm_id'] = farmId;
@@ -988,16 +937,15 @@ class CropCareSyncService {
               farm['createdat'] ??
               DateTime.now().toIso8601String();
 
-          // Look up by surveynumber (UNIQUE column)
           final existingFarm = await txn.query(
             'farms',
             where: 'surveynumber = ?',
             whereArgs: [surveyNumber],
             limit: 1,
           );
+
           String farmId;
           if (existingFarm.isEmpty) {
-            // No such farm: insert, use server farmid
             farmId = farmIdFromServer;
             await txn.insert('farms', {
               'farmid': farmId,
@@ -1006,11 +954,10 @@ class CropCareSyncService {
               'createdat': createdAt,
               'isuploaded': 1,
               'isdirty': 0,
-              'isdeleted': 0, // ✅ Ensure not deleted
+              'isdeleted': 0,
             });
             debugPrint('➕ Added farm from server: $farmId');
           } else {
-            // Exists: ONLY update other fields, NOT farmid
             farmId = existingFarm.first['farmid'].toString();
             await txn.update(
               'farms',
@@ -1020,7 +967,7 @@ class CropCareSyncService {
                 'createdat': createdAt,
                 'isuploaded': 1,
                 'isdirty': 0,
-                'isdeleted': 0, // ✅ Reset deleted status
+                'isdeleted': 0,
               },
               where: 'surveynumber = ?',
               whereArgs: [surveyNumber],
@@ -1030,7 +977,7 @@ class CropCareSyncService {
             );
           }
 
-          // Relation handling
+          // Handle relations
           List<String> soilTypeIds = [];
           List<String> irrigationIds = [];
           List<String> waterSourceIds = [];
@@ -1060,6 +1007,7 @@ class CropCareSyncService {
               }
             }
           }
+
           if (farm['irrigation_ids'] != null) {
             irrigationIds =
                 (farm['irrigation_ids'] as List?)
@@ -1085,6 +1033,7 @@ class CropCareSyncService {
               }
             }
           }
+
           if (farm['water_src_ids'] != null ||
               farm['water_source_ids'] != null) {
             waterSourceIds =
@@ -1128,32 +1077,30 @@ class CropCareSyncService {
             where: 'farm_id = ?',
             whereArgs: [farmId],
           );
+
+          // Insert new relations
           for (final soilTypeId in soilTypeIds) {
-            try {
-              await txn.insert('farm_soiltypes', {
-                'farm_id': farmId,
-                'soil_type_id': soilTypeId,
-              });
-            } catch (_) {}
+            await txn.insert('farm_soiltypes', {
+              'farm_id': farmId,
+              'soil_type_id': soilTypeId,
+            });
           }
+
           for (final irrigationId in irrigationIds) {
-            try {
-              await txn.insert('farm_irrigations', {
-                'farm_id': farmId,
-                'irrigation_id': irrigationId,
-              });
-            } catch (_) {}
+            await txn.insert('farm_irrigations', {
+              'farm_id': farmId,
+              'irrigation_id': irrigationId,
+            });
           }
+
           for (final waterSourceId in waterSourceIds) {
-            try {
-              await txn.insert('farm_watersources', {
-                'farm_id': farmId,
-                'water_src_id': waterSourceId,
-              });
-            } catch (_) {}
+            await txn.insert('farm_watersources', {
+              'farm_id': farmId,
+              'water_src_id': waterSourceId,
+            });
           }
         } catch (e) {
-          debugPrint('⚠️ Error processing farm: $e');
+          debugPrint('⚠️ Error applying farm: $e');
           continue;
         }
       }
@@ -1171,16 +1118,14 @@ class CropCareSyncService {
       for (final crop in crops) {
         try {
           String? cropId = crop['user_crop_id'] ?? crop['usercropid'];
-
           final farmIdFromServer = crop['farm_id'] ?? crop['farmid'];
-          if (farmIdFromServer == null) {
-            debugPrint(
-              '⚠️ Skipping crop without farm_id: ${crop['plant_name']}',
-            );
+
+          if (cropId == null || farmIdFromServer == null) {
+            debugPrint('⚠️ Skipping incomplete crop data');
             continue;
           }
-          final farmId = farmIdFromServer.toString();
 
+          final farmId = farmIdFromServer.toString();
           String? plantId = crop['plant_id'] ?? crop['plantid'];
 
           if (plantId == null && crop['plant_name'] != null) {
@@ -1197,31 +1142,8 @@ class CropCareSyncService {
           }
 
           if (plantId == null) {
-            debugPrint(
-              '⚠️ Skipping crop without plant_id for ${crop['plant_name']}',
-            );
+            debugPrint('⚠️ Skipping crop without plant_id');
             continue;
-          }
-
-          final plantingDate = crop['planting_date'] ?? crop['plantingdate'];
-
-          if (cropId == null) {
-            final existing = await txn.query(
-              'usercrops',
-              where: 'farmid = ? AND plantid = ? AND plantingdate = ?',
-              whereArgs: [farmId, plantId, plantingDate],
-              limit: 1,
-            );
-
-            if (existing.isNotEmpty) {
-              cropId = existing.first['usercropid'].toString();
-              debugPrint('ℹ️ Found existing crop: $cropId');
-            } else {
-              cropId = const Uuid().v4();
-              debugPrint(
-                'ℹ️ Generated new crop ID: $cropId for ${crop['plant_name']}',
-              );
-            }
           }
 
           String? soilTypeId = crop['soil_type_id'] ?? crop['soiltypeid'];
@@ -1246,13 +1168,14 @@ class CropCareSyncService {
               if (anySoilType.isNotEmpty) {
                 soilTypeId = anySoilType.first['soiltypeid'].toString();
               } else {
-                debugPrint(
-                  '❌ No soil type available, skipping ${crop['plant_name']}',
-                );
+                debugPrint('❌ No soil type available');
                 continue;
               }
             }
           }
+
+          final isActive = _toBoolInt(crop['is_active'] ?? crop['isactive']);
+          final isDeleted = _toBoolInt(crop['is_delete'] ?? crop['isdeleted']);
 
           final exists = await txn.query(
             'usercrops',
@@ -1262,22 +1185,22 @@ class CropCareSyncService {
           );
 
           final row = {
-            'usercropid': cropId.toString(),
+            'usercropid': cropId,
             'farmid': farmId,
             'plantid': plantId.toString(),
-            'plantingdate': plantingDate,
+            'plantingdate': crop['planting_date'] ?? crop['plantingdate'],
             'harvestdate': crop['harvest_date'] ?? crop['harvestdate'],
             'fieldsize': crop['field_size'] ?? crop['fieldsize'],
             'soiltypeid': soilTypeId,
-            'status': crop['status'] ?? 'Planted',
-            'isactive': _toBoolInt(crop['is_active'] ?? crop['isactive']),
+            'status': crop['status'] ?? 'Active',
+            'isactive': isActive,
             'createdat':
                 crop['created_at'] ??
                 crop['createdat'] ??
                 DateTime.now().toIso8601String(),
             'isuploaded': 1,
             'isdirty': 0,
-            'isdeleted': 0,
+            'isdeleted': isDeleted,
           };
 
           if (exists.isEmpty) {
@@ -1286,18 +1209,23 @@ class CropCareSyncService {
               '➕ Added crop from server: $cropId (${crop['plant_name']})',
             );
           } else {
-            await txn.update(
-              'usercrops',
-              row,
-              where: 'usercropid = ?',
-              whereArgs: [cropId],
-            );
-            debugPrint(
-              '📝 Updated crop from server: $cropId (${crop['plant_name']})',
-            );
+            final localCrop = exists.first;
+            if (localCrop['isdirty'] == 0) {
+              await txn.update(
+                'usercrops',
+                row,
+                where: 'usercropid = ?',
+                whereArgs: [cropId],
+              );
+              debugPrint(
+                '📝 Updated crop from server: $cropId (${crop['plant_name']})',
+              );
+            } else {
+              debugPrint('⏭️ Skipping locally modified crop: $cropId');
+            }
           }
         } catch (e) {
-          debugPrint('⚠️ Error processing crop ${crop['plant_name']}: $e');
+          debugPrint('⚠️ Error applying crop: $e');
           continue;
         }
       }
@@ -1306,62 +1234,14 @@ class CropCareSyncService {
     debugPrint('✅ Applied ${crops.length} crops from server');
   }
 
-  // ==================== SYNC TIMESTAMPS ====================
+  // ==================== SYNC TIMESTAMP MANAGEMENT ====================
 
-  Future<String?> _getLastFarmSyncTimestamp() async {
+  Future<void> _updateLastHistorySyncTimestamp(String timestamp) async {
     try {
-      return await _storage.read(key: 'farm_last_sync');
-    } catch (e) {
-      debugPrint('❌ Error reading farm sync timestamp: $e');
-      return null;
-    }
-  }
-
-  Future<void> _updateLastFarmSyncTimestamp(String? timestamp) async {
-    if (timestamp == null) return;
-    try {
-      await _storage.write(key: 'farm_last_sync', value: timestamp);
-      debugPrint('✅ Saved farm sync timestamp: $timestamp');
-    } catch (e) {
-      debugPrint('❌ Error saving farm sync timestamp: $e');
-    }
-  }
-
-  Future<String?> _getLastCropSyncTimestamp() async {
-    try {
-      return await _storage.read(key: 'crop_last_sync');
-    } catch (e) {
-      debugPrint('❌ Error reading crop sync timestamp: $e');
-      return null;
-    }
-  }
-
-  Future<void> _updateLastCropSyncTimestamp(String? timestamp) async {
-    if (timestamp == null) return;
-    try {
-      await _storage.write(key: 'crop_last_sync', value: timestamp);
-      debugPrint('✅ Saved crop sync timestamp: $timestamp');
-    } catch (e) {
-      debugPrint('❌ Error saving crop sync timestamp: $e');
-    }
-  }
-
-  Future<String?> _getLastHistorySyncTimestamp() async {
-    try {
-      return await _storage.read(key: 'history_last_sync');
-    } catch (e) {
-      debugPrint('❌ Error reading history sync timestamp: $e');
-      return null;
-    }
-  }
-
-  Future<void> _updateLastHistorySyncTimestamp(String? timestamp) async {
-    if (timestamp == null) return;
-    try {
-      await _storage.write(key: 'history_last_sync', value: timestamp);
+      await _storage.write(key: 'crop_history_last_sync', value: timestamp);
       debugPrint('✅ Saved history sync timestamp: $timestamp');
     } catch (e) {
-      debugPrint('❌ Error saving history sync timestamp: $e');
+      debugPrint('⚠️ Error saving history sync timestamp: $e');
     }
   }
 
@@ -1372,31 +1252,18 @@ class CropCareSyncService {
     final pendingCrops = await _db.getPendingCrops();
     final pendingFarmDeletions = await _db.getPendingFarmDeletions();
     final pendingCropDeletions = await _db.getPendingCropDeletions();
-    final farmSync = await _getLastFarmSyncTimestamp();
-    final cropSync = await _getLastCropSyncTimestamp();
-    final historySync = await _getLastHistorySyncTimestamp();
 
     return {
       'pendingFarms': pendingFarms.length,
       'pendingCrops': pendingCrops.length,
       'pendingFarmDeletions': pendingFarmDeletions.length,
       'pendingCropDeletions': pendingCropDeletions.length,
-      'lastFarmSync': farmSync,
-      'lastCropSync': cropSync,
-      'lastHistorySync': historySync,
+      'isSyncing': _isSyncing,
     };
-  }
-
-  Future<void> clearSyncTimestamps() async {
-    await _storage.delete(key: 'farm_last_sync');
-    await _storage.delete(key: 'crop_last_sync');
-    await _storage.delete(key: 'history_last_sync');
-    debugPrint('🗑️ Cleared all sync timestamps');
   }
 
   Future<Map<String, dynamic>> forceFullResync(String accessToken) async {
     debugPrint('🔄 Forcing full resync...');
-    await clearSyncTimestamps();
     return await performFullSync(accessToken);
   }
 }

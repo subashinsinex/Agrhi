@@ -1437,7 +1437,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Plant Doctor'),
+      appBar: const CustomAppBar(title: 'Plant Doctor', showOnlineStatus: true),
       backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {

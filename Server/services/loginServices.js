@@ -51,7 +51,7 @@ async function login(phone_number, password, platform) {
 
     // Generate JWT token with user_id as payload
     const access_token = jwt.sign({ user_id: userAuth.user_id }, SECRET_KEY, {
-      expiresIn: "5m",
+      expiresIn: "60m",
     });
 
     const refresh_token = jwt.sign({ user_id: userAuth.user_id }, REFRESH_KEY, {
@@ -86,7 +86,7 @@ async function refreshToken(req, res) {
     }
 
     const access_token = jwt.sign({ user_id }, SECRET_KEY, {
-      expiresIn: "5m",
+      expiresIn: "60m",
     });
     res.status(200).json({ access_token: access_token });
     return;

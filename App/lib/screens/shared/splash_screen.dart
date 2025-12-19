@@ -1,12 +1,9 @@
 // lib/src/screens/splash/splash_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'dart:convert';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
-import '../../src/services/auth_service.dart';
-import '../../src/services/sync_service.dart';
-import '../../src/services/crop_care_sync_service.dart';
 import '../../src/services/app_config_service.dart';
 import '../../src/database/database_helper.dart';
 import '../shared/update_screen.dart';
@@ -23,7 +20,6 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  final AuthService _authService = AuthService();
   late AnimationController _fadeController;
   late AnimationController _pulseController;
 
@@ -69,137 +65,6 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _fadeController.forward();
-  }
-
-  Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
-    for (int i = 0; i < maxRetries; i++) {
-      try {
-        final value = await _storage.read(key: key);
-        if (value != null && value.isNotEmpty) {
-          return value;
-        }
-        if (i < maxRetries - 1) {
-          await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
-        }
-      } catch (e) {
-        if (i == maxRetries - 1) {
-          debugPrint('Storage read failed for $key: $e');
-          rethrow;
-        }
-      }
-    }
-    return null;
-  }
-
-  Map<String, dynamic>? _decodeJwtPayload(String token) {
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3) return null;
-      String payload = parts[1];
-
-      int mod4 = payload.length % 4;
-      if (mod4 > 0) {
-        payload += '=' * (4 - mod4);
-      }
-
-      final decoded = utf8.decode(base64Url.decode(payload));
-      final map = jsonDecode(decoded);
-      if (map is Map<String, dynamic>) return map;
-      if (map is Map) return Map<String, dynamic>.from(map);
-      return null;
-    } catch (e) {
-      debugPrint('JWT decode error: $e');
-      return null;
-    }
-  }
-
-  DateTime? _getJwtExpiryUtc(String token) {
-    final payload = _decodeJwtPayload(token);
-    if (payload == null) return null;
-
-    final exp = payload['exp'];
-
-    if (exp is int) {
-      return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
-    } else if (exp is String) {
-      final n = int.tryParse(exp);
-      if (n != null) {
-        return DateTime.fromMillisecondsSinceEpoch(n * 1000, isUtc: true);
-      }
-    }
-
-    return null;
-  }
-
-  Future<String?> _getValidAccessTokenForSync() async {
-    String? accessToken =
-        await _readWithRetry('access_token') ??
-        await _storage.read(key: 'access_token');
-
-    String? expiryIso =
-        await _readWithRetry('access_token_expires_at') ??
-        await _storage.read(key: 'access_token_expires_at');
-
-    String? expiryEpochMsStr =
-        await _readWithRetry('access_token_expiry') ??
-        await _storage.read(key: 'access_token_expiry');
-
-    bool isExpired = false;
-    final now = DateTime.now().toUtc();
-    const skew = Duration(seconds: 60);
-
-    if (accessToken != null && accessToken.isNotEmpty) {
-      final jwtExp = _getJwtExpiryUtc(accessToken);
-      if (jwtExp != null) {
-        isExpired = now.add(skew).isAfter(jwtExp);
-      } else {
-        try {
-          if (expiryIso != null && expiryIso.isNotEmpty) {
-            final exp = DateTime.tryParse(expiryIso)?.toUtc();
-            if (exp != null) isExpired = now.add(skew).isAfter(exp);
-          } else if (expiryEpochMsStr != null && expiryEpochMsStr.isNotEmpty) {
-            final ms = int.tryParse(expiryEpochMsStr);
-            if (ms != null) {
-              final exp = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
-              isExpired = now.add(skew).isAfter(exp);
-            }
-          } else {
-            isExpired = false;
-          }
-        } catch (_) {
-          isExpired = true;
-        }
-      }
-    } else {
-      isExpired = true;
-    }
-
-    if (!isExpired && accessToken != null && accessToken.isNotEmpty) {
-      return accessToken;
-    }
-
-    try {
-      await _authService.refreshAccessToken();
-      accessToken =
-          await _readWithRetry('access_token') ??
-          await _storage.read(key: 'access_token');
-
-      if (accessToken == null || accessToken.isEmpty) {
-        debugPrint('Token refresh succeeded but no access_token found');
-        return null;
-      }
-
-      final jwtExp = _getJwtExpiryUtc(accessToken);
-      if (jwtExp != null) {
-        final stillExpired = now.add(skew).isAfter(jwtExp);
-        return stillExpired ? null : accessToken;
-      }
-
-      return accessToken;
-    } catch (e) {
-      debugPrint('Failed to refresh access token: $e');
-      return null;
-    }
   }
 
   Future<bool> _hasUnsyncedData() async {
@@ -272,7 +137,6 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (!mounted) return;
 
-      // Navigate to UpdateScreen
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (context) =>
@@ -282,7 +146,6 @@ class _SplashScreenState extends State<SplashScreen>
     } catch (e) {
       debugPrint('❌ Error in update flow: $e');
       if (mounted) {
-        // On error, navigate to update screen anyway
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) =>
@@ -293,95 +156,55 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
+  // ✅ SIMPLIFIED: Only check if tokens exist, don't validate
   Future<void> _proceedWithAuth() async {
-    setState(() => _statusMessage = 'Checking authentication...');
+    setState(() => _statusMessage = 'Loading...');
     await Future.delayed(const Duration(milliseconds: 500));
 
-    final authStatus = await _authService.checkAuthStatus();
+    // ✅ Simple token existence check - no validation, no refresh
+    final hasTokens = await _hasStoredTokens();
 
     if (!mounted) return;
 
-    switch (authStatus) {
-      case AuthStatus.authenticated:
-        setState(() => _statusMessage = 'Welcome back!');
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _performBackgroundSync();
-        if (mounted) Routes.navigateToDashboard(context);
-        break;
-
-      case AuthStatus.authenticatedOffline:
-        final daysRemaining = await _authService.getRefreshTokenDaysRemaining();
-        setState(() {
-          _statusMessage =
-              'Offline mode (${daysRemaining ?? 0} days remaining)';
-          _showOfflineBadge = true;
-        });
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) Routes.navigateToDashboard(context);
-        break;
-
-      case AuthStatus.unauthenticated:
-        setState(() => _statusMessage = 'Redirecting to login...');
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted) Routes.navigateToLogin(context);
-        break;
-    }
-  }
-
-  Future<void> _performBackgroundSync() async {
-    try {
-      if (!mounted) return;
-
-      setState(() => _statusMessage = 'Syncing data...');
-
-      final accessToken = await _getValidAccessTokenForSync();
-
-      if (accessToken == null || accessToken.isEmpty) {
-        debugPrint('⚠️ No valid access token available for sync');
-        if (mounted) {
-          setState(() => _statusMessage = 'Welcome back!');
-        }
-        return;
-      }
-
-      final results =
-          await Future.wait([
-            SyncService.instance.performFullSync(accessToken),
-            CropCareSyncService.instance.performFullSync(accessToken),
-          ]).timeout(
-            const Duration(seconds: 20),
-            onTimeout: () {
-              debugPrint('⚠️ Sync timeout - continuing anyway');
-              return [
-                {'success': false, 'error': 'timeout'},
-                {'success': false, 'error': 'timeout'},
-              ];
-            },
-          );
-
-      final diseaseSync = results[0];
-      final cropCareSync = results[1];
-
-      if (diseaseSync['success'] == true) {
-        debugPrint('✅ Disease analysis sync completed');
-      }
-
-      if (cropCareSync['success'] == true) {
-        debugPrint('✅ Crop care sync completed');
-      }
-
-      if (mounted) {
-        setState(() => _statusMessage = 'Sync complete!');
-      }
-
+    if (hasTokens) {
+      setState(() => _statusMessage = 'Welcome back!');
       await Future.delayed(const Duration(milliseconds: 300));
-    } catch (e) {
-      debugPrint('❌ Background sync error: $e');
-      if (mounted) {
-        setState(() => _statusMessage = 'Welcome back!');
-      }
+
+      // ✅ ConnectivityManager will handle auth check and sync
+      if (mounted) Routes.navigateToDashboard(context);
+    } else {
+      setState(() => _statusMessage = 'Redirecting to login...');
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) Routes.navigateToLogin(context);
     }
   }
+
+  // ✅ NEW: Simple token existence check - no validation
+  Future<bool> _hasStoredTokens() async {
+    try {
+      final accessToken = await _storage.read(key: 'access_token');
+      final refreshToken = await _storage.read(key: 'refresh_token');
+
+      final hasTokens =
+          accessToken != null &&
+          accessToken.isNotEmpty &&
+          refreshToken != null &&
+          refreshToken.isNotEmpty;
+
+      debugPrint('🔐 Token check: ${hasTokens ? "Found" : "Not found"}');
+
+      return hasTokens;
+    } catch (e) {
+      debugPrint('❌ Error checking tokens: $e');
+      return false;
+    }
+  }
+
+  // ❌ REMOVED: _getValidAccessTokenForSync()
+  // ❌ REMOVED: _performBackgroundSync()
+  // ❌ REMOVED: _readWithRetry()
+  // ❌ REMOVED: _decodeJwtPayload()
+  // ❌ REMOVED: _getJwtExpiryUtc()
 
   @override
   void dispose() {

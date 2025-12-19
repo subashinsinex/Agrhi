@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../utils/colors.dart';
 import '../../../src/database/database_helper.dart';
+import '../../shared/custom_app_bar.dart';
 import '../../../utils/storage_helper.dart';
 import '../../shared/smart_retranslator.dart';
 
@@ -216,15 +217,10 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
-      appBar: AppBar(
-        title: SmartReTranslator(
-          text: 'Detection History',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: AppColors.primaryGreen,
-        foregroundColor: AppColors.textWhite,
-        elevation: 8,
-        shadowColor: AppColors.shadowColor,
+      appBar: const CustomAppBar(
+        title: 'Detection History',
+        showOnlineStatus: true,
+        showLanguageSwitcher: false,
       ),
       body: _hasError
           ? Center(

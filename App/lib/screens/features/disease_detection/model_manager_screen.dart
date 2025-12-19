@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import '../../../src/services/model_manager_provider.dart';
 import '../../../src/services/model_download_service.dart';
 import '../../../src/services/language_service.dart';
-import '../../shared/smart_retranslator.dart'; // ✅ ADD THIS
+import '../../shared/smart_retranslator.dart';
+import '../../shared/custom_app_bar.dart'; // ✅ ADD CustomAppBar
 import '../../../utils/colors.dart';
 
 class ModelManagerScreen extends StatefulWidget {
@@ -37,7 +38,7 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
     });
   }
 
-  // ✅ NEW: Preload all translations
+  // ✅ Preload all translations
   Future<void> _preloadPhrases() async {
     final languageService = Provider.of<LanguageService>(
       context,
@@ -180,20 +181,12 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             }
           },
           child: Scaffold(
-            appBar: AppBar(
-              title: SmartReTranslator(
-                key: ValueKey(
-                  'appbar_title_${Provider.of<LanguageService>(context).currentLocale.languageCode}',
-                ),
-                text: 'Model Library',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => _handleBackNavigation(provider),
-              ),
-              backgroundColor: AppColors.primaryGreen,
-              foregroundColor: Colors.white,
+            // ✅ USE CUSTOM APP BAR
+            appBar: CustomAppBar(
+              title: 'Model Library',
+              showOnlineStatus: true,
+              showLanguageSwitcher: false,
+              onBackPressed: () => _handleBackNavigation(provider),
             ),
             backgroundColor: AppColors.backgroundColor,
             body: _buildBody(provider),

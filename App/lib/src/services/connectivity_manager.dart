@@ -1,11 +1,14 @@
+// lib/src/services/connectivity_manager.dart
+
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'connectivity_service.dart';
 import 'sync_service.dart';
 import 'crop_care_sync_service.dart';
-import 'auth_service.dart'; 
+import 'auth_service.dart';
 
+/// Manages connectivity status and triggers async sync (non-blocking UI)
 class ConnectivityManager extends ChangeNotifier {
   static final ConnectivityManager instance = ConnectivityManager._();
   ConnectivityManager._() {
@@ -26,8 +29,11 @@ class ConnectivityManager extends ChangeNotifier {
   );
 
   final ConnectivityService _connectivityService = ConnectivityService();
-  Timer? _periodicSyncTimer; // ✅ ADD THIS
-  static const Duration _syncInterval = Duration(minutes: 30); // ✅ ADD THIS
+  Timer? _periodicSyncTimer;
+  static const Duration _syncInterval = Duration(minutes: 30);
+
+  // ✅ NEW: Track connectivity stream subscription
+  StreamSubscription<bool>? _connectivitySubscription;
 
   void _initialize() {
     // Check initial connectivity
@@ -35,15 +41,23 @@ class ConnectivityManager extends ChangeNotifier {
       _updateStatus(online, isInitial: true);
     });
 
-    // Listen for real-time changes
-    _connectivityService.onConnectivityChanged.listen((online) {
-      _updateStatus(online);
-    });
+    // ✅ Listen for real-time changes with subscription tracking
+    _connectivitySubscription = _connectivityService.onConnectivityChanged
+        .listen(
+          (online) {
+            _updateStatus(online);
+          },
+          onError: (error) {
+            debugPrint('❌ Connectivity stream error: $error');
+            // ✅ Assume offline on stream error
+            _updateStatus(false);
+          },
+        );
 
     // Load last sync time from storage
     _loadLastSyncTime();
 
-    // ✅ Start periodic sync timer
+    // Start periodic sync timer
     _startPeriodicSync();
   }
 
@@ -62,6 +76,10 @@ class ConnectivityManager extends ChangeNotifier {
   void _updateStatus(bool online, {bool isInitial = false}) {
     if (_isOnline != online) {
       _isOnline = online;
+
+      // ✅ Clear connectivity cache when status changes
+      _connectivityService.clearCache();
+
       debugPrint('🌐 Connectivity changed: ${online ? "ONLINE" : "OFFLINE"}');
       notifyListeners();
 
@@ -72,7 +90,7 @@ class ConnectivityManager extends ChangeNotifier {
     }
   }
 
-  // ✅ NEW: Periodic sync timer
+  /// Start periodic sync timer
   void _startPeriodicSync() {
     _periodicSyncTimer = Timer.periodic(_syncInterval, (timer) {
       if (!_isOnline) {
@@ -112,7 +130,7 @@ class ConnectivityManager extends ChangeNotifier {
       final timeSinceSync = DateTime.now().difference(_lastSyncTime!);
       if (timeSinceSync.inMinutes < 5) {
         debugPrint(
-          '⏭️ Skipping auto-sync - last synced ${timeSinceSync.inMinutes} min ago',
+          'Skipping auto-sync - last synced ${timeSinceSync.inMinutes} min ago',
         );
         return;
       }
@@ -280,14 +298,52 @@ class ConnectivityManager extends ChangeNotifier {
 
   /// Refresh connectivity status manually
   Future<void> refreshConnectivity() async {
-    final online = await _connectivityService.hasInternetConnection();
+    final online = await _connectivityService.hasInternetConnection(
+      forceCheck: true, // ✅ Force fresh check
+    );
     _updateStatus(online);
   }
 
-  // ✅ NEW: Cleanup timer on dispose
+  // ✅ NEW: Get human-readable sync status
+  String get syncStatusMessage {
+    if (_isSyncing) {
+      return 'Syncing...';
+    }
+
+    if (!_isOnline) {
+      return 'Offline';
+    }
+
+    if (_lastSyncTime == null) {
+      return 'Never synced';
+    }
+
+    final timeSince = DateTime.now().difference(_lastSyncTime!);
+
+    if (timeSince.inMinutes < 1) {
+      return 'Just synced';
+    } else if (timeSince.inMinutes < 60) {
+      return 'Synced ${timeSince.inMinutes}m ago';
+    } else if (timeSince.inHours < 24) {
+      return 'Synced ${timeSince.inHours}h ago';
+    } else {
+      return 'Synced ${timeSince.inDays}d ago';
+    }
+  }
+
+  // ✅ NEW: Check if sync is needed
+  bool get needsSync {
+    if (_lastSyncTime == null) return true;
+    final timeSince = DateTime.now().difference(_lastSyncTime!);
+    return timeSince.inMinutes >= 25; // Sync if 25+ min since last sync
+  }
+
+  /// ✅ Cleanup all resources on dispose
   @override
   void dispose() {
+    debugPrint('🗑️ Disposing ConnectivityManager...');
     _periodicSyncTimer?.cancel();
+    _connectivitySubscription?.cancel();
     super.dispose();
   }
 }
