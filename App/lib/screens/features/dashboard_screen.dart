@@ -315,7 +315,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
   }
-
   Future<void> _performBackgroundCleanup() async {
     try {
       debugPrint('🗑️ Starting background cleanup...');
@@ -329,9 +328,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       await db.transaction((txn) async {
         await txn.delete('disease_analysis_results');
-        await txn.delete('farm_soil_types');
+        await txn.delete('farm_soiltypes');
         await txn.delete('farm_irrigations');
-        await txn.delete('farm_water_sources');
+        await txn.delete('farm_watersources');
         await txn.delete('images');
         await txn.delete('usercrops');
         await txn.delete('farms');
@@ -389,6 +388,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       debugPrint('Stack trace: $stackTrace');
     }
   }
+
 
   void _showLogoutConfirmation() {
     final languageService = Provider.of<LanguageService>(
