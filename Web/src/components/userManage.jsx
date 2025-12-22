@@ -76,15 +76,20 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
       });
       // Map user data to include the category label and ensure DOB is readable
       setUsers(
-        res.data.map((u) => ({
-          ...u,
-          user_category: getCategoryLabel(u.category_id),
-          // Format DOB to MM/DD/YYYY for card display
-          formatted_dob: u.dob
-            ? new Date(u.dob).toLocaleDateString("en-US")
-            : "N/A",
-        })) || []
+        res.data.map((u) => {
+          let formattedDob = "N/A";
+          if (u.dob) {
+            const [y, m, d] = u.dob.split("T")[0].split("-"); // handles 'YYYY-MM-DD' or 'YYYY-MM-DDTHH...'
+            formattedDob = `${d}-${m}-${y}`; // DD-MM-YYYY
+          }
+          return {
+            ...u,
+            user_category: getCategoryLabel(u.category_id),
+            formatted_dob: formattedDob,
+          };
+        }) || []
       );
+
       setStatusMsg("");
     } catch (err) {
       setErrorMsg(
@@ -163,7 +168,7 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
     setForm({
       user_id: user.user_id,
       name: user.name,
-      dob: user.dob ? user.dob.split("T")[0] : "",
+      dob: user.dob || "",
       address: user.address || "",
       pincode: user.pincode || "",
       phone_number: user.phone_number || "",

@@ -1,4 +1,5 @@
-// utils/emailSender.js
+const web_ip = process.env.WEB_IP;
+const web_port = process.env.WEB_PORT;
 const nodemailer = require("nodemailer");
 const emailTemplates = require("./emailTemplates");
 const { getLocationFromIP } = require("./ipGeolocation");
@@ -25,7 +26,7 @@ class EmailService {
     ipAddress,
   }) {
     try {
-      const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+      const resetUrl = `http://${web_ip}:${web_port}/reset-password?token=${resetToken}`;
 
       // Get location from IP
       const location = await getLocationFromIP(ipAddress);
