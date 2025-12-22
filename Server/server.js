@@ -25,6 +25,7 @@ const feedbackRoutes = require("./routes/feedbackRoutes");
 const syncRoutes = require("./routes/syncRoutes");
 const forgotPasswordRoutes = require("./routes/forgotPasswordRoutes");
 const emailVerificationRoutes = require("./routes/emailVerificationRoutes");
+const developerRoutes = require("./routes/developerRoutes");
 
 app.use("/api", loginRoutes);
 app.use("/api/users", userRoutes);
@@ -38,6 +39,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/sync", syncRoutes);
 app.use("/api/forgot-password", forgotPasswordRoutes);
 app.use("/api/email-verification", emailVerificationRoutes);
+app.use("/api/developer", developerRoutes);
 
 const PORT = process.env.PORT;
 
