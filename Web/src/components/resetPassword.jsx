@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Lock, Eye, EyeOff, Check, AlertTriangle, Loader } from "lucide-react";
 import { axiosInstance } from "../api/login";
+import { SERVER_IP, SERVER_PORT } from "../constant";
 
-// --- Constants ---
-const SERVER_IP = "10.21.79.141";
-const SERVER_PORT = "5000";
 const API_BASE_URL = `http://${SERVER_IP}:${SERVER_PORT}/api/forgot-password`;
 const VERIFY_TOKEN_URL = `${API_BASE_URL}/verify-token`;
 const RESET_PASSWORD_URL = `${API_BASE_URL}/reset`;
@@ -45,6 +43,7 @@ const ResetPasswordPage = () => {
         type: "error",
         message: "Token not found. Please check your email link.",
       });
+      setIsTokenValid(false);
       return;
     }
 
@@ -91,7 +90,6 @@ const ResetPasswordPage = () => {
 
   // --- 2. CSS Injection (Fixed ESLint Warning) ---
   useEffect(() => {
-    // Moved CSS_STYLES inside useEffect to remove dependency warning
     const CSS_STYLES = `
       :root {
         --primary: #6366f1;
@@ -266,7 +264,7 @@ const ResetPasswordPage = () => {
         background-color: var(--primary-hover);
         transform: translateY(-1px);
       }
-      
+
       .spin { animation: spin 1s linear infinite; }
       @keyframes spin { 100% { transform: rotate(360deg); } }
     `;
@@ -326,10 +324,21 @@ const ResetPasswordPage = () => {
       if (response.data.success) {
         setStatus({
           type: "success",
-          message: "Success! Redirecting to login...",
+          message:
+            "Now go to login page in your app. This webpage will close automatically in 10 secs.",
         });
         setNewPassword("");
         setConfirmPassword("");
+        // prevent further edits
+        setIsTokenValid(false);
+
+        // Auto close / redirect after 10 seconds
+        setTimeout(() => {
+          // Try to close the window (works if opened by script)
+          window.close();
+          // If close is blocked, you can instead redirect:
+          // window.location.href = "your-login-page-or-app-scheme";
+        }, 10000);
       } else {
         setStatus({
           type: "error",
@@ -374,91 +383,110 @@ const ResetPasswordPage = () => {
           </div>
         )}
 
-        <div className="reset-card">
-          <div className="reset-header">
-            <div className="icon-container">
-              <Lock size={28} />
+        {/* Show reset card only when token is valid */}
+        {isTokenValid && (
+          <div className="reset-card">
+            <div className="reset-header">
+              <div className="icon-container">
+                <Lock size={28} />
+              </div>
+              <h2 className="reset-title">Set New Password</h2>
             </div>
-            <h2 className="reset-title">Set New Password</h2>
+
+            <form onSubmit={handleSubmit}>
+              {/* New Password */}
+              <div className="form-group">
+                <label htmlFor="newPassword">New Password</label>
+                <div className="input-wrapper">
+                  <input
+                    id="newPassword"
+                    type={showNewPassword ? "text" : "password"}
+                    className="password-input"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Min 8 characters"
+                    required
+                    disabled={!isTokenValid || isLoading}
+                  />
+                  <button
+                    type="button"
+                    className="toggle-button"
+                    onClick={() => toggleVisibility("new")}
+                    disabled={!isTokenValid}
+                  >
+                    {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm Password */}
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm Password</label>
+                <div className="input-wrapper">
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    className="password-input"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter password"
+                    required
+                    disabled={!isTokenValid || isLoading}
+                  />
+                  <button
+                    type="button"
+                    className="toggle-button"
+                    onClick={() => toggleVisibility("confirm")}
+                    disabled={!isTokenValid}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff size={18} />
+                    ) : (
+                      <Eye size={18} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                className="submit-btn"
+                disabled={
+                  !isTokenValid ||
+                  isLoading ||
+                  !passwordsMatch ||
+                  !isPasswordValid
+                }
+              >
+                {isLoading ? (
+                  <>
+                    <Loader size={20} className="spin" />
+                    <span>Resetting...</span>
+                  </>
+                ) : (
+                  "Reset Password"
+                )}
+              </button>
+            </form>
           </div>
+        )}
 
-          <form onSubmit={handleSubmit}>
-            {/* New Password */}
-            <div className="form-group">
-              <label htmlFor="newPassword">New Password</label>
-              <div className="input-wrapper">
-                <input
-                  id="newPassword"
-                  type={showNewPassword ? "text" : "password"}
-                  className="password-input"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Min 8 characters"
-                  required
-                  disabled={!isTokenValid || isLoading}
-                />
-                <button
-                  type="button"
-                  className="toggle-button"
-                  onClick={() => toggleVisibility("new")}
-                  disabled={!isTokenValid}
-                >
-                  {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
+        {/* Optional invalid token card */}
+        {!isTokenValid && status.type === "error" && (
+          <div className="reset-card">
+            <div className="reset-header">
+              <div className="icon-container">
+                <AlertTriangle size={28} />
               </div>
+              <h2 className="reset-title">Invalid or Expired Link</h2>
+              <p style={{ color: "#64748b", marginTop: 8 }}>
+                This reset link contains invalid or expired token. Please
+                request a new password reset from the app.
+              </p>
             </div>
-
-            {/* Confirm Password */}
-            <div className="form-group">
-              <label htmlFor="confirmPassword">Confirm Password</label>
-              <div className="input-wrapper">
-                <input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  className="password-input"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password"
-                  required
-                  disabled={!isTokenValid || isLoading}
-                />
-                <button
-                  type="button"
-                  className="toggle-button"
-                  onClick={() => toggleVisibility("confirm")}
-                  disabled={!isTokenValid}
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff size={18} />
-                  ) : (
-                    <Eye size={18} />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              className="submit-btn"
-              disabled={
-                !isTokenValid ||
-                isLoading ||
-                !passwordsMatch ||
-                !isPasswordValid
-              }
-            >
-              {isLoading ? (
-                <>
-                  <Loader size={20} className="spin" />
-                  <span>Resetting...</span>
-                </>
-              ) : (
-                "Reset Password"
-              )}
-            </button>
-          </form>
-        </div>
+          </div>
+        )}
       </div>
     </>
   );
