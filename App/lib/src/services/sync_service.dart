@@ -10,7 +10,7 @@ import '../database/database_helper.dart';
 import '../../utils/constants.dart';
 import 'api_service.dart';
 
-/// Service for two-way sync of disease analysis and images
+/// Service for two-way sync of disease analysis, images, and profile
 class SyncService {
   static final SyncService instance = SyncService._init();
   SyncService._init();
@@ -31,7 +31,7 @@ class SyncService {
 
   // ================= FULL SYNC =================
 
-  /// Perform full sync: catalogs + analyses + images
+  /// Perform full sync: catalogs + analyses + images + profile
   Future<Map<String, dynamic>> performFullSync(String accessToken) async {
     // ✅ Check if already syncing
     if (_isSyncing) {
@@ -54,6 +54,9 @@ class SyncService {
       // Step 2: Two-way sync for analyses and images
       final twoWayResult = await performTwoWaySync(accessToken);
 
+      // Step 3: Sync profile based on updated_at
+      await _syncProfileIfNeeded();
+
       final success = catalogResult['success'] && twoWayResult['success'];
 
       if (success) {
@@ -71,6 +74,64 @@ class SyncService {
       return {'success': false, 'error': e.toString()};
     } finally {
       _isSyncing = false; // ✅ Unlock sync
+    }
+  }
+
+  // ================= PROFILE SYNC =================
+
+  /// Sync profile if server updated_at is newer than local
+  Future<void> _syncProfileIfNeeded() async {
+    try {
+      // 1. Read local profile and updated_at
+      final profileJson = await _storage.read(key: 'user_profile');
+      String? localUpdatedAt;
+
+      if (profileJson != null && profileJson.isNotEmpty) {
+        final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
+        localUpdatedAt = profileData['updated_at']?.toString();
+      }
+
+      // 2. Get user id
+      final userId = await _storage.read(key: 'user_id');
+      if (userId == null) {
+        debugPrint('⚠️ Profile sync skipped: user_id missing');
+        return;
+      }
+
+      // 3. Call profile details endpoint
+      final response = await ApiService.instance.get(
+        '/profile/getUserDetails/$userId',
+        requiresAuth: true,
+        timeout: const Duration(seconds: 30),
+      );
+
+      debugPrint('📡 Profile sync response: ${response.statusCode}');
+
+      if (!(response.isSuccess || response.statusCode == 200)) {
+        debugPrint('⚠️ Profile sync failed: ${response.error}');
+        return;
+      }
+
+      final data = response.data as Map<String, dynamic>;
+      final serverUpdatedAt = data['updated_at']?.toString();
+
+      if (serverUpdatedAt == null) {
+        debugPrint('⚠️ Profile sync: server updated_at missing');
+        return;
+      }
+
+      // 4. Compare timestamps
+      if (localUpdatedAt == null ||
+          DateTime.parse(
+            serverUpdatedAt,
+          ).isAfter(DateTime.parse(localUpdatedAt))) {
+        await _storage.write(key: 'user_profile', value: jsonEncode(data));
+        debugPrint('✅ Profile synced from server (updated_at newer)');
+      } else {
+        debugPrint('ℹ️ Profile up to date, no sync needed');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Profile sync error: $e');
     }
   }
 

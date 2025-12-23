@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../shared/smart_retranslator.dart';
 import '../auth/email_verify_screen.dart';
 import '../../utils/colors.dart';
+import '../../src/services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -25,8 +26,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   bool _isLoading = true;
   bool _emailVerified = false;
+  bool _isEditing = false;
+  bool _isSaving = false;
 
-  // User data
+  // User data (display)
   String _name = '';
   String _email = '';
   String _phone = '';
@@ -35,18 +38,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _pincode = '';
   String _dob = '';
 
+  // Controllers for edit mode
+  late TextEditingController _nameCtrl;
+  late TextEditingController _emailCtrl;
+  late TextEditingController _addressCtrl;
+  late TextEditingController _pincodeCtrl;
+  late TextEditingController _dobCtrl;
+
   @override
   void initState() {
     super.initState();
+    _nameCtrl = TextEditingController();
+    _emailCtrl = TextEditingController();
+    _addressCtrl = TextEditingController();
+    _pincodeCtrl = TextEditingController();
+    _dobCtrl = TextEditingController();
+
+    // Fast: only read from secure storage; SyncService keeps it fresh.
     _loadUserProfile();
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _addressCtrl.dispose();
+    _pincodeCtrl.dispose();
+    _dobCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserProfile() async {
     setState(() => _isLoading = true);
 
     try {
-      // Read user profile from secure storage
       final profileJson = await _storage.read(key: 'user_profile');
+      debugPrint('📦 user_profile from storage: $profileJson');
 
       if (profileJson != null && profileJson.isNotEmpty) {
         final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
@@ -58,25 +85,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _category = profileData['user_category'] ?? '';
           _address = profileData['address'] ?? '';
 
-          // Handle pincode (can be int or string)
           final pincodeValue = profileData['pincode'];
           _pincode = pincodeValue?.toString() ?? '';
 
-          // Format DOB from ISO string to readable date
           final dobValue = profileData['dob'];
-          if (dobValue != null && dobValue.isNotEmpty) {
+          if (dobValue != null && dobValue.toString().isNotEmpty) {
             try {
-              final dobDate = DateTime.parse(dobValue);
+              final dobDate = DateTime.parse(dobValue.toString());
               _dob = DateFormat('dd MMM yyyy').format(dobDate);
-            } catch (e) {
+            } catch (_) {
               _dob = dobValue.toString();
             }
           } else {
             _dob = '';
           }
 
-          // Get email verification status from storage
           _emailVerified = profileData['email_verified'] ?? false;
+
+          // sync controllers
+          _nameCtrl.text = _name;
+          _emailCtrl.text = _email;
+          _addressCtrl.text = _address;
+          _pincodeCtrl.text = _pincode;
+          _dobCtrl.text = _dob;
         });
       } else {
         _showError('Profile data not found');
@@ -85,7 +116,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       debugPrint('Error loading profile from storage: $e');
       _showError('Failed to load profile');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -117,6 +150,102 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _saveProfile() async {
+    // Build minimal payload with changed fields only
+    final Map<String, dynamic> body = {};
+
+    if (_nameCtrl.text.trim() != _name.trim()) {
+      body['name'] = _nameCtrl.text.trim();
+    }
+
+    // Email editable only when not verified
+    if (!_emailVerified &&
+        _emailCtrl.text.trim().isNotEmpty &&
+        _emailCtrl.text.trim() != _email.trim()) {
+      body['email'] = _emailCtrl.text.trim();
+    }
+
+    if (_addressCtrl.text.trim() != _address.trim()) {
+      body['address'] = _addressCtrl.text.trim();
+    }
+
+    if (_pincodeCtrl.text.trim() != _pincode.trim()) {
+      body['pincode'] = _pincodeCtrl.text.trim();
+    }
+
+    if (_dobCtrl.text.trim() != _dob.trim()) {
+      String? dobIso;
+      if (_dobCtrl.text.isNotEmpty) {
+        try {
+          final parsed = DateFormat('dd MMM yyyy').parse(_dobCtrl.text.trim());
+          dobIso = parsed.toIso8601String();
+        } catch (_) {
+          dobIso = _dobCtrl.text.trim();
+        }
+      }
+      body['dob'] = dobIso;
+    }
+
+    // nothing changed
+    if (body.isEmpty) {
+      setState(() => _isEditing = false);
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      // get user id from storage
+      final userId = await _storage.read(key: 'user_id');
+      final response = await ApiService.instance.put(
+        '/profile/updateUser/$userId',
+        body: body,
+        requiresAuth: true,
+        timeout: const Duration(seconds: 30),
+      );
+
+      if (response.isSuccess || response.statusCode == 200) {
+        // Backend only returns { message: ... }, so use body + existing profile
+        final currentJson = await _storage.read(key: 'user_profile');
+        Map<String, dynamic> current =
+            currentJson != null && currentJson.isNotEmpty
+            ? jsonDecode(currentJson) as Map<String, dynamic>
+            : <String, dynamic>{};
+
+        // Apply local changes to stored profile
+        if (body.containsKey('name')) current['name'] = body['name'];
+        if (body.containsKey('email')) current['email'] = body['email'];
+        if (body.containsKey('address')) current['address'] = body['address'];
+        if (body.containsKey('pincode')) current['pincode'] = body['pincode'];
+        if (body.containsKey('dob')) current['dob'] = body['dob'];
+
+        await _storage.write(key: 'user_profile', value: jsonEncode(current));
+
+        await _loadUserProfile();
+
+        setState(() {
+          _isEditing = false;
+        });
+
+        _showSuccess('Profile updated successfully');
+      } else if (response.isOffline) {
+        _showError('No internet connection');
+      } else if (response.isTimeout) {
+        _showError('Request timeout. Please try again');
+      } else {
+        final data = response.data;
+        final msg = (data is Map && data['message'] != null)
+            ? data['message'].toString()
+            : (response.error ?? 'Failed to update profile');
+        _showError(msg);
+      }
+    } catch (e) {
+      _showError('Error updating profile: $e');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -126,7 +255,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            if (_isEditing) {
+              setState(() {
+                _isEditing = false;
+                _nameCtrl.text = _name;
+                _emailCtrl.text = _email;
+                _addressCtrl.text = _address;
+                _pincodeCtrl.text = _pincode;
+                _dobCtrl.text = _dob;
+              });
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
         ),
         title: const SmartReTranslator(
           text: 'Profile',
@@ -136,6 +278,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+        actions: [
+          if (!_isLoading)
+            IconButton(
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Icon(
+                      _isEditing ? Icons.check : Icons.edit,
+                      color: Colors.white,
+                    ),
+              onPressed: _isSaving
+                  ? null
+                  : () async {
+                      if (_isEditing) {
+                        await _saveProfile();
+                      } else {
+                        setState(() => _isEditing = true);
+                      }
+                    },
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -145,17 +314,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   children: [
-                    // Profile Header
                     _buildProfileHeader(),
-
                     const SizedBox(height: 16),
-
-                    // Email Verification Banner
                     if (!_emailVerified) _buildVerificationBanner(),
-
                     const SizedBox(height: 8),
-
-                    // Profile Details Section Title
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16.0),
                       child: Align(
@@ -170,12 +332,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 12),
-
-                    // Profile Details
                     _buildProfileDetails(),
-
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -197,7 +355,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.only(top: 20, bottom: 40),
       child: Column(
         children: [
-          // Avatar with verification badge
           Stack(
             children: [
               Container(
@@ -226,7 +383,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              // Email verification badge
               if (_emailVerified)
                 Positioned(
                   bottom: 0,
@@ -248,8 +404,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Name
           Text(
             _name.isNotEmpty ? _name : 'Guest User',
             style: const TextStyle(
@@ -259,8 +413,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 8),
-
-          // Category Badge
           if (_category.isNotEmpty)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -326,7 +478,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ).push(EmailVerifyScreen.route());
 
               if (verified == true && mounted) {
-                // Update storage with verified status
                 try {
                   final profileJson = await _storage.read(key: 'user_profile');
                   if (profileJson != null) {
@@ -368,44 +519,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
-          // Email
           _buildDetailCard(
             icon: Icons.email_outlined,
             title: 'Email',
             value: _email,
+            controller: _emailCtrl,
             verified: _emailVerified,
+            isEditing: _isEditing,
+            enabledWhenEditing: !_emailVerified,
           ),
           const SizedBox(height: 10),
-
-          // Phone
           _buildDetailCard(
             icon: Icons.phone_outlined,
             title: 'Phone',
             value: _phone,
+            isEditing: false,
           ),
           const SizedBox(height: 10),
-
-          // Date of Birth
           _buildDetailCard(
             icon: Icons.cake_outlined,
             title: 'Date of Birth',
             value: _dob,
+            controller: _dobCtrl,
+            isEditing: _isEditing,
+            isDate: true,
           ),
           const SizedBox(height: 10),
-
-          // Address
           _buildDetailCard(
             icon: Icons.location_on_outlined,
             title: 'Address',
             value: _address,
+            controller: _addressCtrl,
+            isEditing: _isEditing,
           ),
           const SizedBox(height: 10),
-
-          // Pincode
           _buildDetailCard(
             icon: Icons.pin_drop_outlined,
             title: 'Postal Code',
             value: _pincode,
+            controller: _pincodeCtrl,
+            isEditing: _isEditing,
+            keyboardType: TextInputType.number,
           ),
         ],
       ),
@@ -417,7 +571,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String title,
     required String value,
     bool verified = false,
+    bool isEditing = false,
+    TextEditingController? controller,
+    bool enabledWhenEditing = true,
+    bool isDate = false,
+    TextInputType? keyboardType,
   }) {
+    final showField = isEditing && controller != null;
+
     return Card(
       elevation: 2,
       color: Colors.white,
@@ -426,7 +587,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            // Icon container
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -436,8 +596,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Icon(icon, color: AppColors.primaryGreen, size: 20),
             ),
             const SizedBox(width: 14),
-
-            // Title and value
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,21 +609,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    value.isNotEmpty ? value : 'Not provided',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: value.isNotEmpty
-                          ? AppColors.textPrimary
-                          : AppColors.textSecondary,
-                      fontWeight: FontWeight.w600,
+                  if (!showField)
+                    Text(
+                      value.isNotEmpty ? value : 'Not provided',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: value.isNotEmpty
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  else
+                    GestureDetector(
+                      onTap: isDate
+                          ? () async {
+                              final now = DateTime.now();
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: now,
+                                firstDate: DateTime(1900),
+                                lastDate: now,
+                              );
+                              if (picked != null) {
+                                controller!.text = DateFormat(
+                                  'dd MMM yyyy',
+                                ).format(picked);
+                              }
+                            }
+                          : null,
+                      child: AbsorbPointer(
+                        absorbing: isDate,
+                        child: TextField(
+                          controller: controller,
+                          enabled: enabledWhenEditing,
+                          keyboardType: keyboardType,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            border: const OutlineInputBorder(),
+                            hintText: 'Enter $title',
+                          ),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
-
-            // Verification badge
             if (verified)
               Container(
                 padding: const EdgeInsets.all(6),

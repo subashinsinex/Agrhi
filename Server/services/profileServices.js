@@ -27,7 +27,8 @@ async function getUserById(userId) {
       ud.dob, 
       ud.address, 
       ud.pincode, 
-      ud.category_id
+      ud.category_id,
+      ud.updated_at
     FROM users_auth ua
     JOIN user_details ud ON ua.user_id = ud.user_id
     JOIN user_category uc ON ud.category_id = uc.category_id
@@ -66,16 +67,15 @@ async function createUser(newUser) {
 
     // Hash password
     const hashedPassword = await bcrypt.hash(newUser.password, 10);
-    console.log("Hashed Password:", hashedPassword);
 
-    // Insert into users_auth - no category_id here
+    // Insert into users_auth
     await client.query(
       `INSERT INTO users_auth (user_id, password, phone_number, email)
        VALUES ($1, $2, $3, $4)`,
       [user_id, hashedPassword, newUser.phone_number, newUser.email]
     );
 
-    // Insert into userdetails including category_id
+    // Insert into user_details
     await client.query(
       `INSERT INTO user_details (user_id, name, dob, address, pincode, category_id, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
@@ -105,34 +105,71 @@ async function updateUser(user_id, updatedUser) {
   try {
     await client.query("BEGIN");
 
-    if (updatedUser.password) {
-      const hashedPassword = await bcrypt.hash(updatedUser.password, 10);
+    // 1) Get auth info (for email_verified)
+    const authRes = await client.query(
+      `SELECT email_verified FROM users_auth WHERE user_id = $1`,
+      [user_id]
+    );
+
+    if (authRes.rowCount === 0) {
+      throw new Error("User not found");
+    }
+
+    const { email_verified } = authRes.rows[0];
+
+    // 2) Dynamically update users_auth (ONLY email, never phone/password)
+    const authSet = [];
+    const authValues = [];
+    let idx = 1;
+
+    if (!email_verified && updatedUser.email) {
+      authSet.push(`email = $${idx++}`);
+      authValues.push(updatedUser.email);
+    }
+
+    if (authSet.length > 0) {
+      authValues.push(user_id); // last parameter is user_id
       await client.query(
-        "UPDATE users_auth SET password = $1 WHERE user_id = $2",
-        [hashedPassword, user_id]
+        `UPDATE users_auth SET ${authSet.join(", ")} WHERE user_id = $${idx}`,
+        authValues
       );
     }
 
-    await client.query(
-      `UPDATE users_auth
-       SET phone_number = $1, email = $2
-       WHERE user_id = $3`,
-      [updatedUser.phone_number, updatedUser.email, user_id]
-    );
+    // 3) Dynamically update user_details (only provided fields)
+    const detailSet = [];
+    const detailValues = [];
+    idx = 1;
 
-    await client.query(
-      `UPDATE user_details
-       SET name = $1, dob = $2, address = $3, pincode = $4, category_id = $5
-       WHERE user_id = $6`,
-      [
-        updatedUser.name,
-        updatedUser.dob,
-        updatedUser.address,
-        updatedUser.pincode,
-        updatedUser.category_id,
-        user_id,
-      ]
-    );
+    if (Object.prototype.hasOwnProperty.call(updatedUser, "name")) {
+      detailSet.push(`name = $${idx++}`);
+      detailValues.push(updatedUser.name);
+    }
+    if (Object.prototype.hasOwnProperty.call(updatedUser, "dob")) {
+      detailSet.push(`dob = $${idx++}`);
+      detailValues.push(updatedUser.dob);
+    }
+    if (Object.prototype.hasOwnProperty.call(updatedUser, "address")) {
+      detailSet.push(`address = $${idx++}`);
+      detailValues.push(updatedUser.address);
+    }
+    if (Object.prototype.hasOwnProperty.call(updatedUser, "pincode")) {
+      detailSet.push(`pincode = $${idx++}`);
+      detailValues.push(updatedUser.pincode);
+    }
+    if (Object.prototype.hasOwnProperty.call(updatedUser, "category_id")) {
+      detailSet.push(`category_id = $${idx++}`);
+      detailValues.push(updatedUser.category_id);
+    }
+
+    if (detailSet.length > 0) {
+      detailValues.push(user_id);
+      await client.query(
+        `UPDATE user_details
+         SET ${detailSet.join(", ")}, updated_at = NOW()
+         WHERE user_id = $${idx}`,
+        detailValues
+      );
+    }
 
     await client.query("COMMIT");
     return { message: "User updated successfully" };
