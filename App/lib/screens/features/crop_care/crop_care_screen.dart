@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../../utils/colors.dart';
 import '../../../src/services/crop_care_sync_service.dart';
 import '../../../src/database/database_helper.dart';
@@ -22,15 +23,62 @@ class _CropCareScreenState extends State<CropCareScreen>
   final GlobalKey<_FarmsManagerTabState> _farmsTabKey = GlobalKey();
   final GlobalKey<_CropsManagerTabState> _cropsTabKey = GlobalKey();
 
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
+    _syncCropCareIfOnline();
+  }
+
+  Future<void> _syncCropCareIfOnline() async {
+    // 1) Check connectivity
+    final connectivityResult = await Connectivity().checkConnectivity();
+    final isOnline = connectivityResult != ConnectivityResult.none;
+    if (!isOnline) return;
+
+    // 2) Read access token (same key you use elsewhere)
+    final token = await _storage.read(key: 'accesstoken');
+    if (token == null || token.isEmpty) return;
+
+    // 3) Run Crop Care sync only
+    final result = await CropCareSyncService.instance.performFullSync(token);
+
+    // 4) If success, refresh both tabs from local DB
+    if (result['success'] == true) {
+      _cropsTabKey.currentState?._loadCrops();
+      _farmsTabKey.currentState?._loadFarms();
+    }
   }
 
   void _refreshBothTabs() {
     _cropsTabKey.currentState?._loadCrops();
     _farmsTabKey.currentState?._loadFarms();
+
+    _syncCropCareOnChange();
+  }
+
+Future<void> _syncCropCareOnChange() async {
+    // Check connectivity
+    final connectivityResult = await Connectivity().checkConnectivity();
+    final isOnline = connectivityResult != ConnectivityResult.none;
+    if (!isOnline) return;
+
+    // Get token
+    final token = await _storage.read(key: 'accesstoken');
+    if (token == null || token.isEmpty) return;
+
+    // Sync Crop Care only
+    final result = await CropCareSyncService.instance.performFullSync(token);
+
+    // If success, refresh lists from local DB
+    if (result['success'] == true) {
+      _cropsTabKey.currentState?._loadCrops();
+      _farmsTabKey.currentState?._loadFarms();
+    }
   }
 
   @override

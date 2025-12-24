@@ -65,13 +65,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadGateModel(); // â† ADD THIS
+      _loadGateModel();
       _checkDownloadedModels();
       _preloadPhrases();
     });
   }
 
-  // âœ… NEW: Load gate model on startup
+  // Load gate model on startup
   Future<void> _loadGateModel() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -79,19 +79,15 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
       final gateFile = File(gatePath);
       if (!await gateFile.exists()) {
-        // Copy from assets
         await gateFile.parent.create(recursive: true);
         final byteData = await rootBundle.load(
           'assets/models/plant_detector_cpu.tflite',
         );
         await gateFile.writeAsBytes(byteData.buffer.asUint8List());
-        print('ðŸ“¦ Copied gate model from assets');
       }
 
       await ModelService.loadGateModel(gatePath);
-      print('âœ… Gate model ready');
     } catch (e) {
-      print('âŒ Failed to load gate model: $e');
       if (mounted) {
         _showErrorSnackBar('Failed to load plant detector: $e');
       }
@@ -139,8 +135,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'Synced to server',
       'analysis',
       'images',
-      'Not a Plant', // â† ADD THIS
-      'This image does not appear to be a plant.', // â† ADD THIS
+      'Not a Plant',
+      'This image does not appear to be a plant.',
+      'Please take the photo as close to the diseased leaf as possible so that the leaf clearly fills most of the image.',
     ];
 
     for (final crop in diseaseLabels.keys) {
@@ -159,8 +156,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     final downloadedModels = <String>[];
 
     for (final cropName in ModelDownloadService.modelInfo.keys) {
-      final isDownloaded = await ModelDownloadService.instance
-          .isModelDownloaded(cropName);
+      final isDownloaded =
+          await ModelDownloadService.instance.isModelDownloaded(cropName);
       if (isDownloaded) {
         downloadedModels.add(cropName);
       }
@@ -277,7 +274,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         final map = jsonDecode(profileJson);
         if (map is Map) {
           final m = Map<String, dynamic>.from(map);
-          final fromProfile = m['user_id']?.toString() ?? m['id']?.toString();
+          final fromProfile =
+              m['user_id']?.toString() ?? m['id']?.toString();
           if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
         }
       } catch (_) {}
@@ -286,8 +284,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     final token = await _readWithRetry('access_token');
     if (token != null && token.isNotEmpty) {
       final payload = _decodeJwtPayload(token);
-      final fromJwt =
-          payload?['sub']?.toString() ??
+      final fromJwt = payload?['sub']?.toString() ??
           payload?['user_id']?.toString() ??
           payload?['uid']?.toString();
       if (fromJwt != null && fromJwt.isNotEmpty) return fromJwt;
@@ -347,7 +344,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
+        result = {
+          'label': 'Error',
+          'confidence': 0.0,
+          'error': e.toString()
+        };
       });
       _showErrorSnackBar('Failed to pick image: ${e.toString()}');
     }
@@ -368,12 +369,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     try {
       final saveResult = await DiseaseAnalysisService.instance
           .saveDetectionByPlantName(
-            userId: userId,
-            plantName: plantName,
-            detectedLabel: detectedLabel,
-            confidence: confidence0to1,
-            localImagePath: localImagePath,
-          );
+        userId: userId,
+        plantName: plantName,
+        detectedLabel: detectedLabel,
+        confidence: confidence0to1,
+        localImagePath: localImagePath,
+      );
 
       if (!mounted) return;
 
@@ -415,11 +416,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       final accessToken = await _storage.read(key: 'access_token');
 
       if (accessToken == null || accessToken.isEmpty) {
-        debugPrint('âš ï¸ No access token - sync will happen later');
+        debugPrint('No access token - sync will happen later');
         return;
       }
 
-      debugPrint('ðŸ”„ Triggering forced sync...');
+      debugPrint('Triggering forced sync...');
 
       final syncResult = await SyncService.instance.performFullSync(
         accessToken,
@@ -436,15 +437,15 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
         if (uploaded > 0 || imagesUploaded > 0) {
           debugPrint(
-            'âœ… Forced sync: upload $uploaded analyses, $imagesUploaded images',
+            'Forced sync: upload $uploaded analyses, $imagesUploaded images',
           );
-
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.cloud_done, color: Colors.white, size: 20),
+                    const Icon(Icons.cloud_done,
+                        color: Colors.white, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -462,7 +463,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                             children: [
                               Text(
                                 '$uploaded ',
-                                style: const TextStyle(color: Colors.white),
+                                style:
+                                    const TextStyle(color: Colors.white),
                               ),
                               const SmartReTranslator(
                                 text: 'analysis',
@@ -470,7 +472,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                               ),
                               Text(
                                 ', $imagesUploaded ',
-                                style: const TextStyle(color: Colors.white),
+                                style:
+                                    const TextStyle(color: Colors.white),
                               ),
                               const SmartReTranslator(
                                 text: 'images',
@@ -495,11 +498,11 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         }
       }
     } catch (e) {
-      debugPrint('âŒ Forced sync error: $e');
+      debugPrint('Forced sync error: $e');
     }
   }
 
-  // âœ… MODIFIED: Skip save if label is 'undefined'
+  // Skip save if label is 'undefined'
   Future<void> _analyzeImage(String path) async {
     try {
       for (int i = 0; i <= 100; i += 5) {
@@ -509,9 +512,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       }
 
       final preprocessor = preprocessMap[selectedCrop];
-      final processedPath = preprocessor != null
-          ? await preprocessor(path)
-          : path;
+      final processedPath =
+          preprocessor != null ? await preprocessor(path) : path;
 
       final cropName = selectedCrop!;
       final labels = diseaseLabels[cropName] ?? const ['Healthy', 'Unknown'];
@@ -534,7 +536,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
       _resultController.forward();
 
-      // âœ… ONLY save if not error AND not 'undefined'
       final hasError = topResult.containsKey('error');
       final isUndefined = topResult['label'] == 'undefined';
 
@@ -575,12 +576,14 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         ),
         backgroundColor: AppColors.errorColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'Dismiss',
           textColor: Colors.white,
-          onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+          onPressed:
+              () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
         ),
       ),
     );
@@ -643,7 +646,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       return Card(
         elevation: 3,
         shadowColor: AppColors.primaryGreen.withOpacity(0.1),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: const Padding(
           padding: EdgeInsets.all(40),
           child: Center(
@@ -665,12 +669,14 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       );
     }
 
-    final isEnabled = selectedCrop != null && !_isLoading && !_isModelLoading;
+    final isEnabled =
+        selectedCrop != null && !_isLoading && !_isModelLoading;
 
     return Card(
       elevation: 3,
       shadowColor: AppColors.primaryGreen.withOpacity(0.1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -735,7 +741,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     text: availableCrops.isEmpty
                         ? 'No models downloaded'
                         : 'Select a crop',
-                    style: const TextStyle(color: AppColors.textSecondary),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   isExpanded: true,
                   items: availableCrops
@@ -782,7 +790,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
             const SizedBox(height: 16),
             const Row(
               children: [
-                Icon(Icons.camera_alt, color: AppColors.primaryGreen, size: 20),
+                Icon(Icons.camera_alt,
+                    color: AppColors.primaryGreen, size: 20),
                 SizedBox(width: 8),
                 SmartReTranslator(
                   text: 'Capture Image',
@@ -878,6 +887,17 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            const SmartReTranslator(
+              text:
+                  'Take the photo as close to the diseased leaf as you can.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
             if (!isEnabled && _isModelLoading)
               const Padding(
                 padding: EdgeInsets.only(top: 12),
@@ -914,7 +934,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     return Card(
       elevation: 4,
       shadowColor: AppColors.primaryGreen.withOpacity(0.15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Stack(
         children: [
           Container(
@@ -937,13 +958,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       fit: BoxFit.cover,
                     )
                   : (imagePath != null
-                        ? Image.file(
-                            File(imagePath!),
-                            width: double.infinity,
-                            height: 280,
-                            fit: BoxFit.cover,
-                          )
-                        : Container()),
+                      ? Image.file(
+                          File(imagePath!),
+                          width: double.infinity,
+                          height: 280,
+                          fit: BoxFit.cover,
+                        )
+                      : Container()),
             ),
           ),
           Positioned(
@@ -965,7 +986,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 icon: const Icon(Icons.close, color: Colors.white, size: 20),
                 onPressed: _resetAnalysis,
                 padding: const EdgeInsets.all(8),
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                constraints:
+                    const BoxConstraints(minWidth: 36, minHeight: 36),
                 tooltip: 'Remove image',
               ),
             ),
@@ -979,7 +1001,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     return Card(
       elevation: 6,
       shadowColor: AppColors.primaryGreen.withOpacity(0.15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
@@ -1007,7 +1030,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: AppColors.primaryGreen.withOpacity(0.1),
+                                color: AppColors.primaryGreen.withOpacity(
+                                  0.1,
+                                ),
                                 width: 2,
                               ),
                             ),
@@ -1109,9 +1134,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       builder: (context, child) {
                         return LinearProgressIndicator(
                           value: _analysisProgress,
-                          backgroundColor: AppColors.primaryGreen.withOpacity(
-                            0.1,
-                          ),
+                          backgroundColor: AppColors.primaryGreen
+                              .withOpacity(0.1),
                           valueColor: const AlwaysStoppedAnimation(
                             AppColors.primaryGreen,
                           ),
@@ -1129,13 +1153,18 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     );
   }
 
-  // âœ… MODIFIED: Handle 'undefined' label
+  // FULLY UPDATED RESULTS WITH DISCLAIMER AND WRAPPING
   Widget _buildResults() {
+    if (result == null) return const SizedBox.shrink();
+
     final isError = result!.containsKey('error');
     final isUndefined = result!['label'] == 'undefined';
 
-    // Handle "not a plant" case
+    // "Not a Plant" case with disclaimer
     if (isUndefined) {
+      final double conf =
+          (result!['confidence'] as num?)?.toDouble() ?? 0.0;
+
       return AnimatedBuilder(
         animation: _resultController,
         builder: (context, child) {
@@ -1160,29 +1189,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[400],
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.grey.withOpacity(0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.block,
-                            color: Colors.white,
-                            size: 48,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
+                        
                         const SmartReTranslator(
-                          text: 'Not a Plant',
+                          text: 'This image does not appear to be a Crop.',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -1190,22 +1203,20 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                           ),
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SmartReTranslator(
-                              text: 'This image does not appear to be a plant.',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textSecondary,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+                        const SmartReTranslator(
+                          text:
+                              'Take the photo as close to the diseased leaf as you can.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                            height: 1.4,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Confidence: ${((result!['confidence'] ?? 0.0) * 100).toStringAsFixed(1)}%',
+                          'Confidence: ${(conf * 100).toStringAsFixed(1)}%',
+                          textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -1223,12 +1234,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       );
     }
 
-    // Original disease result display
+    // Normal disease result
     final labelText = _getDiseaseLabel(result!['label'].toString());
-    final isHealthy =
-        !isError &&
+    final isHealthy = !isError &&
         result!['label'].toString().toLowerCase().contains('healthy');
-    final confidence = isError ? 0.0 : (result!['confidence'] * 100);
+    final double confidence = isError
+        ? 0.0
+        : ((result!['confidence'] as num?)?.toDouble() ?? 0.0) * 100;
 
     return AnimatedBuilder(
       animation: _resultController,
@@ -1242,8 +1254,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               shadowColor: isError
                   ? Colors.red.withOpacity(0.2)
                   : (isHealthy
-                        ? Colors.green.withOpacity(0.2)
-                        : Colors.orange.withOpacity(0.2)),
+                      ? Colors.green.withOpacity(0.2)
+                      : Colors.orange.withOpacity(0.2)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -1254,14 +1266,15 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     color: isError
                         ? AppColors.errorColor.withOpacity(0.3)
                         : (isHealthy
-                              ? AppColors.successColor.withOpacity(0.3)
-                              : AppColors.warningColor.withOpacity(0.3)),
+                            ? AppColors.successColor.withOpacity(0.3)
+                            : AppColors.warningColor.withOpacity(0.3)),
                     width: 2,
                   ),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Row(
                         children: [
@@ -1271,18 +1284,17 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                               color: isError
                                   ? AppColors.errorColor
                                   : (isHealthy
-                                        ? AppColors.successColor
-                                        : AppColors.warningColor),
+                                      ? AppColors.successColor
+                                      : AppColors.warningColor),
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color:
-                                      (isError
-                                              ? AppColors.errorColor
-                                              : (isHealthy
-                                                    ? AppColors.successColor
-                                                    : AppColors.warningColor))
-                                          .withOpacity(0.3),
+                                  color: (isError
+                                          ? AppColors.errorColor
+                                          : (isHealthy
+                                              ? AppColors.successColor
+                                              : AppColors.warningColor))
+                                      .withOpacity(0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 4),
                                 ),
@@ -1292,8 +1304,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                               isError
                                   ? Icons.error
                                   : (isHealthy
-                                        ? Icons.health_and_safety
-                                        : Icons.warning),
+                                      ? Icons.health_and_safety
+                                      : Icons.warning),
                               color: Colors.white,
                               size: 28,
                             ),
@@ -1321,8 +1333,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         valueColor: isError
                             ? AppColors.errorColor
                             : (isHealthy
-                                  ? AppColors.successColor
-                                  : AppColors.errorColor),
+                                ? AppColors.successColor
+                                : AppColors.errorColor),
                       ),
                       const SizedBox(height: 16),
                       if (!isError)
@@ -1338,13 +1350,17 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppColors.errorColor.withOpacity(0.1),
+                              color:
+                                  AppColors.errorColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: AppColors.errorColor.withOpacity(0.3),
+                                color: AppColors.errorColor.withOpacity(
+                                  0.3,
+                                ),
                               ),
                             ),
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Icon(
                                   Icons.info_outline,
@@ -1353,7 +1369,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  child: Row(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       const SmartReTranslator(
                                         text: 'Error',
@@ -1363,8 +1381,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
+                                      const SizedBox(height: 4),
                                       Text(
-                                        ': ${result!['error']}',
+                                        result!['error'].toString(),
                                         style: const TextStyle(
                                           fontSize: 12,
                                           color: AppColors.errorColor,
@@ -1421,10 +1440,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               const SizedBox(height: 4),
               SmartReTranslator(
                 text: value,
+                textAlign: TextAlign.start,
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: valueColor,
+                  height: 1.3,
                 ),
               ),
             ],
@@ -1437,7 +1458,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Plant Doctor', showOnlineStatus: true),
+      appBar:
+          const CustomAppBar(title: 'Plant Doctor', showOnlineStatus: true),
       backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {

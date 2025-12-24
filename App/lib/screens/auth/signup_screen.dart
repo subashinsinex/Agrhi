@@ -156,7 +156,7 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       // ✅ USE ApiService
       final response = await ApiService.instance.post(
-        '/signup',
+        '/profile/createUser',
         body: {
           'name': _nameController.text.trim(),
           'dob': _dobController.text.trim(),

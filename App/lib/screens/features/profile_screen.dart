@@ -632,7 +632,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 lastDate: now,
                               );
                               if (picked != null) {
-                                controller!.text = DateFormat(
+                                controller.text = DateFormat(
                                   'dd MMM yyyy',
                                 ).format(picked);
                               }

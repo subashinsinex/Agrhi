@@ -47,7 +47,6 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
     _surveyNumberController.text = farm['surveynumber']?.toString() ?? '';
     _farmSizeController.text = farm['farmsize']?.toString() ?? '';
 
-    // ✅ Load farm with relations from junction tables
     final db = DatabaseHelper.instance;
     final farmWithRelations = await db.getFarmWithRelations(farm['farmid']);
 
@@ -84,7 +83,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error loading data: $e'),
+            content: SmartReTranslator(text: 'Error loading data: $e'),
             backgroundColor: AppColors.errorColor,
           ),
         );
@@ -101,10 +100,8 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
 
     try {
       final db = DatabaseHelper.instance;
-
       final farmId = _isEditing ? widget.farm!['farmid'].toString() : null;
 
-      // ✅ Use junction table method
       await db.upsertFarmWithRelations(
         farmSize: double.parse(_farmSizeController.text.trim()),
         surveyNumber: _surveyNumberController.text.trim(),
@@ -114,12 +111,12 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
         farmId: farmId,
       );
 
-      debugPrint('✅ Farm ${_isEditing ? "updated" : "created"}');
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_isEditing ? '✅ Farm updated' : '✅ Farm created'),
+            content: SmartReTranslator(
+              text: _isEditing ? 'Farm updated' : 'Farm created',
+            ),
             backgroundColor: AppColors.successColor,
           ),
         );
@@ -130,7 +127,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error: $e'),
+            content: SmartReTranslator(text: 'Error: $e'),
             backgroundColor: AppColors.errorColor,
           ),
         );
@@ -140,7 +137,6 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
     }
   }
 
-  // ✅ UPDATED: Use soft delete method with validation
   Future<void> _deleteFarm() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -173,24 +169,21 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
 
     try {
       final db = DatabaseHelper.instance;
-
-      // ✅ Use soft delete with validation
       final result = await db.markFarmAsDeleted(widget.farm!['farmid']);
 
       if (mounted) {
         if (result['success'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ ${result['message']}'),
+              content: SmartReTranslator(text: result['message']),
               backgroundColor: AppColors.successColor,
             ),
           );
           Navigator.pop(context, true);
         } else {
-          // Show error (e.g., farm has crops)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('❌ ${result['message']}'),
+              content: SmartReTranslator(text: result['message']),
               backgroundColor: AppColors.errorColor,
               duration: const Duration(seconds: 4),
             ),
@@ -202,7 +195,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Error: $e'),
+            content: SmartReTranslator(text: 'Error: $e'),
             backgroundColor: AppColors.errorColor,
           ),
         );
@@ -225,7 +218,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text(title),
+              title: SmartReTranslator(text: title),
               content: SizedBox(
                 width: double.maxFinite,
                 child: ListView.builder(
@@ -246,7 +239,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                     final isSelected = tempSelected.contains(id);
 
                     return CheckboxListTile(
-                      title: Text(name),
+                      title: SmartReTranslator(text: name),
                       value: isSelected,
                       activeColor: AppColors.primaryGreen,
                       onChanged: (bool? value) {
@@ -265,7 +258,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: const SmartReTranslator(text: 'Cancel'),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -275,8 +268,8 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryGreen,
                   ),
-                  child: const Text(
-                    'Confirm',
+                  child: const SmartReTranslator(
+                    text: 'Confirm',
                     style: TextStyle(color: Colors.white),
                   ),
                 ),
@@ -342,9 +335,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Survey Number',
-                        style: TextStyle(
+                      SmartReTranslator(
+                        text: 'Survey Number',
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -367,9 +360,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Farm Size (Acres)',
-                        style: TextStyle(
+                      SmartReTranslator(
+                        text: 'Farm Size (Acres)',
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -405,9 +398,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Soil Types',
-                        style: TextStyle(
+                      SmartReTranslator(
+                        text: 'Soil Types',
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -436,9 +429,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Irrigation Methods',
-                        style: TextStyle(
+                      SmartReTranslator(
+                        text: 'Irrigation Methods',
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -467,9 +460,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Water Sources',
-                        style: TextStyle(
+                      SmartReTranslator(
+                        text: 'Water Sources',
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -528,8 +521,8 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
+        SmartReTranslator(
+          text: title,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         const SizedBox(height: 6),
@@ -609,8 +602,8 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(
-              child: Text(
-                selectedText.isEmpty ? 'None selected' : selectedText,
+              child: SmartReTranslator(
+                text: selectedText.isEmpty ? 'None selected' : selectedText,
                 style: TextStyle(
                   color: selectedText.isEmpty ? Colors.grey : Colors.black87,
                   fontSize: 14,
