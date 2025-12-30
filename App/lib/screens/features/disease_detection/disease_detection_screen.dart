@@ -18,6 +18,7 @@ import '../../../src/services/model_download_service.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
 import '../../../utils/colors.dart';
+import 'smart_camera_screen.dart';
 
 class DetectDiseaseScreen extends StatefulWidget {
   const DetectDiseaseScreen({super.key});
@@ -102,15 +103,16 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'Select Crop',
       'Select a crop',
       'Capture Image',
+      'Smart Camera',
       'Take Photo',
       'Choose From Gallery',
       'Loading AI model...',
       'Remove image',
-      'Processing image data...',
-      'Running disease scanner...',
-      'Analyzing crop health...',
-      'Generating results...',
-      'Finalizing diagnosis...',
+      'Preprocessing image...',
+      'Preparing AI model...',
+      'Analyzing plant disease...',
+      'Saving results...',
+      'Complete!',
       'Detection Results',
       'Disease Label',
       'Confidence',
@@ -128,7 +130,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'Checking downloaded models...',
       'No models downloaded',
       'Manage',
-      'Analysis saved - syncing to server...',
+      'Analysis saved successfully',
       'Save failed',
       'Synced to server',
       'analysis',
@@ -136,6 +138,25 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       'Not a Plant',
       'This image does not appear to be a plant.',
       'Please take the photo as close to the diseased leaf as possible so that the leaf clearly fills most of the image.',
+      // Smart Camera Phrases
+      'Initializing smart camera...',
+      'Ready - Tap to capture',
+      'Move closer to leaf',
+      'Point at plant leaf',
+      'Capturing...',
+      'Tap to capture',
+      'Position leaf',
+      'Preview',
+      'Perfect! Plant detected',
+      'Low quality - Retake required',
+      'Not a plant - Retake required',
+      'Please capture again closer to leaf',
+      'Verifying image quality...',
+      'Please retake - better quality needed for accurate diagnosis',
+      'Retake',
+      'Retake Photo',
+      'Use Photo',
+      'confidence',
     ];
 
     for (final crop in diseaseLabels.keys) {
@@ -348,6 +369,34 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
+  Future<void> _openSmartCamera() async {
+    if (selectedCrop == null) return;
+
+    final imagePath = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            SmartCameraScreen(cropName: _getCropName(selectedCrop!)),
+      ),
+    );
+
+    if (imagePath != null && mounted) {
+      setState(() {
+        this.imagePath = imagePath;
+        _isLoading = true;
+        result = null;
+        _analysisProgress = 0.0;
+      });
+
+      imageBytes = await File(imagePath).readAsBytes();
+      _progressController
+        ..reset()
+        ..forward();
+
+      await _analyzeImage(imagePath);
+    }
+  }
+
   Future<void> _persistResultUsingPlant({
     required String plantName,
     required String detectedLabel,
@@ -373,30 +422,29 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       if (!mounted) return;
 
       if (saveResult['success'] == true) {
+        // ✅ Show quick save confirmation
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Row(
               children: [
-                Icon(Icons.save, color: Colors.white, size: 20),
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
                 SizedBox(width: 12),
                 Expanded(
                   child: SmartReTranslator(
-                    text: 'Analysis saved - syncing to server...',
+                    text: 'Analysis saved successfully',
                     style: TextStyle(color: Colors.white),
                   ),
                 ),
               ],
             ),
-            backgroundColor: AppColors.infoColor,
+            backgroundColor: AppColors.successColor,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 1),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
           ),
         );
-
-        await _triggerForcedSync();
       } else {
         _showErrorSnackBar('Save failed: ${saveResult['error']}');
       }
@@ -414,7 +462,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         return;
       }
 
-      debugPrint('Triggering forced sync...');
+      debugPrint('🔄 Starting background sync...');
 
       final syncResult = await SyncService.instance.performFullSync(
         accessToken,
@@ -431,7 +479,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
         if (uploaded > 0 || imagesUploaded > 0) {
           debugPrint(
-            'Forced sync: upload $uploaded analyses, $imagesUploaded images',
+            '✅ Sync complete: $uploaded analyses, $imagesUploaded images',
           );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -477,9 +525,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     ),
                   ],
                 ),
-                backgroundColor: AppColors.successColor,
+                backgroundColor: AppColors.primaryGreen,
                 behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 3),
+                duration: const Duration(seconds: 2),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -489,25 +537,47 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         }
       }
     } catch (e) {
-      debugPrint('Forced sync error: $e');
+      debugPrint('❌ Sync error: $e');
+      // Don't show error to user - sync will retry later
     }
   }
 
+  // ✅ OPTIMIZED _analyzeImage method
   Future<void> _analyzeImage(String path) async {
     try {
-      for (int i = 0; i <= 100; i += 5) {
-        if (!mounted) return;
-        setState(() => _analysisProgress = i / 100);
-        await Future.delayed(const Duration(milliseconds: 175));
-      }
+      // ✅ Show initial progress immediately
+      if (!mounted) return;
+      setState(() {
+        _analysisProgress = 0.0;
+      });
+
+      // ✅ Step 1: Start preprocessing (10%)
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (!mounted) return;
+      setState(() {
+        _analysisProgress = 0.1;
+      });
 
       final preprocessor = preprocessMap[selectedCrop];
       final processedPath = preprocessor != null
           ? await preprocessor(path)
           : path;
 
+      // ✅ Step 2: Preprocessing done (20%)
+      if (!mounted) return;
+      setState(() {
+        _analysisProgress = 0.2;
+      });
+
       final cropName = selectedCrop!;
       final labels = diseaseLabels[cropName] ?? const ['Healthy', 'Unknown'];
+
+      // ✅ Step 3: Running inference (40%)
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (!mounted) return;
+      setState(() {
+        _analysisProgress = 0.4;
+      });
 
       final outputs = await ModelService.runInference(
         processedPath,
@@ -515,40 +585,69 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         cropName,
       );
 
+      // ✅ Step 4: Inference complete (70%)
       if (!mounted) return;
+      setState(() {
+        _analysisProgress = 0.7;
+      });
+
       final topResult = outputs.isNotEmpty
           ? outputs.first
           : {'label': 'Unknown', 'confidence': 0.0};
 
+      // ✅ Step 5: Saving to database (80%)
+      if (!mounted) return;
       setState(() {
-        result = topResult;
-        _analysisProgress = 1.0;
+        _analysisProgress = 0.8;
       });
-
-      _resultController.forward();
 
       final hasError = topResult.containsKey('error');
       final isUndefined = topResult['label'] == 'undefined';
 
+      // Save and sync in background if valid result
       if (!hasError && !isUndefined && path.isNotEmpty) {
         final label = (topResult['label'] ?? 'Unknown').toString();
         final conf = (topResult['confidence'] as num?)?.toDouble() ?? 0.0;
+
+        // Save to database
         await _persistResultUsingPlant(
           plantName: selectedCrop!,
           detectedLabel: label,
           confidence0to1: conf,
           localImagePath: path,
         );
+
+        // ✅ Step 6: Saved (90%)
+        if (!mounted) return;
+        setState(() {
+          _analysisProgress = 0.9;
+        });
+
+        // ✅ Trigger sync in background (don't wait for it)
+        _triggerForcedSync(); // Remove await here!
       }
+
+      // ✅ Step 7: Show results immediately (100%)
+      if (!mounted) return;
+      setState(() {
+        result = topResult;
+        _analysisProgress = 1.0;
+      });
+
+      // Animate results
+      _resultController.forward();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
+        _analysisProgress = 1.0;
       });
       _showErrorSnackBar('Analysis failed: ${e.toString()}');
     } finally {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -597,17 +696,18 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     return label.replaceAll('_', ' ');
   }
 
+  // ✅ Updated status messages
   String _getStatusMessage(double progress) {
     if (progress < 0.2) {
-      return 'Processing image data...';
+      return 'Preprocessing image...';
     } else if (progress < 0.4) {
-      return 'Running disease scanner...';
-    } else if (progress < 0.6) {
-      return 'Analyzing crop health...';
-    } else if (progress < 0.8) {
-      return 'Generating results...';
+      return 'Preparing AI model...';
+    } else if (progress < 0.7) {
+      return 'Analyzing plant disease...';
+    } else if (progress < 0.9) {
+      return 'Saving results...';
     } else {
-      return 'Finalizing diagnosis...';
+      return 'Complete!';
     }
   }
 
@@ -649,7 +749,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ✅ Updated Dropdown Section
+            // Dropdown Section
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -817,30 +917,16 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               thickness: 1,
             ),
             const SizedBox(height: 16),
-            const Row(
-              children: [
-                Icon(Icons.camera_alt, color: AppColors.primaryGreen, size: 20),
-                SizedBox(width: 8),
-                SmartReTranslator(
-                  text: 'Capture Image',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
             IntrinsicHeight(
               child: Row(
                 children: [
+                  // Smart Camera button
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.photo_camera, size: 20),
                       label: const Flexible(
                         child: SmartReTranslator(
-                          text: 'Take Photo',
+                          text: 'Smart Camera',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -850,9 +936,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      onPressed: isEnabled
-                          ? () => _pickImage(ImageSource.camera)
-                          : null,
+                      onPressed: isEnabled ? _openSmartCamera : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isEnabled
                             ? AppColors.primaryGreen

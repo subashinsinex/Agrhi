@@ -35,6 +35,7 @@ dependencies:
   jwt_decoder: ^2.0.1
   
   # ML & Image Processing
+  camera: ^0.11.3
   tflite_flutter: ^0.11.0
   image: ^4.3.0
   image_picker: ^1.2.0
