@@ -493,34 +493,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // Icon with Gradient Background
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        _getStatusColor(status).withOpacity(0.2),
-                        _getStatusColor(status).withOpacity(0.1),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _getStatusColor(status).withOpacity(0.3),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Icon(
-                    _getCropIcon(cropName),
-                    color: _getStatusColor(status),
-                    size: 28,
-                  ),
-                ),
-
-                const SizedBox(width: 16),
-
                 // Content
                 Expanded(
                   child: Column(
@@ -692,33 +664,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
         return AppColors.errorColor;
       default:
         return AppColors.primaryGreen;
-    }
-  }
-
-  IconData _getCropIcon(String crop) {
-    switch (crop.toLowerCase()) {
-      case 'corn':
-        return Icons.grain;
-      case 'rice':
-        return Icons.rice_bowl;
-      case 'cotton':
-        return Icons.agriculture;
-      case 'banana':
-        return Icons.food_bank;
-      case 'coffee':
-        return Icons.coffee;
-      case 'tomato':
-        return Icons.local_grocery_store;
-      case 'coconut':
-        return Icons.eco;
-      case 'sugarcane':
-        return Icons.grass;
-      case 'wheat':
-        return Icons.bakery_dining;
-      case 'groundnut':
-        return Icons.nature;
-      default:
-        return Icons.eco;
     }
   }
 

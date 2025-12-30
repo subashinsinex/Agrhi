@@ -1,7 +1,6 @@
 // lib/screens/features/disease_detection_screen.dart
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -71,7 +70,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     });
   }
 
-  // Load gate model on startup
   Future<void> _loadGateModel() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -156,8 +154,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     final downloadedModels = <String>[];
 
     for (final cropName in ModelDownloadService.modelInfo.keys) {
-      final isDownloaded =
-          await ModelDownloadService.instance.isModelDownloaded(cropName);
+      final isDownloaded = await ModelDownloadService.instance
+          .isModelDownloaded(cropName);
       if (isDownloaded) {
         downloadedModels.add(cropName);
       }
@@ -274,8 +272,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         final map = jsonDecode(profileJson);
         if (map is Map) {
           final m = Map<String, dynamic>.from(map);
-          final fromProfile =
-              m['user_id']?.toString() ?? m['id']?.toString();
+          final fromProfile = m['user_id']?.toString() ?? m['id']?.toString();
           if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
         }
       } catch (_) {}
@@ -284,7 +281,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     final token = await _readWithRetry('access_token');
     if (token != null && token.isNotEmpty) {
       final payload = _decodeJwtPayload(token);
-      final fromJwt = payload?['sub']?.toString() ??
+      final fromJwt =
+          payload?['sub']?.toString() ??
           payload?['user_id']?.toString() ??
           payload?['uid']?.toString();
       if (fromJwt != null && fromJwt.isNotEmpty) return fromJwt;
@@ -344,11 +342,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        result = {
-          'label': 'Error',
-          'confidence': 0.0,
-          'error': e.toString()
-        };
+        result = {'label': 'Error', 'confidence': 0.0, 'error': e.toString()};
       });
       _showErrorSnackBar('Failed to pick image: ${e.toString()}');
     }
@@ -369,12 +363,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     try {
       final saveResult = await DiseaseAnalysisService.instance
           .saveDetectionByPlantName(
-        userId: userId,
-        plantName: plantName,
-        detectedLabel: detectedLabel,
-        confidence: confidence0to1,
-        localImagePath: localImagePath,
-      );
+            userId: userId,
+            plantName: plantName,
+            detectedLabel: detectedLabel,
+            confidence: confidence0to1,
+            localImagePath: localImagePath,
+          );
 
       if (!mounted) return;
 
@@ -444,8 +438,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.cloud_done,
-                        color: Colors.white, size: 20),
+                    const Icon(Icons.cloud_done, color: Colors.white, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -463,8 +456,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                             children: [
                               Text(
                                 '$uploaded ',
-                                style:
-                                    const TextStyle(color: Colors.white),
+                                style: const TextStyle(color: Colors.white),
                               ),
                               const SmartReTranslator(
                                 text: 'analysis',
@@ -472,8 +464,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                               ),
                               Text(
                                 ', $imagesUploaded ',
-                                style:
-                                    const TextStyle(color: Colors.white),
+                                style: const TextStyle(color: Colors.white),
                               ),
                               const SmartReTranslator(
                                 text: 'images',
@@ -502,7 +493,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     }
   }
 
-  // Skip save if label is 'undefined'
   Future<void> _analyzeImage(String path) async {
     try {
       for (int i = 0; i <= 100; i += 5) {
@@ -512,8 +502,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       }
 
       final preprocessor = preprocessMap[selectedCrop];
-      final processedPath =
-          preprocessor != null ? await preprocessor(path) : path;
+      final processedPath = preprocessor != null
+          ? await preprocessor(path)
+          : path;
 
       final cropName = selectedCrop!;
       final labels = diseaseLabels[cropName] ?? const ['Healthy', 'Unknown'];
@@ -576,14 +567,12 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
         ),
         backgroundColor: AppColors.errorColor,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'Dismiss',
           textColor: Colors.white,
-          onPressed:
-              () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+          onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
         ),
       ),
     );
@@ -598,25 +587,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     });
     _progressController.reset();
     _resultController.reset();
-  }
-
-  IconData _getCropIcon(String crop) {
-    switch (crop.toLowerCase()) {
-      case 'corn':
-        return Icons.grain;
-      case 'rice':
-        return Icons.rice_bowl;
-      case 'cotton':
-        return Icons.agriculture;
-      case 'banana':
-        return Icons.food_bank;
-      case 'coffee':
-        return Icons.coffee;
-      case 'tomato':
-        return Icons.local_grocery_store;
-      default:
-        return Icons.eco;
-    }
   }
 
   String _getCropName(String crop) {
@@ -646,8 +616,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       return Card(
         elevation: 3,
         shadowColor: AppColors.primaryGreen.withOpacity(0.1),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: const Padding(
           padding: EdgeInsets.all(40),
           child: Center(
@@ -669,42 +638,49 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       );
     }
 
-    final isEnabled =
-        selectedCrop != null && !_isLoading && !_isModelLoading;
+    final isEnabled = selectedCrop != null && !_isLoading && !_isModelLoading;
 
     return Card(
       elevation: 3,
       shadowColor: AppColors.primaryGreen.withOpacity(0.1),
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ✅ Updated Dropdown Section
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(
-                  Icons.agriculture,
-                  color: AppColors.primaryGreen,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: SmartReTranslator(
-                    text: 'Select Crop',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
+                  child: Row(
+                    children: const [
+                      Icon(
+                        Icons.agriculture,
+                        color: AppColors.primaryGreen,
+                        size: 20,
+                      ),
+                      SizedBox(width: 8),
+                      SmartReTranslator(
+                        text: 'Select Crop',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 TextButton.icon(
-                  onPressed: () => Navigator.pushNamed(
-                    context,
-                    '/model-manager',
-                  ).then((_) => _checkDownloadedModels()),
+                  onPressed: () {
+                    Navigator.pushNamed(
+                      context,
+                      '/model-manager',
+                    ).then((_) => _checkDownloadedModels());
+                  },
                   icon: const Icon(Icons.download, size: 16),
                   label: const SmartReTranslator(
                     text: 'Manage',
@@ -720,67 +696,120 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: _isModelLoading
-                    ? AppColors.primaryGreen.withOpacity(0.05)
-                    : Colors.transparent,
-                border: Border.all(
-                  color: AppColors.primaryGreen.withOpacity(0.3),
-                  width: 2,
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: selectedCrop,
+              decoration: InputDecoration(
+                prefixIcon: Icon(
+                  Icons.agriculture,
+                  color: AppColors.primaryGreen,
                 ),
-                borderRadius: BorderRadius.circular(12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppColors.cardBackgroundGrey,
+                    width: 1.5,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppColors.cardBackgroundGrey,
+                    width: 1.5,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppColors.primaryGreen,
+                    width: 2,
+                  ),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: AppColors.errorColor,
+                    width: 1.5,
+                  ),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: AppColors.errorColor,
+                    width: 2,
+                  ),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppColors.cardBackgroundGrey.withOpacity(0.5),
+                    width: 1.5,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: selectedCrop,
-                  hint: SmartReTranslator(
-                    text: availableCrops.isEmpty
-                        ? 'No models downloaded'
-                        : 'Select a crop',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+              hint: SmartReTranslator(
+                text: availableCrops.isEmpty
+                    ? 'No models downloaded'
+                    : 'Select a crop',
+                style: TextStyle(
+                  color: AppColors.textSecondary.withOpacity(0.7),
+                  fontSize: 16,
+                ),
+              ),
+              isExpanded: true,
+              isDense: true,
+              icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
+              iconSize: 24,
+              elevation: 8,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+              ),
+              dropdownColor: Colors.white,
+              menuMaxHeight: 300,
+              itemHeight: 56,
+              borderRadius: BorderRadius.circular(12),
+              items: availableCrops.map((crop) {
+                return DropdownMenuItem<String>(
+                  value: crop,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SmartReTranslator(
+                      text: _getCropName(crop),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                  isExpanded: true,
-                  items: availableCrops
-                      .map(
-                        (crop) => DropdownMenuItem(
-                          value: crop,
-                          child: Row(
-                            children: [
-                              Icon(
-                                _getCropIcon(crop),
-                                color: AppColors.primaryGreen,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
-                              SmartReTranslator(
-                                text: _getCropName(crop),
-                                style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _isModelLoading || availableCrops.isEmpty
-                      ? null
-                      : (val) async {
-                          if (val != null && val != selectedCrop) {
-                            setState(() => selectedCrop = val);
-                            await _loadModelForCrop(val);
-                          }
-                        },
-                ),
-              ),
+                );
+              }).toList(),
+              onChanged: (_isModelLoading || availableCrops.isEmpty)
+                  ? null
+                  : (val) async {
+                      if (val != null && val != selectedCrop) {
+                        setState(() => selectedCrop = val);
+                        await _loadModelForCrop(val);
+                      }
+                    },
+              selectedItemBuilder: (BuildContext context) {
+                return availableCrops.map((crop) {
+                  return SmartReTranslator(
+                    text: _getCropName(crop),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  );
+                }).toList();
+              },
             ),
             const SizedBox(height: 20),
             Divider(
@@ -790,8 +819,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
             const SizedBox(height: 16),
             const Row(
               children: [
-                Icon(Icons.camera_alt,
-                    color: AppColors.primaryGreen, size: 20),
+                Icon(Icons.camera_alt, color: AppColors.primaryGreen, size: 20),
                 SizedBox(width: 8),
                 SmartReTranslator(
                   text: 'Capture Image',
@@ -889,8 +917,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
             ),
             const SizedBox(height: 12),
             const SmartReTranslator(
-              text:
-                  'Take the photo as close to the diseased leaf as you can.',
+              text: 'Take the photo as close to the diseased leaf as you can.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -934,8 +961,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     return Card(
       elevation: 4,
       shadowColor: AppColors.primaryGreen.withOpacity(0.15),
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Stack(
         children: [
           Container(
@@ -958,13 +984,13 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       fit: BoxFit.cover,
                     )
                   : (imagePath != null
-                      ? Image.file(
-                          File(imagePath!),
-                          width: double.infinity,
-                          height: 280,
-                          fit: BoxFit.cover,
-                        )
-                      : Container()),
+                        ? Image.file(
+                            File(imagePath!),
+                            width: double.infinity,
+                            height: 280,
+                            fit: BoxFit.cover,
+                          )
+                        : Container()),
             ),
           ),
           Positioned(
@@ -986,8 +1012,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                 icon: const Icon(Icons.close, color: Colors.white, size: 20),
                 onPressed: _resetAnalysis,
                 padding: const EdgeInsets.all(8),
-                constraints:
-                    const BoxConstraints(minWidth: 36, minHeight: 36),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 tooltip: 'Remove image',
               ),
             ),
@@ -1001,8 +1026,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     return Card(
       elevation: 6,
       shadowColor: AppColors.primaryGreen.withOpacity(0.15),
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
@@ -1030,9 +1054,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: AppColors.primaryGreen.withOpacity(
-                                  0.1,
-                                ),
+                                color: AppColors.primaryGreen.withOpacity(0.1),
                                 width: 2,
                               ),
                             ),
@@ -1134,8 +1156,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       builder: (context, child) {
                         return LinearProgressIndicator(
                           value: _analysisProgress,
-                          backgroundColor: AppColors.primaryGreen
-                              .withOpacity(0.1),
+                          backgroundColor: AppColors.primaryGreen.withOpacity(
+                            0.1,
+                          ),
                           valueColor: const AlwaysStoppedAnimation(
                             AppColors.primaryGreen,
                           ),
@@ -1153,17 +1176,14 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
     );
   }
 
-  // FULLY UPDATED RESULTS WITH DISCLAIMER AND WRAPPING
   Widget _buildResults() {
     if (result == null) return const SizedBox.shrink();
 
     final isError = result!.containsKey('error');
     final isUndefined = result!['label'] == 'undefined';
 
-    // "Not a Plant" case with disclaimer
     if (isUndefined) {
-      final double conf =
-          (result!['confidence'] as num?)?.toDouble() ?? 0.0;
+      final double conf = (result!['confidence'] as num?)?.toDouble() ?? 0.0;
 
       return AnimatedBuilder(
         animation: _resultController,
@@ -1192,7 +1212,6 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        
                         const SmartReTranslator(
                           text: 'This image does not appear to be a Crop.',
                           textAlign: TextAlign.center,
@@ -1234,9 +1253,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
       );
     }
 
-    // Normal disease result
     final labelText = _getDiseaseLabel(result!['label'].toString());
-    final isHealthy = !isError &&
+    final isHealthy =
+        !isError &&
         result!['label'].toString().toLowerCase().contains('healthy');
     final double confidence = isError
         ? 0.0
@@ -1254,8 +1273,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
               shadowColor: isError
                   ? Colors.red.withOpacity(0.2)
                   : (isHealthy
-                      ? Colors.green.withOpacity(0.2)
-                      : Colors.orange.withOpacity(0.2)),
+                        ? Colors.green.withOpacity(0.2)
+                        : Colors.orange.withOpacity(0.2)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -1266,8 +1285,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                     color: isError
                         ? AppColors.errorColor.withOpacity(0.3)
                         : (isHealthy
-                            ? AppColors.successColor.withOpacity(0.3)
-                            : AppColors.warningColor.withOpacity(0.3)),
+                              ? AppColors.successColor.withOpacity(0.3)
+                              : AppColors.warningColor.withOpacity(0.3)),
                     width: 2,
                   ),
                 ),
@@ -1284,17 +1303,18 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                               color: isError
                                   ? AppColors.errorColor
                                   : (isHealthy
-                                      ? AppColors.successColor
-                                      : AppColors.warningColor),
+                                        ? AppColors.successColor
+                                        : AppColors.warningColor),
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: (isError
-                                          ? AppColors.errorColor
-                                          : (isHealthy
-                                              ? AppColors.successColor
-                                              : AppColors.warningColor))
-                                      .withOpacity(0.3),
+                                  color:
+                                      (isError
+                                              ? AppColors.errorColor
+                                              : (isHealthy
+                                                    ? AppColors.successColor
+                                                    : AppColors.warningColor))
+                                          .withOpacity(0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 4),
                                 ),
@@ -1304,8 +1324,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                               isError
                                   ? Icons.error
                                   : (isHealthy
-                                      ? Icons.health_and_safety
-                                      : Icons.warning),
+                                        ? Icons.health_and_safety
+                                        : Icons.warning),
                               color: Colors.white,
                               size: 28,
                             ),
@@ -1333,8 +1353,8 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         valueColor: isError
                             ? AppColors.errorColor
                             : (isHealthy
-                                ? AppColors.successColor
-                                : AppColors.errorColor),
+                                  ? AppColors.successColor
+                                  : AppColors.errorColor),
                       ),
                       const SizedBox(height: 16),
                       if (!isError)
@@ -1350,13 +1370,10 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color:
-                                  AppColors.errorColor.withOpacity(0.1),
+                              color: AppColors.errorColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: AppColors.errorColor.withOpacity(
-                                  0.3,
-                                ),
+                                color: AppColors.errorColor.withOpacity(0.3),
                               ),
                             ),
                             child: Row(
@@ -1458,8 +1475,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar:
-          const CustomAppBar(title: 'Plant Doctor', showOnlineStatus: true),
+      appBar: const CustomAppBar(title: 'Plant Doctor', showOnlineStatus: true),
       backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {

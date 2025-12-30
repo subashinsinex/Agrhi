@@ -353,6 +353,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -389,6 +390,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -425,6 +427,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
+                          color: Colors.black,
                             ),
                           ),
                           if (_selectedFarmId != null)
@@ -481,6 +484,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -502,6 +506,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -522,6 +527,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -552,6 +558,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -594,7 +601,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
       children: [
         SmartReTranslator(
           text: title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black),
         ),
         const SizedBox(height: 6),
       ],
@@ -623,7 +630,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: BorderSide(color: Colors.black),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -662,7 +669,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade300),
+            borderSide: BorderSide(color: Colors.black),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -675,13 +682,13 @@ class _AddCropScreenState extends State<AddCropScreen> {
             date != null
                 ? Text(
                     '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-                    style: const TextStyle(color: Colors.black87, fontSize: 14),
+                    style: const TextStyle(color: Colors.black, fontSize: 14),
                   )
                 : const SmartReTranslator(
                     text: 'Select date',
-                    style: TextStyle(color: Colors.grey, fontSize: 14),
+                    style: TextStyle(color: Colors.black, fontSize: 14),
                   ),
-            Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+            Icon(Icons.arrow_drop_down, color: Colors.black),
           ],
         ),
       ),
@@ -714,7 +721,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: BorderSide(color: Colors.black),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -735,7 +742,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
             value: null,
             child: SmartReTranslator(
               text: 'Select...',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: Colors.black),
             ),
           ),
         ...items.map((item) {
@@ -774,7 +781,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: BorderSide(color: Colors.black),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

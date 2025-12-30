@@ -226,17 +226,6 @@ class _OnlineStatusIcon extends StatelessWidget {
                     },
                     child: _buildStatusIcon(isOnline, isSyncing),
                   ),
-                  const SizedBox(width: 6),
-                  // ✅ Status Text
-                  Text(
-                    _getStatusText(isOnline, isSyncing),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -249,7 +238,6 @@ class _OnlineStatusIcon extends StatelessWidget {
   Widget _buildStatusIcon(bool isOnline, bool isSyncing) {
     if (isSyncing) {
       return const SizedBox(
-        key: ValueKey('syncing'),
         width: 14,
         height: 14,
         child: CircularProgressIndicator(
@@ -259,14 +247,12 @@ class _OnlineStatusIcon extends StatelessWidget {
       );
     } else if (isOnline) {
       return const Icon(
-        key: ValueKey('online'),
         Icons.cloud_done_rounded,
         color: Colors.white,
         size: 16,
       );
     } else {
       return const Icon(
-        key: ValueKey('offline'),
         Icons.cloud_off_rounded,
         color: Colors.white,
         size: 16,
@@ -278,19 +264,9 @@ class _OnlineStatusIcon extends StatelessWidget {
     if (isSyncing) {
       return Colors.blue.shade600.withOpacity(0.9);
     } else if (isOnline) {
-      return AppColors.successColor.withOpacity(0.9);
+      return AppColors.secondaryGreen.withOpacity(0.9);
     } else {
       return AppColors.errorColor.withOpacity(0.9);
-    }
-  }
-
-  String _getStatusText(bool isOnline, bool isSyncing) {
-    if (isSyncing) {
-      return 'Syncing';
-    } else if (isOnline) {
-      return 'Online';
-    } else {
-      return 'Offline';
     }
   }
 

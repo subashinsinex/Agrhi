@@ -479,7 +479,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
               const SizedBox(height: 8),
               const SmartReTranslator(
                 text:
-                    'Please share your thoughts, suggestions, or report any issues you encounter.',
+                    'Help us improve Agrhi! Share your feedback or report any issues you encounter.',
                 style: TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,

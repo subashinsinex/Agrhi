@@ -21,9 +21,48 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   List<Marker> _markers = [];
   bool _isMapReady = false;
   late AnimationController _pulseController;
-  double _currentZoom = 17.0;
+  double _currentZoom = 13.0;
   bool _isTracking = true;
   bool _showLocationCard = true;
+
+  // Define multiple locations
+  final List<LocationData> _locations = [
+    LocationData(
+      id: '1',
+      name: 'Green Valley Farm',
+      position: LatLng(13.0827, 80.2707),
+      description: 'Organic vegetable farm',
+      type: LocationType.farm,
+    ),
+    LocationData(
+      id: '2',
+      name: 'Agri Retailer Store',
+      position: LatLng(13.0500, 80.2500),
+      description: 'Seeds and fertilizer store',
+      type: LocationType.retailer,
+    ),
+    LocationData(
+      id: '3',
+      name: 'Main Warehouse',
+      position: LatLng(13.1000, 80.3000),
+      description: 'Central storage facility',
+      type: LocationType.warehouse,
+    ),
+    LocationData(
+      id: '4',
+      name: 'Sunrise Farm',
+      position: LatLng(13.0700, 80.2600),
+      description: 'Rice cultivation',
+      type: LocationType.farm,
+    ),
+    LocationData(
+      id: '5',
+      name: 'Farm Supply Center',
+      position: LatLng(13.0900, 80.2800),
+      description: 'Equipment and tools',
+      type: LocationType.retailer,
+    ),
+  ];
 
   @override
   void initState() {
@@ -83,7 +122,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
       setState(() {
         _currentPosition = LatLng(position.latitude, position.longitude);
-        _markers = [_buildUserMarker()];
+        _markers = _buildAllMarkers();
         _isLoading = false;
       });
 
@@ -110,7 +149,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _currentPosition = LatLng(position.latitude, position.longitude);
-          _markers = [_buildUserMarker()];
+          _markers = _buildAllMarkers();
         });
 
         if (_isTracking && _isMapReady) {
@@ -120,6 +159,339 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
+  // Build all markers (user location + all locations)
+  List<Marker> _buildAllMarkers() {
+    List<Marker> allMarkers = [];
+
+    // Add user location marker
+    if (_currentPosition != null) {
+      allMarkers.add(_buildUserMarker());
+    }
+
+    // Add all location markers
+    allMarkers.addAll(_buildLocationMarkers());
+
+    return allMarkers;
+  }
+
+  // Build location markers
+  List<Marker> _buildLocationMarkers() {
+    return _locations.map((location) {
+      return Marker(
+        point: location.position,
+        width: 80,
+        height: 80,
+        child: GestureDetector(
+          onTap: () => _showLocationInfo(location),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _getLocationColor(location.type),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 6,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  _getLocationIcon(location.type),
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+                child: Text(
+                  location.name,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  // Get color based on location type
+  Color _getLocationColor(LocationType type) {
+    switch (type) {
+      case LocationType.retailer:
+        return Colors.blue;
+      case LocationType.farm:
+        return Colors.green.shade700;
+      case LocationType.warehouse:
+        return Colors.orange.shade700;
+      case LocationType.other:
+        return AppColors.primaryGreen;
+    }
+  }
+
+  // Get icon based on location type
+  IconData _getLocationIcon(LocationType type) {
+    switch (type) {
+      case LocationType.retailer:
+        return Icons.store;
+      case LocationType.farm:
+        return Icons.agriculture;
+      case LocationType.warehouse:
+        return Icons.warehouse;
+      case LocationType.other:
+        return Icons.location_on;
+    }
+  }
+
+  // Show location info bottom sheet
+  void _showLocationInfo(LocationData location) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _getLocationColor(location.type),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    _getLocationIcon(location.type),
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        location.name,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        location.description,
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Location details
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 18,
+                        color: Colors.grey[600],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${location.position.latitude.toStringAsFixed(6)}, ${location.position.longitude.toStringAsFixed(6)}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_currentPosition != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.straighten,
+                          size: 18,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Distance: ${_calculateDistance(location.position)} km',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _navigateToLocation(location.position);
+                    },
+                    icon: const Icon(Icons.center_focus_strong),
+                    label: const Text('Center'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primaryGreen,
+                      side: const BorderSide(color: AppColors.primaryGreen),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _openDirections(location.position);
+                    },
+                    icon: const Icon(Icons.directions),
+                    label: const Text('Directions'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Calculate distance between current position and location
+  String _calculateDistance(LatLng destination) {
+    if (_currentPosition == null) return '0.0';
+
+    final Distance distance = Distance();
+    final double km = distance.as(
+      LengthUnit.Kilometer,
+      _currentPosition!,
+      destination,
+    );
+
+    return km.toStringAsFixed(2);
+  }
+
+  // Navigate map to specific location
+  void _navigateToLocation(LatLng position) {
+    if (_isMapReady) {
+      setState(() {
+        _isTracking = false;
+      });
+      _mapController.move(position, 16.0);
+    }
+  }
+
+  // Open directions in external maps app
+  // Open directions in external maps app with current location as origin
+  Future<void> _openDirections(LatLng destination) async {
+    if (_currentPosition == null) {
+      // If current position is not available, just show the destination
+      final url = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}',
+      );
+
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+      return;
+    }
+
+    // Build URL with origin (current location) and destination
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&origin=${_currentPosition!.latitude},${_currentPosition!.longitude}'
+      '&destination=${destination.latitude},${destination.longitude}'
+      '&travelmode=driving'
+      '&dir_action=navigate',
+    );
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      // Fallback: try opening without navigation action
+      final fallbackUrl = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1'
+        '&origin=${_currentPosition!.latitude},${_currentPosition!.longitude}'
+        '&destination=${destination.latitude},${destination.longitude}',
+      );
+
+      if (await canLaunchUrl(fallbackUrl)) {
+        await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+      }
+    }
+  }
+
+
+  // Build user marker with pulse animation
   Marker _buildUserMarker() {
     return Marker(
       point: _currentPosition!,
@@ -192,7 +564,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       setState(() {
         _isTracking = true;
       });
-      _mapController.move(_currentPosition!, _currentZoom);
+      _mapController.move(_currentPosition!, 17.0);
     }
   }
 
@@ -244,7 +616,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 });
               },
               tooltip: _showLocationCard ? 'Hide Info' : 'Show Info',
-            ), 
+            ),
         ],
       ),
       body: Stack(
@@ -330,7 +702,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       mapController: _mapController,
                       options: MapOptions(
                         initialCenter:
-                            _currentPosition ?? const LatLng(20.5937, 78.9629),
+                            _currentPosition ?? const LatLng(13.0827, 80.2707),
                         initialZoom: _currentZoom,
                         minZoom: 5.0,
                         maxZoom: 19.0,
@@ -377,6 +749,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             maxZoom: 19,
                           ),
                         ),
+                        // All markers (user + locations)
                         MarkerLayer(markers: _markers),
                       ],
                     ),
@@ -523,7 +896,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
 
                 // Compact location info card
-                if (_showLocationCard)
+                if (_showLocationCard && _currentPosition != null)
                   Positioned(
                     top: 100,
                     left: 12,
@@ -612,6 +985,48 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
+
+                // Locations count badge
+                Positioned(
+                  top: 100,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryGreen,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.pin_drop,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_locations.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
         ],
@@ -626,3 +1041,62 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 }
+
+// Location data model
+class LocationData {
+  final String id;
+  final String name;
+  final LatLng position;
+  final String description;
+  final LocationType type;
+
+  LocationData({
+    required this.id,
+    required this.name,
+    required this.position,
+    required this.description,
+    required this.type,
+  });
+
+  // From JSON (for API integration)
+  factory LocationData.fromJson(Map<String, dynamic> json) {
+    return LocationData(
+      id: json['id'].toString(),
+      name: json['name'],
+      position: LatLng(
+        double.parse(json['latitude'].toString()),
+        double.parse(json['longitude'].toString()),
+      ),
+      description: json['description'] ?? '',
+      type: _parseLocationType(json['type']),
+    );
+  }
+
+  static LocationType _parseLocationType(String? type) {
+    switch (type?.toLowerCase()) {
+      case 'retailer':
+        return LocationType.retailer;
+      case 'farm':
+        return LocationType.farm;
+      case 'warehouse':
+        return LocationType.warehouse;
+      default:
+        return LocationType.other;
+    }
+  }
+
+  // To JSON (for API integration)
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'latitude': position.latitude,
+      'longitude': position.longitude,
+      'description': description,
+      'type': type.toString().split('.').last,
+    };
+  }
+}
+
+// Location type enum
+enum LocationType { retailer, farm, warehouse, other }

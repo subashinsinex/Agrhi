@@ -340,6 +340,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -365,6 +366,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -403,6 +405,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -434,6 +437,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -465,6 +469,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
+                          color: Colors.black,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -523,7 +528,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
       children: [
         SmartReTranslator(
           text: title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18 , color: Colors.black),
         ),
         const SizedBox(height: 6),
       ],
@@ -605,7 +610,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
               child: SmartReTranslator(
                 text: selectedText.isEmpty ? 'None selected' : selectedText,
                 style: TextStyle(
-                  color: selectedText.isEmpty ? Colors.grey : Colors.black87,
+                  color: Colors.black87,
                   fontSize: 14,
                 ),
               ),

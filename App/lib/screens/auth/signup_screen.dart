@@ -154,7 +154,6 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // ✅ USE ApiService
       final response = await ApiService.instance.post(
         '/profile/createUser',
         body: {
@@ -173,62 +172,79 @@ class _SignupScreenState extends State<SignupScreen> {
 
       if (response.isSuccess || response.statusCode == 201) {
         if (!mounted) return;
-
-        _showSuccessSnackBar('Account created successfully!');
-
-        await Future.delayed(const Duration(seconds: 2));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SmartReTranslator(
+                    text: 'Account created successfully!',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.successColor,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
         if (mounted) {
           Routes.navigateToLogin(context);
         }
-      } else if (response.statusCode == 409) {
-        throw 'User already exists with this phone number or email';
-      } else if (response.statusCode != null && response.statusCode! >= 500) {
-        throw 'Server error. Please try again later';
-      } else if (response.isOffline) {
-        throw 'No internet connection';
-      } else if (response.isTimeout) {
-        throw 'Request timeout. Please try again';
       } else {
-        final responseData = response.data;
-        throw responseData['message'] ?? response.error ?? 'Signup failed';
+        // Handle errors - extract only the server message
+        String errorMessage;
+
+        if (response.statusCode == 409) {
+          errorMessage = 'User already exists with this phone number or email';
+        } else if (response.statusCode != null && response.statusCode! >= 500) {
+          errorMessage = 'Server error. Please try again later';
+        } else if (response.isOffline) {
+          errorMessage = 'No internet connection';
+        } else if (response.isTimeout) {
+          errorMessage = 'Request timeout. Please try again';
+        } else {
+          // Extract message from server response
+          final responseData = response.data;
+          errorMessage =
+              (responseData is Map && responseData.containsKey('message'))
+              ? responseData['message']
+              : (response.error ?? 'Signup failed');
+        }
+
+        throw errorMessage;
       }
     } catch (e) {
       if (!mounted) return;
 
       String errorMessage = e.toString();
+
+      // Clean up technical error messages
+      // Clean up technical error messages
       if (errorMessage.contains('SocketException')) {
         errorMessage = 'No internet connection';
       } else if (errorMessage.contains('TimeoutException')) {
         errorMessage = 'Request timeout. Please try again';
+      } else {
+        // ✅ Remove all common error prefixes and JSON formatting
+        errorMessage = errorMessage
+            .replaceFirst('Client error: ', '')
+            .replaceAll('{"message":"', '')
+            .replaceAll('"}', '')
+            .replaceAll('"', '')
+            .trim();
       }
 
       _showErrorSnackBar(errorMessage);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(
-              child: SmartReTranslator(
-                text: message,
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.successColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
   }
 
   void _showErrorSnackBar(String message) {
@@ -273,7 +289,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 24.0),
                       child: Form(
                         key: _formKey,
-                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        autovalidateMode: AutovalidateMode.disabled,
                         child: Column(
                           children: [
                             const SizedBox(height: 40),
@@ -592,35 +608,74 @@ class _FormField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        label: SmartReTranslator(
-          text: labelText,
-          style: const TextStyle(color: AppColors.textSecondary),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: SmartReTranslator(
+            text: labelText,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ),
-        prefixIcon: Icon(icon, color: AppColors.primaryGreen),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: AppColors.primaryGreen),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 2,
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
+                width: 1.5,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+          ),
+          keyboardType: keyboardType,
+          validator: validator,
+          enabled: enabled,
+          maxLines: maxLines,
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.errorColor),
-        ),
-      ),
-      keyboardType: keyboardType,
-      validator: validator,
-      enabled: enabled,
-      maxLines: maxLines,
+      ],
     );
   }
 }
@@ -641,28 +696,80 @@ class _DatePickerField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        label: SmartReTranslator(
-          text: labelText,
-          style: const TextStyle(color: AppColors.textSecondary),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: SmartReTranslator(
+            text: labelText,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ),
-        prefixIcon: Icon(Icons.calendar_today, color: AppColors.primaryGreen),
-        suffixIcon: Icon(Icons.arrow_drop_down, color: AppColors.textSecondary),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            prefixIcon: Icon(
+              Icons.calendar_today,
+              color: AppColors.primaryGreen,
+            ),
+            suffixIcon: Icon(
+              Icons.arrow_drop_down,
+              color: AppColors.textSecondary,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 2,
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
+                width: 1.5,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+          ),
+          readOnly: true,
+          onTap: onTap,
+          validator: validator,
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-      ),
-      readOnly: true,
-      onTap: onTap,
-      validator: validator,
+      ],
     );
   }
 }
@@ -689,34 +796,80 @@ class _PasswordField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        label: SmartReTranslator(
-          text: labelText,
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-        prefixIcon: Icon(icon ?? Icons.lock, color: AppColors.primaryGreen),
-        suffixIcon: IconButton(
-          icon: Icon(
-            obscureText ? Icons.visibility : Icons.visibility_off,
-            color: AppColors.textSecondary,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: SmartReTranslator(
+            text: labelText,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-          onPressed: onToggle,
         ),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon ?? Icons.lock, color: AppColors.primaryGreen),
+            suffixIcon: IconButton(
+              icon: Icon(
+                obscureText ? Icons.visibility : Icons.visibility_off,
+                color: AppColors.textSecondary,
+              ),
+              onPressed: onToggle,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 2,
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
+                width: 1.5,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+          ),
+          obscureText: obscureText,
+          validator: validator,
+          enabled: enabled,
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-      ),
-      obscureText: obscureText,
-      validator: validator,
-      enabled: enabled,
+      ],
     );
   }
 }
@@ -737,40 +890,111 @@ class _CategoryDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      decoration: InputDecoration(
-        label: const SmartReTranslator(
-          text: 'Select Category',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        prefixIcon: Icon(Icons.category, color: AppColors.primaryGreen),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.cardBackgroundGrey),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-        filled: true,
-        fillColor: AppColors.cardBackgroundLight,
-      ),
-      items: categories.map((category) {
-        final categoryKey = category['key'] as String;
-        return DropdownMenuItem<String>(
-          value: category['id'] as String,
-          child: SmartReTranslator(
-            text: categoryKey == 'farmer' ? 'Farmer' : 'Expert',
-            style: const TextStyle(color: AppColors.textPrimary),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: const SmartReTranslator(
+            text: 'Category',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        );
-      }).toList(),
-      onChanged: onChanged,
-      validator: validator,
-      dropdownColor: AppColors.backgroundColor,
-      icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
+        ),
+        DropdownButtonFormField<String>(
+          value: value,
+          decoration: InputDecoration(
+            prefixIcon: Icon(Icons.category, color: AppColors.primaryGreen),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 2,
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
+                width: 1.5,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+          ),
+          isExpanded: true, // ✅ Keeps dropdown items aligned properly
+          isDense: true, // ✅ Prevents extra spacing
+          icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
+          iconSize: 24,
+          elevation: 8,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 16),
+          dropdownColor: Colors.white,
+          menuMaxHeight: 300,
+          itemHeight: 56,
+          borderRadius: BorderRadius.circular(12),
+          items: categories.map((category) {
+            final categoryKey = category['key'] as String;
+            return DropdownMenuItem<String>(
+              value: category['id'] as String,
+              child: Text(
+                categoryKey == 'farmer' ? 'Farmer' : 'Expert',
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                ),
+                overflow:
+                    TextOverflow.ellipsis, // ✅ Prevents text from expanding
+              ),
+            );
+          }).toList(),
+          onChanged: onChanged,
+          validator: validator,
+          selectedItemBuilder: (BuildContext context) {
+            // ✅ Controls how selected item appears in the field
+            return categories.map((category) {
+              final categoryKey = category['key'] as String;
+              return Text(
+                categoryKey == 'farmer' ? 'Farmer' : 'Expert',
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                ),
+                overflow: TextOverflow.ellipsis,
+              );
+            }).toList();
+          },
+        ),
+      ],
     );
   }
 }

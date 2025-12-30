@@ -607,7 +607,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                           },
                           icon: const Icon(Icons.add, color: Colors.white),
                           label: const SmartReTranslator(
-                            text: 'Add Your First Crop',
+                            text: 'Add Crop',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -1581,7 +1581,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                           },
                           icon: const Icon(Icons.add, color: Colors.white),
                           label: const SmartReTranslator(
-                            text: 'Create Your First Farm',
+                            text: 'Add Farm',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,

@@ -156,7 +156,7 @@ class _WeatherCardState extends State<WeatherCard> {
             "${weather.temperature.toStringAsFixed(1)}${translatedTexts['degreeCelsius'] ?? '°C'}";
         condition = conditionStr;
         wind =
-            "${weather.windSpeed.toStringAsFixed(1)} ${translatedTexts['kmh'] ?? 'km/h'}";
+            "${weather.windSpeed.toStringAsFixed(1)} km/h";
         weatherIcon = _mapWeatherToIcon(weather.weatherCode);
         isLoading = false;
       });

@@ -39,7 +39,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  // ✅ Preload translations for instant display
   Future<void> _preloadTranslations() async {
     final languageService = Provider.of<LanguageService>(
       context,
@@ -61,6 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
       'Request timeout. Please try again',
       'Enter a valid phone number',
       'Password must be at least 6 characters',
+      'Forgot Password?',
     ], highPriority: true);
   }
 
@@ -71,13 +71,11 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Fetch user profile from server
   Future<Map<String, dynamic>?> _fetchUserProfile(
     String accessToken,
     String userId,
   ) async {
     try {
-      // ✅ USE ApiService
       final response = await ApiService.instance.get(
         '/profile/getUserDetails/$userId',
         requiresAuth: true,
@@ -94,7 +92,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Store user profile in secure storage
   Future<void> _storeUserProfile(Map<String, dynamic> profileData) async {
     const storage = FlutterSecureStorage();
     await storage.write(key: 'user_profile', value: jsonEncode(profileData));
@@ -109,7 +106,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final phone = _phoneController.text.trim();
       final password = _passwordController.text.trim();
 
-      // ✅ USE ApiService
       final response = await ApiService.instance.post(
         '/login',
         body: {
@@ -126,12 +122,10 @@ class _LoginScreenState extends State<LoginScreen> {
         final accessToken = responseData['access_token'] as String;
         final refreshToken = responseData['refresh_token'] as String;
 
-        // Store tokens
         const storage = FlutterSecureStorage();
         await storage.write(key: 'access_token', value: accessToken);
         await storage.write(key: 'refresh_token', value: refreshToken);
 
-        // Decode and store user ID
         String? userId;
         try {
           final decodedToken = JwtDecoder.decode(accessToken);
@@ -141,7 +135,6 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('❌ Token decode error: $e');
         }
 
-        // Fetch and store user profile
         if (userId != null) {
           final profileData = await _fetchUserProfile(accessToken, userId);
           if (profileData != null) {
@@ -149,7 +142,6 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         }
 
-        // Store token expiration
         try {
           final expiryDate = JwtDecoder.getExpirationDate(accessToken);
           await storage.write(
@@ -160,7 +152,6 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('❌ Token expiry decode error: $e');
         }
 
-        // Sync catalogs
         final syncResult = await DatabaseHelper.instance.smartSyncCatalogs(
           accessToken,
         );
@@ -190,10 +181,20 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       String errorMessage = e.toString();
+
+      // Clean up technical error messages
       if (errorMessage.contains('SocketException')) {
         errorMessage = 'No internet connection';
       } else if (errorMessage.contains('TimeoutException')) {
         errorMessage = 'Request timeout. Please try again';
+      } else {
+        // Remove all common error prefixes and JSON formatting
+        errorMessage = errorMessage
+            .replaceFirst('Client error: ', '')
+            .replaceAll('{"message":"', '')
+            .replaceAll('"}', '')
+            .replaceAll('"', '')
+            .trim();
       }
 
       _showErrorSnackBar(errorMessage);
@@ -268,6 +269,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 24.0),
                       child: Form(
                         key: _formKey,
+                        autovalidateMode: AutovalidateMode.disabled,
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
@@ -458,7 +460,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ✅ Separate widgets for better organization and performance
+// ✅ Phone Number Field with label above
 class _PhoneNumberField extends StatelessWidget {
   final TextEditingController controller;
   final bool enabled;
@@ -467,50 +469,78 @@ class _PhoneNumberField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: null,
-        hintText: null,
-        label: const SmartReTranslator(
-          text: 'Phone Number',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        prefixIcon: Icon(Icons.phone, color: AppColors.primaryGreen),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.primaryGreen.withOpacity(0.3),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: const SmartReTranslator(
+            text: 'Phone Number',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.primaryGreen.withOpacity(0.3),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            prefixIcon: Icon(Icons.phone, color: AppColors.primaryGreen),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 2,
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
+                width: 1.5,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
           ),
+          keyboardType: TextInputType.phone,
+          validator: Validators.validatePhone,
+          enabled: enabled,
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.errorColor),
-        ),
-      ),
-      keyboardType: TextInputType.phone,
-      validator: (value) {
-        final error = Validators.validatePhone(value);
-        if (error != null) {
-          return error;
-        }
-        return null;
-      },
-      enabled: enabled,
+      ],
     );
   }
 }
 
+// ✅ Password Field with label above
 class _PasswordField extends StatelessWidget {
   final TextEditingController controller;
   final bool obscurePassword;
@@ -526,46 +556,79 @@ class _PasswordField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: null,
-        hintText: null,
-        label: const SmartReTranslator(
-          text: 'Password',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        prefixIcon: Icon(Icons.lock, color: AppColors.primaryGreen),
-        suffixIcon: IconButton(
-          icon: Icon(
-            obscurePassword ? Icons.visibility : Icons.visibility_off,
-            color: AppColors.textSecondary,
-          ),
-          onPressed: onToggleVisibility,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.primaryGreen.withOpacity(0.3),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: const SmartReTranslator(
+            text: 'Password',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.primaryGreen.withOpacity(0.3),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            prefixIcon: Icon(Icons.lock, color: AppColors.primaryGreen),
+            suffixIcon: IconButton(
+              icon: Icon(
+                obscurePassword ? Icons.visibility : Icons.visibility_off,
+                color: AppColors.textSecondary,
+              ),
+              onPressed: onToggleVisibility,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey,
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 2,
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
+                width: 1.5,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
           ),
+          obscureText: obscurePassword,
+          enabled: enabled,
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.errorColor),
-        ),
-      ),
-      obscureText: obscurePassword,
-      enabled: enabled,
+      ],
     );
   }
 }
