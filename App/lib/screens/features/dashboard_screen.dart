@@ -1,7 +1,7 @@
 // lib/screens/features/dashboard_screen.dart
 
-import 'package:agrhi/screens/features/crop_care/crop_history_screen.dart';
-import 'package:agrhi/screens/features/disease_detection/model_manager_screen.dart';
+import '/screens/features/crop_care/crop_history_screen.dart';
+import '/screens/features/disease_detection/model_manager_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';

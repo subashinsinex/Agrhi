@@ -298,13 +298,12 @@ class _SignupScreenState extends State<SignupScreen> {
                             Column(
                               children: [
                                 CircleAvatar(
-                                  radius: 60,
-                                  backgroundColor: AppColors.primaryGreen
-                                      .withOpacity(0.1),
-                                  child: Icon(
-                                    Icons.agriculture,
-                                    size: 60,
-                                    color: AppColors.primaryGreen,
+                                  radius: 80,
+                                  child: ClipOval(
+                                    child: Image.asset(
+                                      'assets/images/logo.png',
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 10),

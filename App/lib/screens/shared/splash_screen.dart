@@ -269,7 +269,7 @@ class _SplashScreenState extends State<SplashScreen>
       ),
       child: ClipOval(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(0),
           child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
         ),
       ),
@@ -278,7 +278,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Widget _buildTitle() {
     return Text(
-      'Agrhi',
+      'AGRHI',
       textAlign: TextAlign.center,
       style: TextStyle(
         fontSize: 56,

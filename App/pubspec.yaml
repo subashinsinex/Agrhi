@@ -1,4 +1,4 @@
-name: agrhi
+name: AGRHI
 description: "Smart Farming Solutions - Offline-First Agricultural App"
 publish_to: 'none'
 version: 1.1.0+2
@@ -74,7 +74,7 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icons"
   ios: true
-  image_path: "assets/images/logo_nb.png"
+  image_path: "assets/images/logo.png"
   remove_alpha_ios: true
   adaptive_icon_background: "#ffffff"
-  adaptive_icon_foreground: "assets/images/logo_nb.png"
+  adaptive_icon_foreground: "assets/images/logo.png"

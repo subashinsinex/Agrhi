@@ -413,7 +413,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   String _getStatusText() {
     if (_isPlantDetected) return 'Ready - Tap to capture';
     if (_plantConfidence > 0.4) return 'Move closer to leaf';
-    return 'Point at plant leaf';
+    return 'Point at Crop leaf';
   }
 
   @override
@@ -857,10 +857,10 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
                 children: [
                   SmartReTranslator(
                     text: isGoodQuality
-                        ? 'Perfect! Plant detected'
+                        ? 'Perfect! Crop detected'
                         : isPlant
-                        ? 'Low quality - Retake required'
-                        : 'Not a plant - Retake required',
+                        ? 'Low quality - Recapture required'
+                        : 'Not a Crop - Recapture required',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -977,7 +977,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
           Expanded(
             child: SmartReTranslator(
               text:
-                  'Please retake - better quality needed for accurate diagnosis',
+                  'Please Recapture - better quality needed for accurate diagnosis',
               style: TextStyle(color: Colors.white, fontSize: 12),
             ),
           ),
@@ -991,7 +991,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       onPressed: _resetCapture,
       icon: const Icon(Icons.refresh, size: 20),
       label: SmartReTranslator(
-        text: isGoodQuality ? 'Retake' : 'Retake Photo',
+        text: isGoodQuality ? 'Recapture' : 'Recapture Photo',
         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
       style: ElevatedButton.styleFrom(

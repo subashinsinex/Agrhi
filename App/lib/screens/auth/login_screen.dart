@@ -279,7 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Column(
                               children: [
                                 CircleAvatar(
-                                  radius: 100,
+                                  radius: 80,
                                   child: ClipOval(
                                     child: Image.asset(
                                       'assets/images/logo.png',
@@ -289,7 +289,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const SizedBox(height: 5),
                                 Text(
-                                  'Agrhi',
+                                  'AGRHI',
                                   style: TextStyle(
                                     fontSize: 36,
                                     fontWeight: FontWeight.bold,
