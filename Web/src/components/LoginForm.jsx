@@ -8,7 +8,7 @@ const formStyles = `
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f8f8f8;
+  background: transparent;
   font-family: 'Segoe UI', Verdana, Geneva, Tahoma, sans-serif;
 }
 .login-form {
@@ -20,11 +20,12 @@ const formStyles = `
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  opacity: 0.85;
 }
 .login-form h2 {
   margin: 0 0 1rem 0;
   text-align: center;
-  color: #1667d5;
+  color: rgba(5, 82, 25, 1);
 }
 .login-form input[type="text"], 
 .login-form input[type="password"] {
@@ -36,11 +37,11 @@ const formStyles = `
   transition: border-color 0.2s;
 }
 .login-form input:focus {
-  border-color: #1667d5;
+  border-color: rgba(5, 82, 25, 1);
 }
 .login-form button {
   padding: 0.8rem;
-  background: #1667d5;
+  background:rgba(5, 82, 25, 1);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -49,7 +50,7 @@ const formStyles = `
   transition: background 0.2s;
 }
 .login-form button:hover {
-  background: #104e9e;
+  background: rgba(5, 82, 25, 1);
 }
 .login-message {
   text-align: center;

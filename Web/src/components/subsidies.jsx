@@ -221,7 +221,7 @@ const Subsidies = () => {
     .directory-bg {
       font-family: 'Inter', sans-serif;
       padding: 30px;
-      background: #f8f9fa; /* Light background */
+      background: transparent; /* Transparent to show Three.js background */
       min-height: 100vh;
     }
 
@@ -256,7 +256,7 @@ const Subsidies = () => {
       transition: border-color 0.2s;
     }
     .search-box input:focus {
-      border-color: #4f46e5;
+      border-color: rgba(5, 82, 25, 1);
       outline: none;
     }
     .search-box svg {
@@ -270,7 +270,7 @@ const Subsidies = () => {
     }
     
     .add-btn {
-      background: #4f46e5;
+      background: rgba(5, 82, 25, 1);
       color: #fff;
       border: none;
       border-radius: 20px;
@@ -284,7 +284,7 @@ const Subsidies = () => {
       align-items: center;
     }
     .add-btn:hover {
-      background: #4338ca;
+      background: rgba(5, 82, 25, 1);
       transform: translateY(-1px);
     }
     .add-btn svg {
@@ -324,7 +324,7 @@ const Subsidies = () => {
       border-radius: 16px;
       padding: 25px;
       box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-      border-left: 5px solid #4f46e5; /* Primary color border */
+      border-left: 5px solid rgba(5, 82, 25, 1); /* Primary color border */
       transition: transform 0.2s ease, box-shadow 0.2s ease;
       cursor: pointer; 
     }
@@ -455,7 +455,7 @@ const Subsidies = () => {
       justify-content: space-between;
     }
     .save-btn, .action-btn {
-      background: #4f46e5;
+      background: rgba(5, 82, 25, 1);
       color: #fff;
       border: none;
       padding: 10px 20px;
@@ -473,7 +473,7 @@ const Subsidies = () => {
       font-weight: 600;
       cursor: pointer;
     }
-    .save-btn:hover, .action-btn:hover { background: #4338ca; }
+    .save-btn:hover, .action-btn:hover { background: rgba(5, 82, 25, 1); }
     
     .delete-btn {
       background: #fee2e2;
@@ -669,7 +669,7 @@ const Subsidies = () => {
             >
               <MapPin style={{ color: "#ef4444" }} />
               <span style={{ fontWeight: 700, color: "#1a202c" }}>State:</span>
-              <span style={{ marginLeft: "5px", color: "#4f46e5" }}>
+              <span style={{ marginLeft: "5px", color: "rgba(5, 82, 25, 1)" }}>
                 {s.state_name || "N/A"}
               </span>
             </div>

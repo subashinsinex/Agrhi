@@ -52,7 +52,7 @@ const Header = () => {
         .admin-header-logo {
           font-weight: 700;
           font-size: 1.1rem;
-          color: #3742fa;
+          color: rgba(5, 82, 25, 1);
         }
 
         @media (max-width: ${DESKTOP_BREAKPOINT - 1}px) {

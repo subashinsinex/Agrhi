@@ -17,10 +17,12 @@ import { Header } from "./components/header";
 import { DESKTOP_BREAKPOINT } from "./constant";
 import ProtectedRoute from "./components/protectedRoute";
 import ResetPassword from "./components/resetPassword";
+// Import the 3D Background component
+import AgrhiBackground from "./parts/background";
 
 // --- Constants (Must match constants in sidebar.jsx) ---
-const EXPANDED_WIDTH = "220px";
-const COLLAPSED_WIDTH = "60px";
+//const EXPANDED_WIDTH = "220px";
+const COLLAPSED_WIDTH = "80px";
 
 function App() {
   const location = useLocation();
@@ -32,7 +34,6 @@ function App() {
 
   // Active timer for refreshing access_token
   useEffect(() => {
-    // Only run timer if we are in the standard protected app routes
     if (!useStandardLayout) return;
 
     const refreshTriggerMinutes = 10;
@@ -65,31 +66,33 @@ function App() {
       }
     };
 
-    // First 10 mins - no refresh
     clearRefreshTimeout = setTimeout(() => {
-      // Last 5 mins - start interval polling
       refreshIntervalId = setInterval(refreshAccessToken, 60 * 1000);
-      // On expiry, clear refresh interval and force logout if not refreshed
       clearLogoutTimeout = setTimeout(() => {
         clearInterval(refreshIntervalId);
         handleLogout();
-      }, 5 * 60 * 1000); // 5 mins
-    }, refreshTriggerMinutes * 60 * 1000); // after first 10 mins
+      }, 5 * 60 * 1000);
+    }, refreshTriggerMinutes * 60 * 1000);
 
     return () => {
       clearTimeout(clearRefreshTimeout);
-      clearTimeout(clearLogoutTimeout);
+      clearLogoutTimeout = clearTimeout(clearLogoutTimeout);
       clearInterval(refreshIntervalId);
     };
   }, [useStandardLayout, navigate]);
 
   return (
     <>
+      {/* 1. The 3D Animation Component 
+          This will sit behind everything because of z-index: -1 
+      */}
+      <AgrhiBackground />
+
       <div className="admin-layout">
         {/* Sidebar: only for standard layout */}
         {useStandardLayout && <Sidebar />}
 
-        {/* Main content: class depends on whether sidebar is present */}
+        {/* Main content */}
         <main
           className={
             useStandardLayout
@@ -183,51 +186,54 @@ function App() {
       </div>
 
       <style>{`
-        /* --- Base Layout Styles (Applies to all screens) --- */
+        /* --- IDLE: FULL CONTENT | HOVER: SIDEBAR OVERLAYS (NO SHIFT) --- */
         html, body, #root {
-          height: 100%;
+          height: 100vh;
           margin: 0;
           padding: 0;
           font-family: 'Inter', sans-serif;
+          overflow-x: hidden;
         }
 
         .admin-layout {
           min-height: 100vh;
           display: flex;
-          background-color: #f8f9fa;
+          background-color: transparent;
         }
 
+        /* ALWAYS: Content FULL viewport (no sidebar spacing ever) */
         .admin-content {
-          flex-grow: 1;
-          margin-left: 0;
-          padding: 20px;
-          transition: margin-left 0.3s ease-out;
-          width: 100%;
+          flex: 1;
+          padding: 20px 20px 20px ${COLLAPSED_WIDTH} !important;
+          background-color: transparent;
+          margin-left: 0 !important; /* FULL WIDTH ALWAYS */
+          width: 100vw !important;
+          transition: none !important; /* NO MOVEMENT */
+          height: 100vh;
+          overflow-y: compatible;
         }
 
-        /* Content when sidebar is present (dashboard etc.) */
+        .admin-content > *:first-child {
+          margin-top: 0;
+        }
+        .admin-content > *:last-child {
+          margin-bottom: 0;
+        }
+
+        /* HOVER: Sidebar expands OVER content (NO content movement) */
         @media (min-width: ${DESKTOP_BREAKPOINT}px) {
-          .admin-content--with-sidebar {
-            margin-left: ${COLLAPSED_WIDTH};
-          }
-
-          /* When sidebar expands on hover, shift main more */
-          .sidebar:hover + .admin-content--with-sidebar {
-            margin-left: ${EXPANDED_WIDTH};
-          }
+          /* Sidebar ONLY changes - content stays STATIC */
         }
 
-        /* Content when sidebar is NOT present (login, reset-password) */
         .admin-content--full {
           margin-left: 0;
-          padding: 0; /* let those pages control their own padding */
+          width: 100vw;
+          padding: 0;
         }
 
-        /* --- Mobile Styles --- */
         @media (max-width: ${DESKTOP_BREAKPOINT - 1}px) {
           .admin-content {
-            margin-left: 0;
-            padding: 0;
+            padding: 20px !important; 
           }
         }
       `}</style>

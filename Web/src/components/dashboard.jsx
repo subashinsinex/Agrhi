@@ -83,10 +83,13 @@ const Dashboard = () => {
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
     .dashboard-bg {
-        min-height: 100vh;
+        min-height: 80vh;
         padding: 30px;
-        background: #f4f7f9; /* Light background for the dashboard */
+        background: transparent; /* Transparent to show Three.js background */
         font-family: 'Inter', sans-serif;
+        overflow: auto;
+        margin-top: calc(var(--header-height, 60px) + 20px); /* Adjust for header height */
+        
     }
 
     .dashboard-header {
@@ -117,7 +120,9 @@ const Dashboard = () => {
 
     /* Card Styling */
     .module-card {
-        background: #fff;
+        background:rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px); /* Frosted glass effect */
+        border: 1px solid rgba(255, 255, 255, 0.3);
         border-radius: 16px;
         padding: 25px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); /* Stronger shadow for depth */
@@ -126,6 +131,7 @@ const Dashboard = () => {
         transition: transform 0.3s ease, box-shadow 0.3s ease;
         position: relative;
         overflow: hidden;
+        opacity: 0.9;
     }
     .module-card:hover {
         transform: translateY(-5px);
@@ -182,14 +188,14 @@ const Dashboard = () => {
         justify-content: flex-end;
     }
     .card-link {
-        color: #4f46e5;
+        color: rgba(5, 82, 25, 1);
         font-weight: 600;
         text-decoration: none;
         font-size: 0.95rem;
         transition: color 0.2s;
     }
     .card-link:hover {
-        color: #4338ca;
+        color: rgba(5, 82, 25, 1);
         text-decoration: underline;
     }
 
@@ -238,12 +244,6 @@ const Dashboard = () => {
   return (
     <div className="dashboard-bg">
       <style>{dashboardStyles}</style>
-
-      {/* Header */}
-      <div className="dashboard-header">
-        <h1>AGRHI Admin Dashboard</h1>
-        <p>Welcome! Select a module to manage data and users.</p>
-      </div>
 
       {/* Module Cards Grid */}
       <div className="dashboard-grid">

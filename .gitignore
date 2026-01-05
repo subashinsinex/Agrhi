@@ -74,6 +74,9 @@ Server/uploads
 # If using TypeScript in Server
 Server/tsconfig.tsbuildinfo 
 
+Web/.Package-lock.json
+Web/src/.constant.js
+
 # ---------------------------
 # Archives & misc
 # ---------------------------

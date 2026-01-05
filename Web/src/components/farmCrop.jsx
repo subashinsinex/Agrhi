@@ -19,10 +19,10 @@ import {
 } from "react-icons/fa";
 
 // --- COLOR DEFINITIONS ---
-const PRIMARY_PURPLE = "#6c5ce7";
+const PRIMARY_COLOR = "rgba(5, 82, 25, 1)";
 const PRIMARY_DARK = "#130f40";
 const ACCENT_GREEN = "#2ecc71";
-const BG_LIGHT = "#f5f7fa";
+const BG_LIGHT = "transparent";
 const TEXT_MUTED = "#666";
 const BORDER_COLOR = "#e0e0e0";
 
@@ -81,7 +81,7 @@ const style = {
     gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
     gap: "10px 30px",
     transition: "all 0.3s", // Animation
-    "&:hover": { borderLeftColor: PRIMARY_PURPLE, background: "#f9faff" },
+    "&:hover": { borderLeftColor: PRIMARY_COLOR, background: "#f9faff" },
   },
   addEditFormCard: {
     // Unified style for add/edit forms
@@ -90,7 +90,7 @@ const style = {
     boxShadow: "0 6px 20px rgba(0, 0, 0, 0.05)",
     margin: "1.5rem 0",
     padding: "2rem",
-    borderTop: `5px solid ${PRIMARY_PURPLE}`,
+    borderTop: `5px solid ${PRIMARY_COLOR}`,
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
     gap: "20px",
@@ -98,12 +98,12 @@ const style = {
   formField: {
     ...BASE_FIELD_STYLE, // Use the base style
     "&:focus": {
-      borderColor: PRIMARY_PURPLE,
+      borderColor: PRIMARY_COLOR,
       boxShadow: "0 0 0 3px rgba(108, 92, 231, 0.1)",
     },
   },
   primaryButton: {
-    background: PRIMARY_PURPLE,
+    background: PRIMARY_COLOR,
     color: "#fff",
     padding: "1rem 2.5rem",
     borderRadius: 10,
@@ -152,8 +152,8 @@ const style = {
   },
   secondaryButtonBase: {
     background: "#fff",
-    color: PRIMARY_PURPLE,
-    border: `1px solid ${PRIMARY_PURPLE}`,
+    color: PRIMARY_COLOR,
+    border: `1px solid ${PRIMARY_COLOR}`,
     fontWeight: 600,
     padding: "0.8rem 1.2rem",
     borderRadius: 8,
@@ -164,7 +164,7 @@ const style = {
     alignItems: "center",
     gap: "8px",
     "&:hover": {
-      background: PRIMARY_PURPLE,
+      background: PRIMARY_COLOR,
       color: "#fff",
       boxShadow: "0 2px 10px rgba(108, 92, 231, 0.2)",
     },
@@ -240,7 +240,7 @@ const style = {
   },
   // Icon style for details
   detailIcon: {
-    color: PRIMARY_PURPLE,
+    color: PRIMARY_COLOR,
     minWidth: "20px",
   },
   // Style for the search bar
@@ -563,7 +563,7 @@ const FarmCrop = () => {
     <div style={style.pageContainer}>
       <div style={style.contentWrapper}>
         <div style={style.pageTitle}>
-          <FaSeedling size={40} color={PRIMARY_PURPLE} /> Farm Management
+          <FaSeedling size={40} color={PRIMARY_COLOR} /> Farm Management
           Dashboard
         </div>
         {/* Farm Actions and Search */}
@@ -682,7 +682,7 @@ const FarmCrop = () => {
             >
               <button
                 type="submit"
-                style={{ ...style.submitButton, background: PRIMARY_PURPLE }}
+                style={{ ...style.submitButton, background: PRIMARY_COLOR }}
               >
                 <FaSave /> Save Farm
               </button>
@@ -856,7 +856,7 @@ const FarmCrop = () => {
                     <h3 style={style.farmOwnerName}>
                       <FaHome
                         size={24}
-                        style={{ marginRight: "10px", color: PRIMARY_PURPLE }}
+                        style={{ marginRight: "10px", color: PRIMARY_COLOR }}
                       />
                       {farm.owner_name ?? "Owner Unknown"}
                     </h3>
@@ -877,7 +877,7 @@ const FarmCrop = () => {
                         ...style.secondaryButtonBase,
                         ...(showCropsForFarm === farm.farm_id
                           ? {
-                              background: PRIMARY_PURPLE,
+                              background: PRIMARY_COLOR,
                               color: "#fff",
                               border: "none",
                             }
@@ -1011,7 +1011,7 @@ const FarmCrop = () => {
                                   color:
                                     crop.status === "Harvested"
                                       ? ACCENT_GREEN
-                                      : PRIMARY_PURPLE,
+                                      : PRIMARY_COLOR,
                                   fontWeight: 700,
                                 }}
                               >
@@ -1141,7 +1141,7 @@ const FarmCrop = () => {
                     onSubmit={submitAddCrop}
                     style={{
                       ...style.addEditFormCard,
-                      borderTop: `5px solid ${PRIMARY_PURPLE}`,
+                      borderTop: `5px solid ${PRIMARY_COLOR}`,
                       marginTop: "20px",
                     }}
                   >
@@ -1206,7 +1206,7 @@ const FarmCrop = () => {
                         type="submit"
                         style={{
                           ...style.submitButton,
-                          background: PRIMARY_PURPLE,
+                          background: PRIMARY_COLOR,
                         }}
                       >
                         <FaSave /> Save Crop

@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const requestIp = require("request-ip");
 const emailService = require("./utils/emailSender");
+const path = require("path");
 
 const app = express();
 
@@ -26,6 +27,10 @@ const syncRoutes = require("./routes/syncRoutes");
 const forgotPasswordRoutes = require("./routes/forgotPasswordRoutes");
 const emailVerificationRoutes = require("./routes/emailVerificationRoutes");
 const developerRoutes = require("./routes/developerRoutes");
+const marketPlaceRoutes = require("./routes/marketPlaceRoutes");
+const retailManagementRoutes = require("./routes/retailManagementRoutes");
+app.use("/api/shop-images", require("./routes/shopImageRoutes"));
+app.use("/api/product-images", require("./routes/productImageRoutes"));
 
 app.use("/api", loginRoutes);
 app.use("/api/users", userRoutes);
@@ -33,13 +38,15 @@ app.use("/api/subsidies", subsidiesRoutes);
 app.use("/api/farmcrop", farmCropRoutes);
 app.use("/api/diseaseRemedies", diseaseRemediesRoutes);
 app.use("/api/profile", profileRoutes);
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/models", express.static("models"));
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/sync", syncRoutes);
 app.use("/api/forgot-password", forgotPasswordRoutes);
 app.use("/api/email-verification", emailVerificationRoutes);
 app.use("/api/developer", developerRoutes);
+app.use("/api/marketplace", marketPlaceRoutes);
+app.use("/api/retail", retailManagementRoutes);
 
 const PORT = process.env.PORT;
 

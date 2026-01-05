@@ -1,206 +1,49 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { axiosInstance } from "../api/login";
-import { Search, Trash2, Edit, MessageCircle, CheckCircle } from "lucide-react";
+import {
+  Search,
+  Trash2,
+  Edit,
+  MessageSquare,
+  CheckCircle2,
+  X,
+  AlertCircle,
+  User,
+  Sprout, // New Ag Icon
+  Wheat, // New Ag Icon
+  Tractor, // New Ag Icon
+  Bug, // New Ag Icon
+  Send,
+  RefreshCw,
+  Calendar,
+} from "lucide-react";
 import { SERVER_IP, SERVER_PORT } from "../constant";
 
 const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/feedback`;
-
-// Feedback status constraints
 const STATUS_OPTIONS = ["not_viewed", "viewed", "responsed", "solved"];
 
-// --- 1. Define Color Variables as standalone constants ---
-const primaryColor = "#6366f1";
-const successColor = "#059669";
-const dangerColor = "#ef4444";
-const backgroundLight = "#f9fafb";
-const backgroundDark = "#ffffff";
-const textDark = "#1f2937";
-const textLight = "#4b5563";
-const borderColor = "#e5e7eb";
-const shadowSm = "0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06)";
-const shadowMd =
-  "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)";
-
-// --- 2. Use these constants to define the styles object ---
-const styles = {
-  // Main Layout Styles
-  directoryBg: {
-    padding: "30px",
-    maxWidth: "1400px",
-    margin: "0 auto",
-    backgroundColor: backgroundLight,
-  },
-  headerContainer: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "30px",
-    flexWrap: "wrap",
-    gap: "20px",
-  },
-  mainTitle: {
-    fontSize: "2.5rem",
-    fontWeight: "700",
-    color: textDark,
-  },
-  controlsGroup: {
-    display: "flex",
-    gap: "15px",
-    alignItems: "center",
-  },
-
-  // Search Box Styles
-  searchBox: {
-    display: "flex",
-    alignItems: "center",
-    padding: "10px 15px",
-    border: `1px solid ${borderColor}`,
-    borderRadius: "8px",
-    backgroundColor: backgroundDark,
-    boxShadow: shadowSm,
-    transition: "all 0.3s ease",
-  },
-  searchInput: {
-    border: "none",
-    outline: "none",
-    padding: "0 5px",
-    fontSize: "1rem",
-    color: textDark,
-    width: "300px",
-  },
-
-  // Status/Error Messages
-  statusMsg: {
-    padding: "15px",
-    marginBottom: "20px",
-    borderRadius: "8px",
-    fontWeight: "600",
-    backgroundColor: "#d1fae5",
-    color: successColor,
-    border: `1px solid ${successColor}`,
-  },
-  errorMsg: {
-    padding: "15px",
-    marginBottom: "20px",
-    borderRadius: "8px",
-    fontWeight: "600",
-    backgroundColor: "#fee2e2",
-    color: dangerColor,
-    border: `1px solid ${dangerColor}`,
-  },
-
-  // Card Grid Styles
-  cardGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-    gap: "25px",
-    marginTop: "20px",
-  },
-  cardBase: {
-    backgroundColor: backgroundDark,
-    borderRadius: "12px",
-    padding: "20px",
-    boxShadow: shadowMd,
-    cursor: "pointer",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    borderLeft: `5px solid ${primaryColor}`,
-  },
-  cardTitle: {
-    fontSize: "1.1rem",
-    fontWeight: "700",
-    color: textDark,
-    marginBottom: "10px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  cardDescription: {
-    fontSize: "0.9rem",
-    color: textLight,
-    marginBottom: "15px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  cardInfoRow: {
-    display: "flex",
-    alignItems: "center",
-    fontSize: "0.85rem",
-    color: textLight,
-    marginBottom: "10px",
-  },
-  boldStatus: {
-    color: primaryColor,
-    textTransform: "capitalize",
-  },
-
-  // Modal Styles
-  modalOverlay: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 1000,
-  },
-  modalBase: {
-    backgroundColor: backgroundDark,
-    borderRadius: "12px",
-    padding: "30px",
-    width: "90%",
-    maxWidth: "500px",
-    boxShadow: "0 10px 25px rgba(0, 0, 0, 0.2)",
-  },
-  modalTitle: {
-    fontSize: "1.75rem",
-    fontWeight: "700",
-    color: textDark,
-    marginBottom: "20px",
-  },
-  modalActions: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: "10px",
-    marginTop: "20px",
-  },
-  modalActionsStart: {
-    display: "flex",
-    justifyContent: "flex-start",
-    gap: "10px",
-    marginTop: "20px",
-    flexWrap: "wrap",
-  },
-  // Detail Modal specific
-  detailModalInfo: {
-    border: `1px solid ${borderColor}`,
-    padding: "20px",
-    borderRadius: "8px",
-    backgroundColor: backgroundLight,
-  },
-  infoBlockP: {
-    margin: "5px 0",
-    lineHeight: 1.6,
-    color: textLight,
-  },
-  infoBlockStrong: {
-    color: textDark,
-    fontWeight: "600",
-    minWidth: "100px",
-    display: "inline-block",
-  },
+// --- AGRICULTURE THEME PALETTE ---
+const THEME = {
+  primary: "rgba(5, 82, 25, 1)", // Forest Green
+  primaryLight: "#4caf50", // Leaf Green
+  secondary: "#f9a825", // Harvest Gold
+  earth: "#5d4037", // Soil Brown
+  bgLight: "#f1f8e9", // Very light green tint
+  surface: "#FFFFFF",
+  error: "#c62828", // Red clay
+  textDark: "rgba(5, 82, 25, 1)",
+  textMuted: "#557b5e",
 };
 
 const Feedback = () => {
   const [feedbacks, setFeedbacks] = useState([]);
   const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [formEdit, setFormEdit] = useState(false);
+  const [selectedFeedback, setSelectedFeedback] = useState(null);
+  const [msg, setMsg] = useState({ text: "", type: "" });
+  const [feedbackToDelete, setFeedbackToDelete] = useState(null);
+
   const [form, setForm] = useState({
     id: "",
     user_id: "",
@@ -209,31 +52,26 @@ const Feedback = () => {
     reply: "",
     status: STATUS_OPTIONS[0],
   });
-  const [selectedFeedback, setSelectedFeedback] = useState(null);
-  const [msg, setMsg] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [feedbackToDelete, setFeedbackToDelete] = useState(null);
 
   const accesstoken = localStorage.getItem("access_token");
 
-  // Fetch all feedbacks
+  // --- API Handlers ---
+  const showToast = (text, type = "success") => {
+    setMsg({ text, type });
+    setTimeout(() => setMsg({ text: "", type: "" }), 4000);
+  };
+
   const fetchFeedbacks = useCallback(async () => {
-    setErrorMsg("");
-    if (!accesstoken) {
-      setErrorMsg("Authentication/access token missing. Cannot fetch data.");
-      return;
-    }
+    setLoading(true);
     try {
       const res = await axiosInstance.get(`${apiBase}/getfeedback`, {
         headers: { Authorization: `Bearer ${accesstoken}` },
       });
-      setFeedbacks(res.data);
-      setMsg("");
+      setFeedbacks(res.data || []);
     } catch (e) {
-      setErrorMsg(
-        `Could not load feedback: ${e.response?.data?.message || e.message}`
-      );
+      showToast("Sync Error: Unable to get data", "error");
+    } finally {
+      setLoading(false);
     }
   }, [accesstoken]);
 
@@ -241,124 +79,7 @@ const Feedback = () => {
     fetchFeedbacks();
   }, [fetchFeedbacks]);
 
-  const handleSearch = (e) => setQ(e.target.value);
-
-  // Reset form for edit/reply
-  const resetForm = (show = false) => {
-    setForm({
-      id: "",
-      user_id: "",
-      message: "",
-      isproblem: false,
-      reply: "",
-      status: STATUS_OPTIONS[0],
-    });
-    setFormEdit(false);
-    setShowForm(show);
-    setMsg("");
-    setErrorMsg("");
-  };
-
-  // Open edit form
-  const openEditForm = (fb) => {
-    setForm({ ...fb });
-    setFormEdit(true);
-    setShowForm(true);
-    setSelectedFeedback(null);
-    setMsg("");
-    setErrorMsg("");
-  };
-
-  // Open feedback details modal
-  const openDetailModal = (fb) => {
-    setSelectedFeedback(fb);
-    setShowForm(false);
-    setMsg("");
-    setErrorMsg("");
-  };
-
-  // Close feedback details modal
-  const closeDetailModal = () => {
-    setSelectedFeedback(null);
-  };
-
-  // Handle form change
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  };
-
-  // Update feedback (Reply/Status only)
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setMsg("");
-    setErrorMsg("");
-    // Ensure this is only run in edit mode
-    if (!formEdit) {
-      setErrorMsg("Error: Cannot submit new feedback from this panel.");
-      return;
-    }
-    try {
-      // API call to update reply
-      await axiosInstance.put(
-        `${apiBase}/reply/${form.id}`,
-        { reply: form.reply },
-        { headers: { Authorization: `Bearer ${accesstoken}` } }
-      );
-      // API call to update status
-      await axiosInstance.put(
-        `${apiBase}/status/${form.id}`,
-        { status: form.status },
-        { headers: { Authorization: `Bearer ${accesstoken}` } }
-      );
-
-      setMsg("Feedback updated successfully!");
-      fetchFeedbacks();
-      resetForm(false);
-    } catch (err) {
-      setErrorMsg(
-        `Failed to save feedback: ${err.response?.data?.message || err.message}`
-      );
-    }
-  };
-
-  // Delete modal handlers
-  const handleDeleteClick = (fb) => {
-    setFeedbackToDelete(fb);
-    setIsConfirmOpen(true);
-    setSelectedFeedback(null);
-    setMsg("");
-    setErrorMsg("");
-  };
-
-  const cancelDelete = () => {
-    setIsConfirmOpen(false);
-    setFeedbackToDelete(null);
-  };
-
-  const confirmDelete = async () => {
-    setIsConfirmOpen(false);
-    if (!feedbackToDelete) return;
-    try {
-      // You must implement a backend delete endpoint for feedbacks
-      await axiosInstance.delete(`${apiBase}/delete/${feedbackToDelete.id}`, {
-        headers: { Authorization: `Bearer ${accesstoken}` },
-      });
-      setFeedbacks((prev) => prev.filter((f) => f.id !== feedbackToDelete.id));
-      setMsg(`Feedback ${feedbackToDelete.id} deleted successfully.`);
-    } catch (err) {
-      setErrorMsg(
-        `Delete failed: ${err.response?.data?.message || err.message}`
-      );
-    } finally {
-      setFeedbackToDelete(null);
-    }
-  };
-
-  // Filter logic
+  // --- Logic ---
   const filteredFeedbacks = useMemo(() => {
     if (!q) return feedbacks;
     const lowerQ = q.toLowerCase();
@@ -366,420 +87,708 @@ const Feedback = () => {
       (f) =>
         (f.message || "").toLowerCase().includes(lowerQ) ||
         (f.reply || "").toLowerCase().includes(lowerQ) ||
-        (f.status || "").toLowerCase().includes(lowerQ) ||
         (f.user_id || "").toString().includes(lowerQ)
     );
   }, [feedbacks, q]);
 
-  // --- Page/UI ---
+  const stats = useMemo(
+    () => ({
+      total: feedbacks.length,
+      pending: feedbacks.filter((f) => f.status === "not_viewed").length,
+      solved: feedbacks.filter((f) => f.status === "solved").length,
+      problems: feedbacks.filter((f) => f.isproblem).length,
+    }),
+    [feedbacks]
+  );
+
+  // --- Interaction Handlers ---
+  const openEdit = (fb) => {
+    setForm({ ...fb });
+    setShowForm(true);
+    setSelectedFeedback(null);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    try {
+      await axiosInstance.put(
+        `${apiBase}/reply/${form.id}`,
+        { reply: form.reply },
+        { headers: { Authorization: `Bearer ${accesstoken}` } }
+      );
+      await axiosInstance.put(
+        `${apiBase}/status/${form.id}`,
+        { status: form.status },
+        { headers: { Authorization: `Bearer ${accesstoken}` } }
+      );
+      showToast("Feedback got: Response sent");
+      fetchFeedbacks();
+      setShowForm(false);
+    } catch (err) {
+      showToast("Update failed: Check connection", "error");
+    }
+  };
+
+  const confirmDelete = async () => {
+    try {
+      await axiosInstance.delete(`${apiBase}/delete/${feedbackToDelete.id}`, {
+        headers: { Authorization: `Bearer ${accesstoken}` },
+      });
+      showToast(`Weeded out entry #${feedbackToDelete.id}`);
+      setFeedbacks((prev) => prev.filter((f) => f.id !== feedbackToDelete.id));
+    } catch (err) {
+      showToast("Deletion failed", "error");
+    } finally {
+      setFeedbackToDelete(null);
+    }
+  };
+
+  /* const formatDate = (dateStr) => {
+    if (!dateStr) return "Unknown Date";
+    return new Date(dateStr).toLocaleDateString();
+  }; */
+
+  // --- CSS Styles ---
+  const styles = `
+    @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap');
+
+    .ag-root {
+      min-height: 80vh;
+      padding: 30px;
+      font-family: 'Segoe UI', sans-serif;
+      color: ${THEME.textDark};
+      background: transparent;
+    }
+
+    /* Header */
+    .ag-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 30px;
+      border-bottom: 1px solid rgba(46, 125, 50, 0.2);
+      padding-bottom: 20px;
+    }
+    .ag-header h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: ${THEME.primary};
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .ag-subtitle {
+        color: ${THEME.secondary};
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-size: 0.85rem;
+        margin-bottom: 5px;
+    }
+
+    /* Search Bar */
+    .ag-search-wrapper {
+        position: relative;
+        display: flex;
+        gap: 10px;
+    }
+    .ag-search-input {
+        padding: 10px 15px 10px 40px;
+        border-radius: 20px;
+        border: 1px solid ${THEME.primaryLight};
+        background: white;
+        width: 300px;
+        outline: none;
+        color: ${THEME.textDark};
+        transition: box-shadow 0.2s;
+    }
+    .ag-search-input:focus {
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+    }
+
+    /* Stats Row */
+    .ag-stats-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 40px;
+    }
+    .ag-stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        border-left: 5px solid ${THEME.primary};
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    .ag-stat-icon-box {
+        width: 45px;
+        height: 45px;
+        background: ${THEME.bgLight};
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: ${THEME.primary};
+    }
+    .ag-stat-info h3 { margin: 0; font-size: 1.8rem; font-weight: 700; color: ${THEME.textDark}; }
+    .ag-stat-info span { font-size: 0.8rem; color: ${THEME.textMuted}; text-transform: uppercase; font-weight: 600; }
+
+    /* Grid */
+    .ag-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 25px;
+    }
+    .ag-card {
+        background: white;
+        border-radius: 16px;
+        padding: 25px;
+        position: relative;
+        border: 1px solid #e0e0e0;
+        transition: transform 0.2s, box-shadow 0.2s;
+        display: flex;
+        flex-direction: column;
+    }
+    .ag-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        border-color: ${THEME.primaryLight};
+    }
+
+    /* Status Badges - Leaf Shape */
+    .ag-badge {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        padding: 5px 12px;
+        border-radius: 12px 0 12px 0; /* Leaf Shape */
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    /* Typography in Card */
+    .ag-card-meta {
+        font-size: 0.85rem;
+        color: ${THEME.textMuted};
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .ag-card-msg {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: ${THEME.textDark};
+        margin-bottom: 20px;
+        line-height: 1.5;
+        flex-grow: 1;
+    }
+    .ag-reply-preview {
+        background: ${THEME.bgLight};
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        color: ${THEME.textDark};
+        border-left: 3px solid ${THEME.secondary};
+        margin-bottom: 20px;
+    }
+
+    /* Buttons */
+    .ag-btn {
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: 0.2s;
+    }
+    .ag-btn-primary { background: ${THEME.primary}; color: white; }
+    .ag-btn-primary:hover { background: ${THEME.primaryLight}; }
+    .ag-btn-outline { background: transparent; border: 1px solid ${THEME.primary}; color: ${THEME.primary}; }
+    .ag-btn-danger { background: #ffebee; color: ${THEME.error}; }
+    .ag-btn-danger:hover { background: #ffcdd2; }
+
+    /* Modal */
+    .ag-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(27, 58, 35, 0.8); /* Dark Green Overlay */
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+    }
+    .ag-modal-content {
+        background: white;
+        width: 100%;
+        max-width: 900px;
+        border-radius: 20px;
+        overflow: hidden;
+        display: flex;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    }
+    .ag-modal-left {
+        width: 35%;
+        background: linear-gradient(135deg, ${THEME.primary} 0%, ${THEME.primaryLight} 100%);
+        color: white;
+        padding: 40px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .ag-modal-right {
+        width: 65%;
+        padding: 40px;
+        position: relative;
+    }
+    
+    /* Inputs */
+    .ag-form-group { margin-bottom: 20px; }
+    .ag-label { display: block; font-size: 0.8rem; font-weight: 700; color: ${THEME.textMuted}; margin-bottom: 8px; text-transform: uppercase; }
+    .ag-input-area {
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        font-family: inherit;
+        background: #fafafa;
+        resize: vertical;
+    }
+    .ag-select {
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        background: white;
+    }
+
+    /* Toast */
+    .ag-toast {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: ${THEME.primary};
+        color: white;
+        padding: 12px 24px;
+        border-radius: 30px;
+        box-shadow: 0 10px 15px rgba(0,0,0,0.2);
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* Loading Spinner */
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    /* Responsive */
+    @media(max-width: 768px) {
+        .ag-modal-content { flex-direction: column; max-height: 90vh; overflow-y: auto; }
+        .ag-modal-left, .ag-modal-right { width: 100%; padding: 25px; }
+        .ag-header { flex-direction: column; align-items: flex-start; gap: 15px; }
+        .ag-search-wrapper { width: 100%; }
+        .ag-search-input { width: 100%; }
+    }
+  `;
+
   return (
-    <div style={styles.directoryBg}>
-      {/* INLINE CSS BLOCK FOR ADVANCED STYLES (Animations, Hovers, Media Queries) */}
-      <style>
-        {`
-          /* Variables for consistent color scheme */
-          :root {
-            --primary-color: ${primaryColor};
-            --success-color: ${successColor};
-            --danger-color: ${dangerColor};
-            --text-dark: ${textDark};
-            --border-color: ${borderColor};
-            --background-dark: ${backgroundDark};
-          }
-          
-          /* General Styles (using the existing element class names) */
-          
-          .search-box:focus-within {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-          }
+    <div className="ag-root">
+      <style>{styles}</style>
 
-          /* Buttons */
-          .add-btn {
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: background-color 0.3s ease, transform 0.1s ease;
-            box-shadow: ${shadowSm};
-          }
-          .add-btn:hover {
-            background-color: #4f46e5;
-            transform: translateY(-1px);
-          }
-          
-          .delete-btn, .action-btn, .cancel-btn, .confirm-delete-btn, .save-btn {
-            padding: 8px 15px;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            font-size: 0.9rem;
-            border: 1px solid transparent;
-          }
-          
-          .delete-btn { background-color: var(--danger-color); color: white; }
-          .delete-btn:hover { background-color: #b91c1c; box-shadow: ${shadowSm}; }
-
-          .action-btn { background-color: var(--primary-color); color: white; }
-          .action-btn:hover { background-color: #4f46e5; box-shadow: ${shadowSm}; }
-
-          .cancel-btn { background-color: var(--border-color); color: var(--text-dark); border-color: var(--border-color); }
-          .cancel-btn:hover { background-color: #d1d5db; }
-
-          .save-btn { background-color: ${successColor}; color: white; }
-          .save-btn:hover { background-color: #047857; }
-
-          .confirm-delete-btn { background-color: var(--danger-color); color: white; }
-          .confirm-delete-btn:hover { background-color: #b91c1c; }
-
-
-          /* Card Grid */
-          .subsidy-card {
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-          }
-          .subsidy-card:hover {
-            transform: translateY(-5px) scale(1.02);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
-          }
-          
-          /* Form Elements */
-          .form-group input:not([type="checkbox"]),
-          .form-group textarea,
-          .form-group select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            font-size: 1rem;
-            color: var(--text-dark);
-            background-color: var(--background-dark);
-            transition: border-color 0.2s ease;
-            box-sizing: border-box;
-          }
-          .form-group input:focus,
-          .form-group textarea:focus,
-          .form-group select:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 1px var(--primary-color);
-          }
-          .form-group textarea {
-            min-height: 100px;
-            resize: vertical;
-          }
-          input[readonly], textarea[readonly] {
-            background-color: #f3f4f6;
-            cursor: not-allowed;
-            opacity: 0.8;
-          }
-
-          /* Modal Animations */
-          @keyframes slideIn {
-            from { opacity: 0; transform: scale(0.9) translateY(20px); }
-            to { opacity: 1; transform: scale(1) translateY(0); }
-          }
-          .modal {
-            transform: scale(0.95);
-            animation: slideIn 0.3s forwards cubic-bezier(0.175, 0.885, 0.32, 1.275);
-          }
-
-          /* Responsive Adjustments */
-          @media (max-width: 768px) {
-            .header-container {
-              flex-direction: column;
-              align-items: flex-start;
-            }
-            .main-title { font-size: 2rem; }
-            .controls-group {
-              width: 100%;
-              flex-direction: column;
-              gap: 10px;
-            }
-            .search-box, .search-box input { width: 100%; }
-            /* REMOVED .add-btn WIDE STYLES */
-            .subsidy-card-grid { grid-template-columns: 1fr; }
-            .modal { padding: 20px; }
-            .modal-actions, .modal-actions-start { flex-direction: column; }
-            .modal-actions button, .modal-actions-start button { width: 100%; }
-          }
-        `}
-      </style>
-
-      <div className="header-container" style={styles.headerContainer}>
-        <div className="main-title" style={styles.mainTitle}>
-          User Feedback
-        </div>
-        <div className="controls-group" style={styles.controlsGroup}>
-          <div className="search-box" style={styles.searchBox}>
-            <Search size={20} style={{ color: textLight }} />
-            <input
-              type="text"
-              value={q}
-              onChange={handleSearch}
-              placeholder="Search by message, reply, status or user id..."
-              style={styles.searchInput}
-            />
-          </div>
-          {/* REMOVED: "Add Feedback" button */}
-        </div>
-      </div>
-
-      {msg && (
-        <div className="status-msg" style={styles.statusMsg}>
-          {msg}
-        </div>
-      )}
-      {errorMsg && (
-        <div className="error-msg" style={styles.errorMsg}>
-          {errorMsg}
-        </div>
-      )}
-
-      <div className="subsidy-card-grid" style={styles.cardGrid}>
-        {filteredFeedbacks.length === 0 ? (
-          <div
+      {/* --- HEADER --- */}
+      <div className="ag-header">
+        <div></div>
+        <div className="ag-search-wrapper">
+          <Search
+            size={18}
             style={{
-              textAlign: "center",
-              color: textLight,
-              padding: "50px 0",
-              gridColumn: "1/-1",
+              position: "absolute",
+              left: 12,
+              top: 12,
+              color: THEME.textMuted,
             }}
-          >
-            No feedback found matching search or the list is empty.
-          </div>
-        ) : (
-          filteredFeedbacks.map((f) => (
-            <div
-              className="subsidy-card"
-              key={f.id}
-              onClick={() => openDetailModal(f)}
-              style={styles.cardBase}
-            >
-              <div className="card-title" style={styles.cardTitle}>
-                {f.message}
-              </div>
-              <div className="card-description" style={styles.cardDescription}>
-                {f.reply ? (
-                  <>Response: {f.reply}</>
-                ) : (
-                  <span style={{ color: dangerColor }}>No reply yet</span>
-                )}
-              </div>
-              <div className="card-info-row" style={styles.cardInfoRow}>
-                <MessageCircle
-                  style={{ marginRight: 6, color: primaryColor }}
-                  size={16}
-                />
-                User: {f.user_id}
-                <CheckCircle
-                  style={{
-                    marginLeft: 12,
-                    marginRight: 6,
-                    color: successColor,
-                  }}
-                  size={16}
-                />
-                Status: <b style={styles.boldStatus}>{f.status}</b>
-              </div>
-              <button
-                className="delete-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(f);
-                }}
-              >
-                <Trash2 size={16} /> Delete
-              </button>
-            </div>
-          ))
-        )}
+          />
+          <input
+            className="ag-search-input"
+            placeholder="Search crop reports, users..."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <button className="ag-btn ag-btn-outline" onClick={fetchFeedbacks}>
+            <RefreshCw size={18} />
+          </button>
+        </div>
       </div>
 
-      {/* Detail Modal */}
-      {selectedFeedback && (
+      {/* --- STATS PLOTS --- */}
+      <div className="ag-stats-container">
+        <div className="ag-stat-card">
+          <div className="ag-stat-icon-box">
+            <Wheat size={24} />
+          </div>
+          <div className="ag-stat-info">
+            <span>Total Feedback</span>
+            <h3>{stats.total}</h3>
+          </div>
+        </div>
         <div
-          className="modal-overlay"
-          style={styles.modalOverlay}
-          onClick={closeDetailModal}
+          className="ag-stat-card"
+          style={{ borderLeftColor: THEME.secondary }}
+        >
+          <div className="ag-stat-icon-box" style={{ color: THEME.secondary }}>
+            <Sprout size={24} />
+          </div>
+          <div className="ag-stat-info">
+            <span>Pending</span>
+            <h3>{stats.pending}</h3>
+          </div>
+        </div>
+        <div className="ag-stat-card" style={{ borderLeftColor: THEME.error }}>
+          <div className="ag-stat-icon-box" style={{ color: THEME.error }}>
+            <Bug size={24} />
+          </div>
+          <div className="ag-stat-info">
+            <span>Issues</span>
+            <h3>{stats.problems}</h3>
+          </div>
+        </div>
+        <div
+          className="ag-stat-card"
+          style={{ borderLeftColor: THEME.primaryLight }}
         >
           <div
-            className="modal detail-modal"
-            style={{ ...styles.modalBase, maxWidth: "600px" }}
+            className="ag-stat-icon-box"
+            style={{ color: THEME.primaryLight }}
+          >
+            <Tractor size={24} />
+          </div>
+          <div className="ag-stat-info">
+            <span>solved</span>
+            <h3>{stats.solved}</h3>
+          </div>
+        </div>
+      </div>
+
+      {/* --- FEEDBACK FIELD (GRID) --- */}
+      {loading ? (
+        <div
+          style={{
+            textAlign: "center",
+            padding: "80px",
+            color: THEME.textMuted,
+          }}
+        >
+          <RefreshCw className="spin" size={40} style={{ marginBottom: 10 }} />
+          <p>Gathering field data...</p>
+        </div>
+      ) : (
+        <div className="ag-grid">
+          {filteredFeedbacks.map((f) => (
+            <div
+              key={f.id}
+              className="ag-card"
+              onClick={() => setSelectedFeedback(f)}
+            >
+              {/* Status Badge */}
+              <div
+                className="ag-badge"
+                style={{
+                  backgroundColor:
+                    f.status === "not_viewed"
+                      ? "#ffebee"
+                      : f.status === "solved"
+                      ? "#e8f5e9"
+                      : THEME.bgLight,
+                  color:
+                    f.status === "not_viewed"
+                      ? THEME.error
+                      : f.status === "solved"
+                      ? THEME.primary
+                      : THEME.secondary,
+                }}
+              >
+                {f.status.replace("_", " ")}
+              </div>
+
+              {/* User Info */}
+              <div className="ag-card-meta">
+                <User size={14} /> ID: {f.user_id}
+                {f.isproblem && (
+                  <span
+                    style={{
+                      color: THEME.error,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <AlertCircle size={12} /> BUG
+                  </span>
+                )}
+              </div>
+
+              {/* Message Content */}
+              <div className="ag-card-msg">"{f.message}"</div>
+
+              {/* Reply Preview */}
+              <div className="ag-reply-preview">
+                {f.reply ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <Send size={14} style={{ marginTop: 3 }} /> {f.reply}
+                  </div>
+                ) : (
+                  <span style={{ color: THEME.error, fontStyle: "italic" }}>
+                    Waiting for cultivation...
+                  </span>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: "flex", gap: "10px", marginTop: "auto" }}>
+                <button
+                  className="ag-btn ag-btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEdit(f);
+                  }}
+                >
+                  <Edit size={16} /> Reply
+                </button>
+                <button
+                  className="ag-btn ag-btn-danger"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFeedbackToDelete(f);
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* --- EDIT / VIEW MODAL --- */}
+      {(showForm || selectedFeedback) && (
+        <div
+          className="ag-modal-overlay"
+          onClick={() => {
+            setShowForm(false);
+            setSelectedFeedback(null);
+          }}
+        >
+          <div
+            className="ag-modal-content"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="modal-title" style={styles.modalTitle}>
-              {selectedFeedback.message}
-            </div>
-            <div className="detail-modal-info" style={styles.detailModalInfo}>
-              <div className="info-block">
-                <p style={styles.infoBlockP}>
-                  <strong style={styles.infoBlockStrong}>ID:</strong>{" "}
-                  {selectedFeedback.id}
-                </p>
-                <p style={styles.infoBlockP}>
-                  <strong style={styles.infoBlockStrong}>User:</strong>{" "}
-                  {selectedFeedback.user_id}
-                </p>
-                <p style={styles.infoBlockP}>
-                  <strong style={styles.infoBlockStrong}>Problem:</strong>{" "}
-                  {selectedFeedback.isproblem ? "Yes" : "No"}
-                </p>
-                <p style={styles.infoBlockP}>
-                  <strong style={styles.infoBlockStrong}>Status:</strong>{" "}
-                  {selectedFeedback.status}
-                </p>
-                <p style={styles.infoBlockP}>
-                  <strong style={styles.infoBlockStrong}>Response:</strong>{" "}
-                  {selectedFeedback.reply ? (
-                    selectedFeedback.reply
-                  ) : (
-                    <span style={{ color: dangerColor }}>No reply yet</span>
-                  )}
-                </p>
-              </div>
-            </div>
-            <div
-              className="modal-actions modal-actions-start"
-              style={styles.modalActionsStart}
-            >
-              <button
-                className="delete-btn"
-                onClick={() => handleDeleteClick(selectedFeedback)}
-              >
-                <Trash2 size={16} /> Delete
-              </button>
-              <button
-                className="action-btn"
-                onClick={() => openEditForm(selectedFeedback)}
-              >
-                <Edit size={16} /> Edit / Reply
-              </button>
-              <button className="cancel-btn" onClick={closeDetailModal}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            {/* Left Side: Context */}
+            <div className="ag-modal-left">
+              <MessageSquare
+                size={48}
+                style={{ opacity: 0.8, marginBottom: 20 }}
+              />
+              <h2 style={{ margin: 0 }}>Inquiry Details</h2>
+              <p style={{ opacity: 0.9 }}>
+                Reference ID #{showForm ? form.id : selectedFeedback.id}
+              </p>
 
-      {/* Edit/Reply Feedback Modal */}
-      {showForm && (
-        <div className="modal-overlay" style={styles.modalOverlay}>
-          <div className="modal" style={styles.modalBase}>
-            <div className="modal-title" style={styles.modalTitle}>
-              Edit/Reply Feedback
-            </div>
-            <form onSubmit={handleSubmit} autoComplete="off">
-              <div className="form-group">
-                <label>User ID</label>
-                <input
-                  name="user_id"
-                  value={form.user_id}
-                  onChange={handleChange}
-                  readOnly // Always read-only now
-                  placeholder="User ID"
-                />
-              </div>
-              <div className="form-group">
-                <label>Feedback Message</label>
-                <textarea
-                  name="message"
-                  value={form.message}
-                  onChange={handleChange}
-                  readOnly // Always read-only now
-                  placeholder="Feedback Message"
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    name="isproblem"
-                    checked={form.isproblem}
-                    onChange={handleChange}
-                    disabled // Should always be disabled on an admin review form
-                  />{" "}
-                  This is a problem report?
-                </label>
-              </div>
-              {/* Only show reply/status fields when editing */}
-              <>
-                <div className="form-group">
-                  <label>Reply/Response</label>
-                  <textarea
-                    name="reply"
-                    value={form.reply}
-                    onChange={handleChange}
-                    //required
-                    placeholder="Admin response"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Status</label>
-                  <select
-                    name="status"
-                    value={form.status}
-                    onChange={handleChange}
-                    required
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option value={s} key={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </>
-              <div className="modal-actions" style={styles.modalActions}>
-                <button
-                  className="cancel-btn"
-                  type="button"
-                  onClick={() => resetForm(false)}
+              <div
+                style={{
+                  marginTop: 30,
+                  paddingTop: 30,
+                  borderTop: "1px solid rgba(255,255,255,0.2)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
                 >
-                  Cancel
-                </button>
-                <button className="save-btn" type="submit">
-                  Update Feedback
-                </button>
+                  <User size={18} />
+                  <strong>
+                    User ID:{" "}
+                    {showForm ? form.user_id : selectedFeedback.user_id}
+                  </strong>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Calendar size={18} />
+                  {showForm ? "Editing Record" : "Viewing Record"}
+                </div>
               </div>
-            </form>
+            </div>
+
+            {/* Right Side: Form */}
+            <div className="ag-modal-right">
+              <button
+                onClick={() => {
+                  setShowForm(false);
+                  setSelectedFeedback(null);
+                }}
+                style={{
+                  position: "absolute",
+                  top: 20,
+                  right: 20,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+              >
+                <X size={24} color={THEME.textMuted} />
+              </button>
+
+              <div className="ag-form-group">
+                <label className="ag-label">Farmer's Message</label>
+                <div
+                  style={{
+                    background: THEME.bgLight,
+                    padding: 15,
+                    borderRadius: 8,
+                    color: THEME.textDark,
+                  }}
+                >
+                  {showForm ? form.message : selectedFeedback.message}
+                </div>
+              </div>
+
+              {showForm ? (
+                <form onSubmit={handleUpdate}>
+                  <div className="ag-form-group">
+                    <label className="ag-label">Your Response</label>
+                    <textarea
+                      className="ag-input-area"
+                      rows={4}
+                      value={form.reply}
+                      onChange={(e) =>
+                        setForm({ ...form, reply: e.target.value })
+                      }
+                      placeholder="Type your guidance here..."
+                    />
+                  </div>
+                  <div className="ag-form-group">
+                    <label className="ag-label">Update Status</label>
+                    <select
+                      className="ag-select"
+                      value={form.status}
+                      onChange={(e) =>
+                        setForm({ ...form, status: e.target.value })
+                      }
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt.replace("_", " ").toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    className="ag-btn ag-btn-primary"
+                    style={{ width: "100%" }}
+                  >
+                    <CheckCircle2 size={18} /> Update Record
+                  </button>
+                </form>
+              ) : (
+                <div className="ag-form-group">
+                  <label className="ag-label">Current Response</label>
+                  <div
+                    style={{
+                      border: `1px dashed ${THEME.primary}`,
+                      padding: 15,
+                      borderRadius: 8,
+                      color: THEME.textMuted,
+                      marginBottom: 20,
+                    }}
+                  >
+                    {selectedFeedback.reply || "No response recorded yet."}
+                  </div>
+                  <button
+                    className="ag-btn ag-btn-outline"
+                    style={{ width: "100%" }}
+                    onClick={() => openEdit(selectedFeedback)}
+                  >
+                    <Edit size={16} /> Modify Response
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {isConfirmOpen && feedbackToDelete && (
-        <div className="delete-modal-overlay" style={styles.modalOverlay}>
+      {/* --- DELETE CONFIRMATION --- */}
+      {feedbackToDelete && (
+        <div className="ag-modal-overlay">
           <div
-            className="modal delete-modal-content"
-            style={{ ...styles.modalBase, maxWidth: "400px" }}
+            className="ag-modal-content"
+            style={{
+              maxWidth: 400,
+              flexDirection: "column",
+              textAlign: "center",
+              padding: 30,
+            }}
           >
-            <h3>Confirm Deletion</h3>
-            <p>
-              Are you sure you want to delete feedback{" "}
-              <strong>{feedbackToDelete.id}</strong>? This action cannot be
-              undone.
+            <div style={{ margin: "0 auto 20px", color: THEME.error }}>
+              <Trash2 size={48} />
+            </div>
+            <h3 style={{ margin: "0 0 10px" }}>Uproot this record?</h3>
+            <p style={{ color: THEME.textMuted, marginBottom: 25 }}>
+              Are you sure you want to delete Feedback #{feedbackToDelete.id}?
+              This action cannot be undone.
             </p>
-            <div className="modal-actions" style={styles.modalActions}>
-              <button className="cancel-btn" onClick={cancelDelete}>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="ag-btn ag-btn-outline"
+                style={{ flex: 1 }}
+                onClick={() => setFeedbackToDelete(null)}
+              >
                 Cancel
               </button>
-              <button className="confirm-delete-btn" onClick={confirmDelete}>
+              <button
+                className="ag-btn ag-btn-primary"
+                style={{ flex: 1, background: THEME.error }}
+                onClick={confirmDelete}
+              >
                 Delete
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* --- TOAST NOTIFICATION --- */}
+      {msg.text && (
+        <div
+          className="ag-toast"
+          style={{
+            background: msg.type === "error" ? THEME.error : THEME.primary,
+          }}
+        >
+          {msg.type === "error" ? (
+            <AlertCircle size={20} />
+          ) : (
+            <CheckCircle2 size={20} />
+          )}
+          {msg.text}
         </div>
       )}
     </div>

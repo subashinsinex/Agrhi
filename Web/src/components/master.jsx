@@ -1,21 +1,31 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { axiosInstance } from "../api/login";
 import { SERVER_IP, SERVER_PORT } from "../constant";
-// Import icons needed for the new design (Removed X and Search)
-import { Plus, Settings, Zap, Droplet, Sun, Sprout } from "lucide-react";
+import {
+  Plus,
+  Zap,
+  Droplets,
+  Sun,
+  Sprout,
+  Trash2,
+  CheckCircle,
+  AlertCircle,
+  Layers,
+  Database,
+} from "lucide-react";
 
-// API base
+// API Base configuration
 const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/farmcrop`;
 
-const Master = ({ isSidebarOpen, toggleSidebar }) => {
-  // Data states for each table
+const Master = ({ isSidebarOpen }) => {
+  // --- STATE MANAGEMENT ---
   const [soilTypes, setSoilTypes] = useState([]);
   const [irrigations, setIrrigations] = useState([]);
   const [waterSources, setWaterSources] = useState([]);
   const [cropTypes, setCropTypes] = useState([]);
   const [plants, setPlants] = useState([]);
 
-  // Form states (Keys are 'soilType', 'irrigation', 'waterSource', 'cropType')
+  // Unified Form State
   const [form, setForm] = useState({
     soilType: "",
     irrigation: "",
@@ -26,45 +36,28 @@ const Master = ({ isSidebarOpen, toggleSidebar }) => {
     plantWaterReq: "",
   });
 
-  // List management
+  // UI Feedback States
   const [msg, setMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
 
-  // REMOVED: searchTerm and setSearchTerm (Line 46 warning)
-
+  // Authentication Setup
   const access_token = localStorage.getItem("access_token");
   const authConfig = useMemo(
     () => ({ headers: { Authorization: `Bearer ${access_token}` } }),
     [access_token]
   );
 
-  // Helper to map card type to the correct state key (FIX for the bug)
-  const getFormKey = (type) => {
-    switch (type) {
-      case "soil":
-        return "soilType";
-      case "irrigation":
-        return "irrigation";
-      case "water":
-        return "waterSource";
-      case "crop":
-        return "cropType";
-      default:
-        return type;
-    }
-  };
+  // --- LOGIC & API CALLS ---
 
-  // Fetch all master data (UNCHANGED BACKEND LOGIC)
   const fetchAll = useCallback(async () => {
     setErrorMsg("");
     if (!access_token) {
-      setErrorMsg("Authentication token missing. Cannot fetch data.");
+      setErrorMsg("Authentication required. Please log in again.");
       return;
     }
     try {
-      // GET all master tables in parallel
       const [soilRes, irrRes, waterRes, cropRes, plantRes] = await Promise.all([
         axiosInstance.get(`${apiBase}/masters/soiltypes`, authConfig),
         axiosInstance.get(`${apiBase}/masters/irrigations`, authConfig),
@@ -72,24 +65,14 @@ const Master = ({ isSidebarOpen, toggleSidebar }) => {
         axiosInstance.get(`${apiBase}/masters/croptypes`, authConfig),
         axiosInstance.get(`${apiBase}/masters/plants`, authConfig),
       ]);
+
       setSoilTypes(soilRes.data);
       setIrrigations(irrRes.data);
       setWaterSources(waterRes.data);
-      setCropTypes(
-        // Map crop types to include the details string for the card list display
-        cropRes.data.map((c) => ({
-          ...c,
-          details: `${c.crop_type_id} - ${c.name}`,
-        }))
-      );
+      setCropTypes(cropRes.data);
       setPlants(plantRes.data);
-      setMsg("");
-      setErrorMsg("");
     } catch (err) {
-      setErrorMsg(
-        "Could not load master data: " +
-          (err.response?.data?.message || err.message)
-      );
+      setErrorMsg("Failed to synchronize master data with server.");
     }
   }, [access_token, authConfig]);
 
@@ -97,66 +80,41 @@ const Master = ({ isSidebarOpen, toggleSidebar }) => {
     fetchAll();
   }, [fetchAll]);
 
-  // Reset form fields
-  const resetForm = () =>
-    setForm({
-      soilType: "",
-      irrigation: "",
-      waterSource: "",
-      cropType: "",
-      plantName: "",
-      plantCropType: "",
-      plantWaterReq: "",
-    });
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
 
-  // Add (UNCHANGED BACKEND LOGIC)
   const handleAdd = async (type) => {
     setMsg("");
     setErrorMsg("");
-    let endpoint = "",
-      body = {};
+    let endpoint = "";
+    let body = {};
+
     try {
       switch (type) {
         case "soil":
-          if (!form.soilType) {
-            setErrorMsg("Soil type name is required.");
-            return;
-          }
+          if (!form.soilType) return setErrorMsg("Soil name is required.");
           endpoint = "addsoiltypes";
           body = { name: form.soilType };
           break;
         case "irrigation":
-          // Validation works now because form.irrigation is correctly being updated
-          if (!form.irrigation) {
-            setErrorMsg("Irrigation method is required.");
-            return;
-          }
+          if (!form.irrigation) return setErrorMsg("Method name is required.");
           endpoint = "addirrigations";
           body = { method_name: form.irrigation };
           break;
         case "water":
-          // Validation works now because form.waterSource is correctly being updated
-          if (!form.waterSource) {
-            setErrorMsg("Water source is required.");
-            return;
-          }
+          if (!form.waterSource) return setErrorMsg("Source name is required.");
           endpoint = "addwatersources";
           body = { source: form.waterSource };
           break;
         case "crop":
-          if (!form.cropType) {
-            setErrorMsg("Crop type name is required.");
-            return;
-          }
+          if (!form.cropType) return setErrorMsg("Category name is required.");
           endpoint = "addcroptypes";
           body = { name: form.cropType };
           break;
         case "plant":
           if (!form.plantName || !form.plantCropType || !form.plantWaterReq) {
-            setErrorMsg(
-              "Plant name, crop type, and water requirement are required."
-            );
-            return;
+            return setErrorMsg("All plant fields are required.");
           }
           endpoint = "addplants";
           body = {
@@ -168,38 +126,37 @@ const Master = ({ isSidebarOpen, toggleSidebar }) => {
         default:
           return;
       }
+
       await axiosInstance.post(
         `${apiBase}/masters/${endpoint}`,
         body,
         authConfig
       );
-      setMsg(
-        `${type.charAt(0).toUpperCase() + type.slice(1)} added successfully.`
-      );
+      setMsg(`${type.toUpperCase()} entry successfully registered.`);
       fetchAll();
-      resetForm();
+      // Reset specific form fields
+      setForm((prev) => ({
+        ...prev,
+        soilType: "",
+        irrigation: "",
+        waterSource: "",
+        cropType: "",
+        plantName: "",
+      }));
     } catch (err) {
-      setErrorMsg(
-        "Add failed: " + (err.response?.data?.message || err.message)
-      );
+      setErrorMsg(err.response?.data?.message || "Server rejected the entry.");
     }
   };
 
-  // Confirm delete (UNCHANGED BACKEND LOGIC)
-  const openDelete = (type, id) => {
+  const openDeleteModal = (type, id) => {
     setToDelete({ type, id });
     setIsConfirmOpen(true);
   };
 
-  const cancelDelete = () => {
-    setIsConfirmOpen(false);
-    setToDelete(null);
-  };
-
   const confirmDelete = async () => {
-    setMsg("");
-    setErrorMsg("");
     setIsConfirmOpen(false);
+    if (!toDelete) return;
+
     try {
       let endpoint = "";
       switch (toDelete.type) {
@@ -221,548 +178,609 @@ const Master = ({ isSidebarOpen, toggleSidebar }) => {
         default:
           return;
       }
+
       await axiosInstance.delete(`${apiBase}/masters/${endpoint}`, authConfig);
-      setMsg(
-        `${
-          toDelete.type.charAt(0).toUpperCase() + toDelete.type.slice(1)
-        } deleted successfully!`
-      );
+      setMsg("Record successfully purged from registry.");
       fetchAll();
     } catch (err) {
       setErrorMsg(
-        "Delete failed: " + (err.response?.data?.message || err.message)
+        "Deletion failed: Ensure no dependencies exist for this record."
       );
-    } finally {
-      setToDelete(null);
     }
   };
 
-  // Form change handler
-  const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+  // --- STYLES (Matching Agri-Admin Theme) ---
+  const styles = `
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap');
 
-  // --- STYLES OBJECT (Copied and adapted from userManage.jsx) ---
-  const cardStyles = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-  
-  /* Main content area transition and positioning */
-  .master-mgmt-bg {
-    min-height: 100vh;
-    padding: 20px 30px;
-    background: #f8f9fa;
-    font-family: 'Inter', sans-serif;
-    transition: margin-left 0.3s ease-out; /* Add transition for smooth movement */
-  }
-
-  /* Desktop View: Sidebar always open */
-  @media (min-width: 1024px) {
-    .master-mgmt-bg.sidebar-open {
-        margin-left: 220px; /* Offset for sidebar width */
+    :root {
+      --ag-forest: rgba(5, 82, 25, 1);
+      --ag-sage: #8BA888;
+      --ag-leaf: #4A7C44;
+      --ag-sand: #F4F1EA;
+      --ag-white: #FFFFFF;
+      --ag-clay: #D9C5B2;
+      --ag-shadow: rgba(27, 60, 53, 0.08);
+      --radius-organic: 24px;
     }
-    .master-mgmt-bg.sidebar-closed {
-        margin-left: 0;
+
+    .ag-master-wrapper {
+      min-height: 80vh;
+      background: transparent;
+      font-family: 'Outfit', sans-serif;
+      padding: 30px;
+      transition: margin-left 0.4s ease;
+      color: var(--ag-forest);
     }
-  }
 
-  /* Header & Search */
-  .header-container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 30px;
-    padding-bottom: 10px;
-    border-bottom: 3px solid #e0e7ff; /* Lighter border for clean look */
-  }
-  .header-left {
-    display: flex;
-    align-items: center;
-    font-size: 2rem;
-    font-weight: 700;
-    color: #1a202c;
-  }
-  .header-left svg {
-    margin-left: 10px;
-    color: #4f46e5;
-  }
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-  }
-  
-  /* Status Messages */
-  .status-msg, .error-msg {
-    padding: 12px;
-    margin-bottom: 20px;
-    border-radius: 8px;
-    font-weight: 500;
-    animation: fadeIn 0.3s ease-out;
-  }
-  .status-msg {
-    color: #059669;
-    background-color: #d1fae5;
-    border: 1px solid #a7f3d0;
-  }
-  .error-msg {
-    color: #ef4444;
-    background-color: #fee2e2;
-    border: 1px solid #fecaca;
-  }
+    @media (min-width: 1024px) {
+      .ag-master-wrapper.sidebar-open { margin-left: 260px; }
+    }
 
-  /* Card Grid */
-  .master-card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 30px;
-  }
-
-  /* Single Card */
-  .master-card {
-    height: 820px;      /* Example: choose a size that fits your UI */
-    min-height: 820px;
-    max-height: 820px;
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-    background: #fff;
-    border-radius: 16px;
-    padding: 25px;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    border: 1px solid #f0f4f8;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-  .master-card:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 15px 20px -5px rgba(0, 0, 0, 0.1), 0 6px 10px -3px rgba(0, 0, 0, 0.05);
-  }
-  
-  .card-header {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #1a202c;
-    margin-bottom: 15px;
-    padding-bottom: 15px;
-    border-bottom: 1px solid #e0e7ff;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  /* Form/Input Styles */
-  .input-group {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 15px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  input, select {
-    padding: 10px 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    font-size: 1rem;
-    box-sizing: border-box;
-    flex-grow: 1;
-    min-width: 120px;
-    transition: border-color 0.2s;
-  }
-  input:focus, select:focus {
-      border-color: #4f46e5;
-      outline: none;
-      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-  }
-  
-  /* Button Styles */
-  .add-button {
-    background: #4f46e5;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 15px;
-    cursor: pointer;
-    font-size: 0.95rem;
-    font-weight: 600;
-    transition: background 0.2s, transform 0.1s;
-    box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
-    min-width: max-content;
-  }
-  .add-button:hover {
-    background: #4338ca;
-    transform: translateY(-1px);
-  }
-  
-  .delete-button {
-    background: #fee2e2;
-    color: #ef4444;
-    border: 1px solid #fecaca;
-    padding: 6px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-weight: 600;
-    transition: background 0.2s;
-  }
-  .delete-button:hover {
-    background: #fecaca;
-  }
-  
-  /* List Styles */
-  .data-list {
-    flex: 1;
-    overflow-y: auto;
-    max-height: 500px;   /* Adjust as needed so input/buttons always visible */
-    margin: 0;
-    padding: 0;
-  }
-  .data-list li {
-    padding: 10px 0;
-    border-bottom: 1px dotted #e2e8f0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 1rem;
-    color: #4a5568;
-  }
-  .data-list li:last-child {
-      border-bottom: none;
-  }
-  .data-list li span {
-      font-weight: 500;
-      color: #2c3e50;
-  }
-  
-  /* Plants List Specific Styling */
-  .plants-list li {
-      flex-direction: column;
-      align-items: flex-start !important;
-      gap: 5px;
-      padding: 12px 0;
-  }
-  .plants-list li span {
-      font-weight: 600;
-      font-size: 1.05rem;
-      color: #4f46e5;
-  }
-  .plants-list li .details {
-      font-size: 0.9rem;
-      color: #6b7280;
-      margin-left: 5px;
-      font-family: monospace; /* Use monospace for UUIDs/IDs */
-  }
-  .plants-list .delete-btn-wrapper {
-      width: 100%;
+    .ag-header {
+      margin-bottom: 30px;
       display: flex;
-      justify-content: flex-end;
-      margin-top: 5px;
-  }
+      justify-content: space-between;
+      align-items: center;
+    }
 
-  /* Modal Styles */
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    backdrop-filter: blur(2px);
-    animation: fadeIn 0.3s;
-  }
-  .modal {
-    background: #fff;
-    padding: 30px;
-    border-radius: 12px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    max-width: 400px;
-    width: 90%;
-    animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  }
-  .modal h3 {
-      font-size: 1.5rem;
-      color: #ef4444;
-      margin-top: 0;
-      margin-bottom: 15px;
+    .ag-header h1 {
+      font-size: 2.2rem;
       font-weight: 700;
-  }
-  .modal p {
-      margin-bottom: 25px;
-      font-size: 1rem;
-      color: #4a5568;
-  }
-  .modal-actions {
+      margin: 0;
       display: flex;
-      justify-content: flex-end;
+      align-items: center;
+      gap: 15px;
+    }
+
+    /* Stats Overview Bar */
+    .ag-stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 15px;
+      margin-bottom: 35px;
+    }
+
+    .stat-pill {
+      background: var(--ag-white);
+      padding: 15px 20px;
+      border-radius: 18px;
+      box-shadow: 0 4px 12px var(--ag-shadow);
+      border: 1px solid rgba(139, 168, 136, 0.2);
+    }
+
+    .stat-pill label {
+      display: block;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--ag-sage);
+      margin-bottom: 4px;
+    }
+
+    .stat-pill span {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--ag-forest);
+    }
+
+    /* Main Grid */
+    .master-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 25px;
+    }
+
+    .master-card {
+      background: var(--ag-white);
+      border-radius: var(--radius-organic);
+      padding: 25px;
+      box-shadow: 0 10px 30px var(--ag-shadow);
+      border: 1px solid rgba(139, 168, 136, 0.1);
+      display: flex;
+      flex-direction: column;
+      height: 650px;
+      box-sizing: border-box; /* FIX: Critical for input containment */
+      position: relative;
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--ag-forest);
+      border-bottom: 2px solid var(--ag-sand);
+      padding-bottom: 15px;
+    }
+
+    /* Form Elements */
+    .master-form {
+      display: flex;
       gap: 10px;
-  }
-  .confirm-delete-btn {
-      background: #ef4444;
-      color: #fff;
+      margin-bottom: 20px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .master-input {
+      flex: 1;
+      padding: 12px 15px;
+      border-radius: 12px;
+      border: 1.5px solid #EAEAEA;
+      background: #FAFAFA;
+      font-family: inherit;
+      font-size: 0.9rem;
+      box-sizing: border-box; /* FIX: Prevents outbound */
+      width: 100%;
+      min-width: 0;
+      transition: all 0.3s ease;
+    }
+
+    .master-input:focus {
+      border-color: var(--ag-leaf);
+      outline: none;
+      background: #FFFFFF;
+      box-shadow: 0 0 0 4px rgba(74, 124, 68, 0.1);
+    }
+
+    .btn-add {
+      background: var(--ag-forest);
+      color: white;
       border: none;
-      padding: 10px 15px;
-      border-radius: 6px;
-      font-weight: 600;
+      border-radius: 12px;
+      padding: 10px 18px;
+      font-weight: 700;
       cursor: pointer;
-      transition: background 0.2s;
-  }
-  .confirm-delete-btn:hover {
-      background: #dc2626;
-  }
-  .cancel-btn {
-      background: #e2e8f0;
-      color: #1a202c;
-      padding: 10px 15px;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-  }
-  .cancel-btn:hover {
-    background: #cbd5e1;
-  }
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
-  /* Keyframes */
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-  
-  /* Media Queries */
-  @media (max-width: 768px) {
-    .master-card-grid { grid-template-columns: 1fr; }
-    .header-left { font-size: 1.8rem; }
-    .header-container { margin-bottom: 20px; }
-  }
+    .btn-add:hover {
+      background: var(--ag-leaf);
+      transform: translateY(-2px);
+    }
+
+    .btn-enroll {
+      width: 100%;
+      padding: 14px;
+      margin-top: 5px;
+      background: var(--ag-forest);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    /* List Area & Scrollbar FIX */
+    .master-list {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 8px; /* Room for scrollbar */
+      box-sizing: border-box;
+    }
+
+    /* Visible Persistent Scrollbar */
+    .master-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .master-list::-webkit-scrollbar-track {
+      background: var(--ag-sand);
+      border-radius: 10px;
+    }
+
+    .master-list::-webkit-scrollbar-thumb {
+      background: var(--ag-clay);
+      border-radius: 10px;
+      border: 1px solid var(--ag-sand);
+    }
+
+    .master-list::-webkit-scrollbar-thumb:hover {
+      background: var(--ag-sage);
+    }
+
+    .list-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      background: var(--ag-sand);
+      margin-bottom: 10px;
+      border-radius: 14px;
+      transition: all 0.2s ease;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .list-item:hover {
+      background: #EBE8DE;
+      transform: translateX(4px);
+    }
+
+    .item-info b {
+      display: block;
+      font-size: 0.95rem;
+      color: var(--ag-forest);
+    }
+
+    .item-subtext {
+      font-size: 0.75rem;
+      color: var(--ag-sage);
+      margin-top: 2px;
+    }
+
+    .btn-delete {
+      color: #E74C3C;
+      background: rgba(231, 76, 60, 0.1);
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-delete:hover {
+      background: #E74C3C;
+      color: white;
+    }
+
+    /* Alerts */
+    .ag-alert {
+      padding: 15px 20px;
+      border-radius: 12px;
+      margin-bottom: 25px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      animation: fadeIn 0.4s ease;
+    }
+    .ag-alert.success { background: #E6F4EA; color: #1E7E34; border: 1px solid #B7E1CD; }
+    .ag-alert.error { background: #FDECEA; color: #C53030; border: 1px solid #F5C6CB; }
+
+    /* Modals */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(27, 60, 53, 0.5);
+      backdrop-filter: blur(6px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-box {
+      background: white;
+      padding: 40px;
+      border-radius: 30px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+    }
+
+    @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   `;
-  // --- END STYLES OBJECT ---
 
-  // Determine the main content class based on sidebar state (Desktop only)
-  // Assuming this component is mounted inside the main layout like UserManage
-  const mainContentClass = isSidebarOpen ? "sidebar-open" : "sidebar-closed";
+  return (
+    <div className={`ag-master-wrapper ${isSidebarOpen ? "sidebar-open" : ""}`}>
+      <style>{styles}</style>
 
-  // --- RENDERING HELPER (Adapted to new design) ---
-  const renderCard = (title, type, icon, placeholder, listData, renderItem) => {
-    // FIX: Get the correct form key (name and value) for the input field
-    const inputKey = getFormKey(type);
+      {/* Overview Stats Bar */}
+      <div className="ag-stats-bar">
+        <div className="stat-pill">
+          <label>Soil types</label>
+          <span>{soilTypes.length}</span>
+        </div>
+        <div className="stat-pill">
+          <label>irrigation Methods</label>
+          <span>{irrigations.length}</span>
+        </div>
+        <div className="stat-pill">
+          <label>Water Sources</label>
+          <span>{waterSources.length}</span>
+        </div>
+        <div className="stat-pill">
+          <label>Crop Types</label>
+          <span>{cropTypes.length}</span>
+        </div>
+        <div className="stat-pill">
+          <label>Plants</label>
+          <span>{plants.length}</span>
+        </div>
+      </div>
 
-    return (
-      <section key={type} className="master-card">
-        <h3 className="card-header">
-          {title} {icon}
-        </h3>
+      {/* Status Messages */}
+      {msg && (
+        <div className="ag-alert success">
+          <CheckCircle size={20} /> {msg}
+        </div>
+      )}
+      {errorMsg && (
+        <div className="ag-alert error">
+          <AlertCircle size={20} /> {errorMsg}
+        </div>
+      )}
 
-        {/* Input Group based on type */}
-        {type !== "plant" ? (
-          <div className="input-group">
+      <div className="master-grid">
+        {/* SOIL TYPES CARD */}
+        <div className="master-card">
+          <div className="card-title">
+            <Zap size={22} color="#F1C40F" /> Soil Types
+          </div>
+          <div className="master-form">
             <input
-              name={inputKey} // FIX: Now uses 'soilType', 'irrigation', 'waterSource', or 'cropType'
-              value={form[inputKey]} // FIX: Now uses the correct value from state
+              className="master-input"
+              name="soilType"
+              value={form.soilType}
               onChange={handleChange}
-              placeholder={placeholder}
+              placeholder="Alluvial, Black..."
             />
-            <button className="add-button" onClick={() => handleAdd(type)}>
-              Add
+            <button className="btn-add" onClick={() => handleAdd("soil")}>
+              <Plus size={20} />
             </button>
           </div>
-        ) : (
-          // Plants has a dedicated multi-input layout (UNCHANGED)
-          <div className="input-group">
+          <div className="master-list">
+            {soilTypes.map((s) => (
+              <div className="list-item" key={s.soil_type_id}>
+                <div className="item-info">
+                  <b>{s.name}</b>
+                </div>
+                <button
+                  className="btn-delete"
+                  onClick={() => openDeleteModal("soil", s.soil_type_id)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* IRRIGATION CARD */}
+        <div className="master-card">
+          <div className="card-title">
+            <Droplets size={22} color="#3498DB" /> Irrigation Methods
+          </div>
+          <div className="master-form">
             <input
+              className="master-input"
+              name="irrigation"
+              value={form.irrigation}
+              onChange={handleChange}
+              placeholder="Drip, Sprinkler..."
+            />
+            <button className="btn-add" onClick={() => handleAdd("irrigation")}>
+              <Plus size={20} />
+            </button>
+          </div>
+          <div className="master-list">
+            {irrigations.map((i) => (
+              <div className="list-item" key={i.irrigation_id}>
+                <div className="item-info">
+                  <b>{i.method_name}</b>
+                </div>
+                <button
+                  className="btn-delete"
+                  onClick={() => openDeleteModal("irrigation", i.irrigation_id)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* WATER SOURCES CARD */}
+        <div className="master-card">
+          <div className="card-title">
+            <Sun size={22} color="#E67E22" /> Water Sources
+          </div>
+          <div className="master-form">
+            <input
+              className="master-input"
+              name="waterSource"
+              value={form.waterSource}
+              onChange={handleChange}
+              placeholder="Well, Canal..."
+            />
+            <button className="btn-add" onClick={() => handleAdd("water")}>
+              <Plus size={20} />
+            </button>
+          </div>
+          <div className="master-list">
+            {waterSources.map((w) => (
+              <div className="list-item" key={w.water_src_id}>
+                <div className="item-info">
+                  <b>{w.source}</b>
+                </div>
+                <button
+                  className="btn-delete"
+                  onClick={() => openDeleteModal("water", w.water_src_id)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CROP CATEGORIES CARD */}
+        <div className="master-card">
+          <div className="card-title">
+            <Layers size={22} color="#27AE60" /> Crop Categories
+          </div>
+          <div className="master-form">
+            <input
+              className="master-input"
+              name="cropType"
+              value={form.cropType}
+              onChange={handleChange}
+              placeholder="Cereals, Fruits..."
+            />
+            <button className="btn-add" onClick={() => handleAdd("crop")}>
+              <Plus size={20} />
+            </button>
+          </div>
+          <div className="master-list">
+            {cropTypes.map((c) => (
+              <div className="list-item" key={c.crop_type_id}>
+                <div className="item-info">
+                  <b>{c.name}</b>
+                </div>
+                <button
+                  className="btn-delete"
+                  onClick={() => openDeleteModal("crop", c.crop_type_id)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* PLANT CATALOG CARD (FIXED) */}
+        <div className="master-card">
+          <div className="card-title">
+            <Sprout size={22} color="#1B3C35" /> Plant Catalog
+          </div>
+
+          <div
+            className="master-form"
+            style={{ flexDirection: "column", gap: "8px" }}
+          >
+            <input
+              className="master-input"
               name="plantName"
               value={form.plantName}
               onChange={handleChange}
-              placeholder="Plant Name"
-              style={{ minWidth: "100px" }}
-              required
+              placeholder="Plant Name (e.g. Wheat)"
             />
-            <select
-              name="plantCropType"
-              value={form.plantCropType}
-              onChange={handleChange}
-              style={{ minWidth: "120px" }}
-              required
-            >
-              <option value="">Select Crop Type</option>
-              {cropTypes.map((ct) => (
-                <option key={ct.crop_type_id} value={ct.crop_type_id}>
-                  {ct.name}
-                </option>
-              ))}
-            </select>
-            <select
-              name="plantWaterReq"
-              value={form.plantWaterReq}
-              onChange={handleChange}
-              style={{ minWidth: "80px" }}
-              required
-            >
-              <option value="">Water Req</option>
-              {["Low", "Medium", "High"].map((req) => (
-                <option key={req} value={req}>
-                  {req}
-                </option>
-              ))}
-            </select>
-            <button className="add-button" onClick={() => handleAdd("plant")}>
-              <Plus size={18} style={{ marginRight: "5px" }} /> Add Plant
+
+            <div style={{ display: "flex", gap: "8px", width: "100%" }}>
+              <select
+                className="master-input"
+                name="plantCropType"
+                value={form.plantCropType}
+                onChange={handleChange}
+              >
+                <option value="">Select Category</option>
+                {cropTypes.map((ct) => (
+                  <option key={ct.crop_type_id} value={ct.crop_type_id}>
+                    {ct.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="master-input"
+                name="plantWaterReq"
+                value={form.plantWaterReq}
+                onChange={handleChange}
+              >
+                <option value="">Water Req</option>
+                {["Low", "Medium", "High"].map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button className="btn-enroll" onClick={() => handleAdd("plant")}>
+              Add plant
             </button>
           </div>
-        )}
 
-        <ul className={`data-list ${type === "plant" ? "plants-list" : ""}`}>
-          {listData.length === 0 ? (
-            <li style={{ justifyContent: "center", color: "#6b7280" }}>
-              No {title.toLowerCase()} found.
-            </li>
-          ) : (
-            listData.map(renderItem)
-          )}
-        </ul>
-      </section>
-    );
-  };
-
-  return (
-    <div className={`master-mgmt-bg ${mainContentClass}`}>
-      <style>{cardStyles}</style>
-
-      {/* Header (Simplified since this isn't a main navigational page like User Management) */}
-      <div className="header-container">
-        <div className="header-left">
-          Master Data Management <Settings size={28} />
+          <div className="master-list">
+            {plants.length > 0 ? (
+              plants.map((p) => (
+                <div className="list-item" key={p.plant_id}>
+                  <div className="item-info">
+                    <b>{p.plant_name}</b>
+                    <div className="item-subtext">
+                      Water Demand: {p.water_requirement}
+                    </div>
+                  </div>
+                  <button
+                    className="btn-delete"
+                    onClick={() => openDeleteModal("plant", p.plant_id)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div
+                style={{
+                  textAlign: "center",
+                  marginTop: "40px",
+                  color: "#AAA",
+                }}
+              >
+                <Database
+                  size={40}
+                  style={{ opacity: 0.3, marginBottom: "10px" }}
+                />
+                <p>No plants discovered</p>
+              </div>
+            )}
+          </div>
         </div>
-        {/* The header-right area is left empty as there is no search/filter for master data */}
-        <div className="header-right"></div>
       </div>
 
-      {/* Status/Error Messages */}
-      {msg && <div className="status-msg">{msg}</div>}
-      {errorMsg && <div className="error-msg">{errorMsg}</div>}
-
-      {/* Master Data Card Grid */}
-      <div className="master-card-grid">
-        {/* Soil Types Card */}
-        {renderCard(
-          "Soil Types",
-          "soil",
-          <Zap size={20} />,
-          "New soil type name",
-          soilTypes,
-          (s) => (
-            <li key={s.soil_type_id}>
-              <span>{s.name}</span>
-              <button
-                className="delete-button"
-                onClick={() => openDelete("soil", s.soil_type_id)}
-              >
-                Delete
-              </button>
-            </li>
-          )
-        )}
-
-        {/* Irrigation Methods Card */}
-        {renderCard(
-          "Irrigation Methods",
-          "irrigation",
-          <Droplet size={20} />,
-          "New irrigation method",
-          irrigations,
-          (i) => (
-            <li key={i.irrigation_id}>
-              <span>{i.method_name}</span>
-              <button
-                className="delete-button"
-                onClick={() => openDelete("irrigation", i.irrigation_id)}
-              >
-                Delete
-              </button>
-            </li>
-          )
-        )}
-
-        {/* Water Sources Card */}
-        {renderCard(
-          "Water Sources",
-          "water",
-          <Sun size={20} />,
-          "New water source",
-          waterSources,
-          (w) => (
-            <li key={w.water_src_id}>
-              <span>{w.source}</span>
-              <button
-                className="delete-button"
-                onClick={() => openDelete("water", w.water_src_id)}
-              >
-                Delete
-              </button>
-            </li>
-          )
-        )}
-
-        {/* Crop Types Card */}
-        {renderCard(
-          "Crop Types",
-          "crop",
-          <Sprout size={20} />,
-          "New crop type name",
-          cropTypes,
-          (c) => (
-            <li key={c.crop_type_id}>
-              <span>{c.name}</span>
-              <button
-                className="delete-button"
-                onClick={() => openDelete("crop", c.crop_type_id)}
-              >
-                Delete
-              </button>
-            </li>
-          )
-        )}
-
-        {/* Plants Card - Uses renderCard with type="plant" for its specific layout */}
-        {renderCard(
-          "Plants",
-          "plant",
-          <Sprout size={20} />,
-          "", // Placeholder not used for 'plant'
-          plants,
-          (p) => (
-            <li key={p.plant_id}>
-              <span>{p.plant_name}</span>
-              <div className="details">
-                (Crop Type: **{p.crop_type_id}** | Water Req: **
-                {p.water_requirement}**)
-              </div>
-              <div className="delete-btn-wrapper">
-                <button
-                  className="delete-button"
-                  onClick={() => openDelete("plant", p.plant_id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          )
-        )}
-      </div>
-
-      {/* Delete confirmation modal */}
+      {/* DELETION MODAL */}
       {isConfirmOpen && (
         <div className="modal-overlay">
-          <div className="modal">
-            <h3>Confirm Deletion ⚠️</h3>
-            <p>
-              Are you sure you want to delete this record? This action cannot be
-              undone.
+          <div className="modal-box">
+            <div
+              style={{
+                background: "#FDECEA",
+                color: "#E74C3C",
+                width: "60px",
+                height: "60px",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifycontent: "center",
+                margin: "0 auto 20px",
+              }}
+            >
+              <AlertCircle size={32} />
+            </div>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "1.5rem" }}>
+              delete Record?
+            </h3>
+            <p style={{ color: "#666", marginBottom: "30px" }}>
+              This action will permanently remove this entry from the master
+              database. This cannot be undone.
             </p>
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={cancelDelete}>
-                Cancel
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                className="btn-enroll"
+                style={{ background: "#E74C3C", margin: 0 }}
+                onClick={confirmDelete}
+              >
+                Confirm Delete
               </button>
-              <button className="confirm-delete-btn" onClick={confirmDelete}>
-                Delete Permanently
+              <button
+                className="btn-enroll"
+                style={{ background: "#F0F0F0", color: "#333", margin: 0 }}
+                onClick={() => setIsConfirmOpen(false)}
+              >
+                Cancel
               </button>
             </div>
           </div>

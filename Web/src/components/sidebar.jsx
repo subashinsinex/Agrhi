@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 // --- Constants (Required for self-contained component styling) ---
-const PRIMARY_COLOR = "#3742fa";
+const PRIMARY_COLOR = "rgba(5, 82, 25, 1)";
 const EXPANDED_WIDTH = "220px"; // Full sidebar width
 const COLLAPSED_WIDTH = "60px"; // Icon-only bar width
 const DESKTOP_BREAKPOINT = 1024;
@@ -54,14 +54,20 @@ export default function Sidebar() {
                     height: 100vh;
                     background: #fff;
                     border-right: 1px solid #e2e8f0;
+
+                    /* KEY: vertical centering of the whole menu + logout */
                     display: flex;
-                    flex-direction: column; 
+                    flex-direction: column;
+                    justify-content: center;   /* center children vertically */
+                    align-items: stretch;      /* children take full width */
+
                     position: fixed;
                     top: 0;
                     left: 0;
-                    z-index: 50;
+                    position: absolute !important;
+                    z-index: 100;
                     transition: width 0.3s ease-out;
-                    overflow-x: hidden; /* Crucial for hiding text */
+                    overflow-x: hidden;
                 }
 
                 /* Mobile/Small Screen */
@@ -82,20 +88,34 @@ export default function Sidebar() {
 
                 /* Logo Section */
                 .sb-logo{
-                    font-weight:700;
-                    font-size:1.3rem;
-                    color:${PRIMARY_COLOR};
-                    margin:28px 0 18px 0;
-                    letter-spacing:.7px; 
+                    display: flex;
+                    flex-direction: column;      /* logo on top, text below */
+                    align-items: center;
+                    justify-content: center;
+                    gap: 4px;
+
+                    margin: 8px 0;
+                    padding: 0 8px;
+
+                    font-weight: 700;
+                    font-size: 1.1rem;
+                    letter-spacing: .7px;
                     white-space: nowrap;
-                    flex-shrink: 0; 
-                    
-                    /* Initial Collapsed State */
-                    opacity: 0;
-                    padding: 0 18px; 
-                    transition: opacity 0.3s, padding 0.3s;
+
+                    opacity: 1;                  /* keep visible even when collapsed */
                 }
                 
+                .sb-logo-img{
+                    width: 52px;                 /* increase these two values */
+                    height: 52px;
+                    object-fit: contain;
+                }
+
+                    /* AGRHI text in dark green */
+                    .sb-logo-text{
+                    color: ${PRIMARY_COLOR};
+                    font-size: 1rem;
+                }
                 @media (min-width: ${DESKTOP_BREAKPOINT}px) {
                     .sidebar:hover .sb-logo { 
                         opacity: 1;
@@ -108,18 +128,18 @@ export default function Sidebar() {
                     width:${EXPANDED_WIDTH}; /* Use expanded width so items lay out correctly inside the overflow:hidden parent */
                     list-style:none;
                     padding:0; 
-                    flex-grow: 1; 
+                    /* flex-grow: 1; */
                     overflow-y: auto; 
                     overflow-x: hidden;
                 }
 
                 .sb-menu li{
-                    padding:12px 38px 12px 18px; 
+                    padding:12px 18px; 
                     cursor:pointer;
                     transition:.18s;
                     display: flex;
                     align-items: center;
-                    color: #4b5563;
+                    color: transparent;      /* hide label text in collapsed state */
                     white-space: nowrap; 
                 }
                 
@@ -127,7 +147,11 @@ export default function Sidebar() {
                 .sb-menu li span{
                     margin-right:13px; 
                     font-size: 1.14rem;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
                 }
+
                 .sb-menu li {
                     /* Initial collapsed state: Text is hidden */
                     color: transparent; 
@@ -181,8 +205,9 @@ export default function Sidebar() {
                 
                 /* Logout Section */
                 .sb-bottom{
-                    margin-top:auto;
+                    /* margin-top:auto; */
                     flex-shrink: 0; 
+                    margin-top: 4px;
                 }
                 .sb-logout{
                     font-size:.96rem;
@@ -192,7 +217,7 @@ export default function Sidebar() {
                     align-items: center;
                     white-space: nowrap;
                     transition: color 0.3s, margin 0.3s;
-                    margin:12px 0 18px 18px; 
+                    margin:4px 0 4px 12px; 
                 }
                 .sb-logout:hover {
                     color: #ef4444;
@@ -207,17 +232,22 @@ export default function Sidebar() {
                 
                 @media (min-width: ${DESKTOP_BREAKPOINT}px) {
                     .sidebar:hover .sb-logout {
-                        color: #9ea5c6; /* Show text on hover */
+                        color: black; /* Show text on hover */
                         margin-left: 34px; 
                     }
                     .sidebar:hover .sb-logout:hover {
                         color: #ef4444; /* Hover color for text */
                     }
                     .sidebar:hover .sb-logout svg {
-                        color: #9ea5c6; /* Ensure icon is visible on hover */
+                        color: black; /* Ensure icon is visible on hover */
                     }
                 }
             `}</style>
+
+      <div className="sb-logo">
+        <img src="/logo.png" alt="AGRHI Logo" className="sb-logo-img" />
+        <span className="sb-logo-text">AGRHI</span>
+      </div>
 
       {/* <div className="sb-logo">AGRHI Admin Portal</div> */}
       <ul className="sb-menu">

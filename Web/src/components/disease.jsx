@@ -18,11 +18,11 @@ import { SERVER_IP, SERVER_PORT } from "../constant";
 const newComponentStyles = `
 /* --- Global Variables (New Theme) --- */
 :root {
-    --primary-new: #4F46E5; /* Indigo */
+    --primary-new: rgba(5, 82, 25, 1);
     --secondary-new: #6c757d; /* Grey */
     --accent-new: #ffc107; /* Orange/Warning */
     --danger-new: #dc3545; /* Red */
-    --background-new: #f8f9fa; /* Light Grey Background */
+    --background-new: transparent; /* Transparent to show Three.js background */
     --surface-new: #ffffff; /* White Card/Modal Surface */
     --text-new: #212529;
     --border-new: #e9ecef;
