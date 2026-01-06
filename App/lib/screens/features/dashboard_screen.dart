@@ -1,5 +1,3 @@
-// lib/screens/features/dashboard_screen.dart
-
 import '/screens/features/crop_care/crop_history_screen.dart';
 import '/screens/features/disease_detection/model_manager_screen.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../shared/custom_app_bar.dart';
 import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
-import '../../src/services/connectivity_manager.dart'; // ✅ ADD
+import '../../src/services/connectivity_manager.dart';
 import '../shared/smart_retranslator.dart';
 import '../components/weather_card.dart';
 import '../components/profile_card.dart';
@@ -25,6 +23,8 @@ import 'feedback_screen.dart';
 import 'map.dart';
 import '../auth/login_screen.dart';
 import 'profile_screen.dart';
+import './retail_management/shops_screen.dart';
+import '../../src/services/retail_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -51,7 +51,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUserData();
       _preloadDashboardPhrases();
-      // ❌ REMOVED: _performSmartSync() - ConnectivityManager handles this
     });
   }
 
@@ -99,6 +98,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'Are you sure you want to log out?',
       'Cancel',
       'No internet connection',
+      'My Shops',
+      'This feature requires internet connection', // ✅ ADD
     ], highPriority: true);
   }
 
@@ -154,7 +155,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ NEW: Use ConnectivityManager for manual sync
+  // ✅ NEW: Show offline warning
+  void _showOfflineWarning() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const SmartReTranslator(
+          text: 'This feature requires internet connection',
+          style: TextStyle(color: Colors.white),
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.errorColor,
+        duration: const Duration(seconds: 3),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  // ✅ NEW: Navigate with online check
+  void _navigateWithOnlineCheck(Widget screen) {
+    final connectivityManager = context.read<ConnectivityManager>();
+
+    if (connectivityManager.isOnline) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
+    } else {
+      _showOfflineWarning();
+    }
+  }
+
   Future<void> _performManualSync() async {
     final connectivityManager = context.read<ConnectivityManager>();
 
@@ -315,12 +347,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
   }
+
   Future<void> _performBackgroundCleanup() async {
     try {
       debugPrint('🗑️ Starting background cleanup...');
 
       debugPrint('🗑️ Clearing secure storage...');
       await _storage.deleteAll();
+
+      await RetailService.clearCache();
+
       debugPrint('✅ Secure storage cleared');
 
       debugPrint('🗑️ Clearing database tables...');
@@ -388,7 +424,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       debugPrint('Stack trace: $stackTrace');
     }
   }
-
 
   void _showLogoutConfirmation() {
     final languageService = Provider.of<LanguageService>(
@@ -523,6 +558,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    bool isRetailer =
+        (userData?['category']?.toString().toLowerCase() == 'retailer');
+
     final features = [
       FeatureItem(
         title: 'Crop Care',
@@ -543,10 +581,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       FeatureItem(
         title: 'Subsidy',
         icon: Icons.monetization_on,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const SubsidyScreen()),
-        ),
+        onTap: () => _navigateWithOnlineCheck(const SubsidyScreen()),
       ),
       FeatureItem(
         title: 'Crop History',
@@ -575,16 +610,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       FeatureItem(
         icon: Icons.map,
         title: 'Map',
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const MapScreen()),
-        ),
+        onTap: () => _navigateWithOnlineCheck(const MapScreen()),
       ),
+      if (isRetailer)
+        FeatureItem(
+          title: 'My Shops',
+          icon: Icons.store,
+          onTap: () => _navigateWithOnlineCheck(const ShopsListScreen()),
+        ),
     ];
 
     return Scaffold(
       appBar: DashboardAppBar.withSettings(
-        // ✅ Use ConnectivityManager.isSyncing instead of local state
         onSyncPressed: () => _performManualSync(),
         onHelpPressed: () {
           Navigator.push(
@@ -762,7 +799,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// Keep DirectFeatureGrid as is...
 class DirectFeatureGrid extends StatelessWidget {
   final List<FeatureItem> features;
   final int crossAxisCount;
