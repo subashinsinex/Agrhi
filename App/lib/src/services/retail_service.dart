@@ -35,7 +35,7 @@ class RetailService {
   ) async {
     try {
       final response = await _apiService.post(
-        'retail/retailers',
+        'retail/createretailers',
         body: data,
         requiresAuth: true,
       );
@@ -64,7 +64,7 @@ class RetailService {
       debugPrint('🔍 Fetching all shops for user_id: $userId');
 
       final response = await _apiService.get(
-        'retail/retailers/$userId',
+        'retail/getretailers/$userId',
         requiresAuth: true,
       );
 
@@ -92,7 +92,7 @@ class RetailService {
   static Future<Map<String, dynamic>?> getShopById(String retailerId) async {
     try {
       final response = await _apiService.get(
-        'retail/retailers/$retailerId',
+        'retail/getretail/$retailerId',
         requiresAuth: true,
       );
 
@@ -123,7 +123,7 @@ class RetailService {
   ) async {
     try {
       final response = await _apiService.put(
-        'retail/retailers/$retailerId',
+        'retail/updateretailers/$retailerId',
         body: data,
         requiresAuth: true,
       );
@@ -139,29 +139,10 @@ class RetailService {
     }
   }
 
-  // Delete Shop
-  static Future<void> deleteShop(String retailerId) async {
-    try {
-      final response = await _apiService.delete(
-        'retail/retailers/$retailerId',
-        requiresAuth: true,
-      );
-
-      if (response.isSuccess) {
-        debugPrint('✅ Shop deleted: $retailerId');
-      } else {
-        throw Exception(response.error ?? 'Failed to delete shop');
-      }
-    } catch (e) {
-      debugPrint('❌ Error deleting shop: $e');
-      rethrow;
-    }
-  }
-
   // Upload Shop Image
   static Future<void> uploadShopImage(String retailerId, File imageFile) async {
     try {
-      final token = await _storage.read(key: 'auth_token');
+      final token = await _storage.read(key: 'access_token');
       final uri = Uri.parse('${ApiService.baseUrl}/shop-images/upload');
 
       var request = http.MultipartRequest('POST', uri);
@@ -199,7 +180,7 @@ class RetailService {
   ) async {
     try {
       final response = await _apiService.post(
-        'retail/products',
+        'retail/createproducts',
         body: data,
         requiresAuth: true,
       );
@@ -223,7 +204,7 @@ class RetailService {
   ) async {
     try {
       final response = await _apiService.get(
-        'retail/products/retailer/$retailerId',
+        'retail/getproducts/retailer/$retailerId',
         requiresAuth: true,
       );
 
@@ -254,7 +235,7 @@ class RetailService {
   ) async {
     try {
       final response = await _apiService.put(
-        'retail/products/$productId',
+        'retail/updateproducts/$productId',
         body: data,
         requiresAuth: true,
       );
@@ -276,7 +257,7 @@ class RetailService {
     File imageFile,
   ) async {
     try {
-      final token = await _storage.read(key: 'auth_token');
+      final token = await _storage.read(key: 'access_token');
       final uri = Uri.parse('${ApiService.baseUrl}/product-images/upload');
 
       var request = http.MultipartRequest('POST', uri);

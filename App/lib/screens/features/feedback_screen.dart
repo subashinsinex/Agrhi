@@ -1,4 +1,3 @@
-// lib/src/screens/features/feedback_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/colors.dart';
@@ -41,7 +40,9 @@ class FeedbackItem {
 }
 
 class FeedbackScreen extends StatefulWidget {
-  const FeedbackScreen({super.key});
+  final Map<String, dynamic>? shopReference;
+
+  const FeedbackScreen({super.key, this.shopReference});
 
   @override
   State<FeedbackScreen> createState() => _FeedbackScreenState();
@@ -53,13 +54,13 @@ class _FeedbackScreenState extends State<FeedbackScreen>
   final StorageHelper _storage = StorageHelper();
   final AuthService _authService = AuthService();
 
-  // Form state
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _messageController = TextEditingController();
   bool _isProblem = false;
   bool _isSubmitting = false;
 
-  // History state
+  Map<String, dynamic>? _currentShopReference;
+
   late Future<List<FeedbackItem>> _futureFeedbackHistory;
   List<FeedbackItem> _feedbackHistory = [];
   bool _hasHistoryError = false;
@@ -72,6 +73,12 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _futureFeedbackHistory = fetchFeedbackHistory();
+
+    _currentShopReference = widget.shopReference;
+
+    if (_currentShopReference != null) {
+      _isProblem = true;
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _preloadPhrases();
@@ -89,7 +96,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
       'Feedback',
       'History',
       'We value your feedback!',
-      'Please share your thoughts, suggestions, or report any issues you encounter.',
+      'Help us improve Agrhi! Share your feedback or report any issues you encounter.',
       'Your Message',
       'Type your feedback here...',
       'Please enter your feedback',
@@ -121,6 +128,17 @@ class _FeedbackScreenState extends State<FeedbackScreen>
       'Today',
       'Yesterday',
       'days ago',
+      'Shop deletion request sent',
+      'Admin will review your request',
+      'Deleting Shop',
+      'Reason must be at least 20 characters',
+      'Provide reason for deletion',
+      'Request Deletion', // ✅ NEW
+      'Request Edit', // ✅ NEW
+      'Explain why you want to delete this shop...',
+      'Explain why you need to edit this shop...',
+      'Editing Shop', // ✅ NEW
+      'Submit Request', // ✅ NEW
     ], highPriority: true);
   }
 
@@ -143,6 +161,14 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     });
   }
 
+  void _removeShopReference() {
+    setState(() {
+      _currentShopReference = null;
+      _messageController.clear();
+      _isProblem = false;
+    });
+  }
+
   Future<void> _submitFeedback() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -159,12 +185,35 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         throw Exception('Authentication required');
       }
 
-      // ✅ USE ApiService
+      String finalMessage = _messageController.text.trim();
+
+      if (_currentShopReference != null) {
+        final shopName = _currentShopReference!['shop_name'] ?? 'Unknown Shop';
+        final retailerId = _currentShopReference!['retailer_id'] ?? '';
+        final requestType =
+            _currentShopReference!['request_type'] ?? 'delete_shop';
+
+        // ✅ Different formatting based on request type
+        if (requestType == 'delete_shop') {
+          finalMessage =
+              'DELETE SHOP REQUEST\n\n'
+              'Shop Name: $shopName\n'
+              'Shop ID: $retailerId\n\n'
+              'Reason:\n$finalMessage';
+        } else if (requestType == 'edit_shop') {
+          finalMessage =
+              'EDIT SHOP REQUEST\n\n'
+              'Shop Name: $shopName\n'
+              'Shop ID: $retailerId\n\n'
+              'Changes Needed:\n$finalMessage';
+        }
+      }
+
       final response = await ApiService.instance.post(
         '/feedback/addfeedback',
         body: {
           'user_id': userId,
-          'message': _messageController.text.trim(),
+          'message': finalMessage,
           'isproblem': _isProblem,
         },
         requiresAuth: true,
@@ -172,15 +221,32 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
       if (response.isSuccess) {
         print('✅ Feedback submitted successfully');
-        _showSnackBar('Feedback submitted successfully!', isError: false);
+
+        // ✅ Different success messages
+        String successMessage = 'Feedback submitted successfully!';
+        if (_currentShopReference != null) {
+          final requestType = _currentShopReference!['request_type'];
+          if (requestType == 'delete_shop') {
+            successMessage = 'Shop deletion request sent';
+          } else if (requestType == 'edit_shop') {
+            successMessage = 'Shop edit request sent';
+          }
+        }
+
+        _showSnackBar(successMessage, isError: false);
 
         _messageController.clear();
         setState(() {
           _isProblem = false;
           _isSubmitting = false;
+          _currentShopReference = null;
         });
 
         _fetchFeedbackHistory();
+
+        if (widget.shopReference != null) {
+          Navigator.pop(context, true);
+        }
       } else if (response.statusCode == 401) {
         print('⚠️ 401 Unauthorized - attempting to refresh token');
         await _authService.refreshAccessToken();
@@ -220,7 +286,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     try {
       print('🔄 Fetching feedback history for user ID: $userId');
 
-      // ✅ USE ApiService
       final response = await ApiService.instance.get(
         '/feedback/getfeedback/$userId',
         requiresAuth: true,
@@ -299,7 +364,6 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
     print('🔄 Retry initiated - checking internet connectivity...');
 
-    // ApiService automatically checks connectivity
     setState(() {
       _historyErrorMessage = 'Refreshing access token...';
     });
@@ -459,6 +523,9 @@ class _FeedbackScreenState extends State<FeedbackScreen>
   }
 
   Widget _buildSendFeedbackTab() {
+    // ✅ Determine request type
+    final requestType = _currentShopReference?['request_type'] ?? '';
+    final isDeleteRequest = requestType == 'delete_shop';
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -467,29 +534,157 @@ class _FeedbackScreenState extends State<FeedbackScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 8),
-              const SmartReTranslator(
-                text: 'We value your feedback!',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primaryGreen,
+              if (_currentShopReference != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDeleteRequest
+                        ? Colors.red.shade50
+                        : Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isDeleteRequest
+                          ? Colors.red.shade300
+                          : Colors.orange.shade300,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isDeleteRequest
+                              ? Colors.red.shade100
+                              : Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          isDeleteRequest
+                              ? Icons.delete_forever
+                              : Icons.edit_note,
+                          color: isDeleteRequest
+                              ? Colors.red.shade700
+                              : Colors.orange.shade700,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SmartReTranslator(
+                              text: isDeleteRequest
+                                  ? 'Deleting Shop'
+                                  : 'Editing Shop',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isDeleteRequest
+                                    ? Colors.red
+                                    : Colors.orange,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _currentShopReference!['shop_name'] ?? 'Unknown',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: _removeShopReference,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: isDeleteRequest
+                                ? Colors.red.shade100
+                                : Colors.orange.shade100,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            size: 16,
+                            color: isDeleteRequest
+                                ? Colors.red.shade700
+                                : Colors.orange.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const SmartReTranslator(
-                text:
-                    'Help us improve Agrhi! Share your feedback or report any issues you encounter.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                  height: 1.4,
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 18,
+                        color: Colors.blue.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: SmartReTranslator(
+                          text: 'Admin will review your request',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 28),
-              const SmartReTranslator(
-                text: 'Your Message',
-                style: TextStyle(
+                const SizedBox(height: 24),
+              ] else ...[
+                const SizedBox(height: 8),
+                const SmartReTranslator(
+                  text: 'We value your feedback!',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primaryGreen,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const SmartReTranslator(
+                  text:
+                      'Help us improve Agrhi! Share your feedback or report any issues you encounter.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 28),
+              ],
+              SmartReTranslator(
+                text: _currentShopReference != null
+                    ? (isDeleteRequest
+                          ? 'Provide reason for deletion'
+                          : 'Explain changes needed')
+                    : 'Your Message',
+                style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: AppColors.primaryGreen,
@@ -501,7 +696,11 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                 maxLines: 8,
                 maxLength: 500,
                 decoration: InputDecoration(
-                  hintText: 'Type your feedback here...',
+                  hintText: _currentShopReference != null
+                      ? (isDeleteRequest
+                            ? 'Explain why you want to delete this shop...'
+                            : 'Explain why you need to edit this shop...')
+                      : 'Type your feedback here...',
                   hintStyle: TextStyle(color: Colors.grey[400]),
                   filled: true,
                   fillColor: Colors.white,
@@ -530,81 +729,86 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter your feedback';
                   }
-                  if (value.trim().length < 10) {
-                    return 'Feedback must be at least 10 characters';
+
+                  final minLength = _currentShopReference != null ? 20 : 10;
+
+                  if (value.trim().length < minLength) {
+                    return _currentShopReference != null
+                        ? 'Reason must be at least 20 characters'
+                        : 'Feedback must be at least 10 characters';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 20),
-              Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                elevation: 1,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _isProblem
-                            ? Icons.bug_report
-                            : Icons.chat_bubble_outline,
-                        color: _isProblem
-                            ? Colors.red[700]
-                            : AppColors.primaryGreen,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SmartReTranslator(
-                              text: _isProblem
-                                  ? 'Report a Problem'
-                                  : 'General Feedback',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: _isProblem
-                                    ? Colors.red[700]
-                                    : AppColors.primaryGreen,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            SmartReTranslator(
-                              text: _isProblem
-                                  ? 'Toggle off for suggestions'
-                                  : 'Toggle on to report a bug',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
+              if (_currentShopReference == null)
+                Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  elevation: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _isProblem
+                              ? Icons.bug_report
+                              : Icons.chat_bubble_outline,
+                          color: _isProblem
+                              ? Colors.red[700]
+                              : AppColors.primaryGreen,
+                          size: 24,
                         ),
-                      ),
-                      Switch(
-                        value: _isProblem,
-                        onChanged: (value) {
-                          setState(() {
-                            _isProblem = value;
-                          });
-                        },
-                        activeColor: Colors.red[700],
-                        activeTrackColor: Colors.red[200],
-                        inactiveThumbColor: AppColors.primaryGreen,
-                        inactiveTrackColor: AppColors.primaryGreen.withOpacity(
-                          0.3,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SmartReTranslator(
+                                text: _isProblem
+                                    ? 'Report a Problem'
+                                    : 'General Feedback',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: _isProblem
+                                      ? Colors.red[700]
+                                      : AppColors.primaryGreen,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              SmartReTranslator(
+                                text: _isProblem
+                                    ? 'Toggle off for suggestions'
+                                    : 'Toggle on to report a bug',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        Switch(
+                          value: _isProblem,
+                          onChanged: (value) {
+                            setState(() {
+                              _isProblem = value;
+                            });
+                          },
+                          activeColor: Colors.red[700],
+                          activeTrackColor: Colors.red[200],
+                          inactiveThumbColor: AppColors.primaryGreen,
+                          inactiveTrackColor: AppColors.primaryGreen
+                              .withOpacity(0.3),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submitFeedback,
@@ -627,9 +831,11 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                           color: Colors.white,
                         ),
                       )
-                    : const SmartReTranslator(
-                        text: 'Submit Feedback',
-                        style: TextStyle(
+                    : SmartReTranslator(
+                        text: _currentShopReference != null
+                            ? 'Submit Request' // ✅ Changed
+                            : 'Submit Feedback',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
@@ -737,8 +943,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
             padding: const EdgeInsets.all(16),
             itemCount: _feedbackHistory.length,
             itemBuilder: (context, index) {
-              final feedback = _feedbackHistory[index];
-              return _buildFeedbackHistoryCard(feedback);
+              return _buildFeedbackHistoryCard(_feedbackHistory[index]);
             },
           );
         }
@@ -747,6 +952,20 @@ class _FeedbackScreenState extends State<FeedbackScreen>
   }
 
   Widget _buildFeedbackHistoryCard(FeedbackItem feedback) {
+    String displayMessage = feedback.message;
+    // ✅ Extract user's reason from shop requests
+    if (feedback.message.contains('DELETE SHOP REQUEST') ||
+        feedback.message.contains('EDIT SHOP REQUEST')) {
+
+      if (feedback.message.contains('Reason:\n')) {
+        final reasonIndex = feedback.message.indexOf('Reason:\n');
+        displayMessage = feedback.message.substring(reasonIndex + 8).trim();
+      } else if (feedback.message.contains('Changes Needed:\n')) {
+        final changesIndex = feedback.message.indexOf('Changes Needed:\n');
+        displayMessage = feedback.message.substring(changesIndex + 16).trim();
+      }
+    }
+
     return Card(
       key: ValueKey(feedback.id),
       color: Colors.white,
@@ -768,7 +987,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
                   ),
                   decoration: BoxDecoration(
                     color: feedback.isProblem
-                        ? Colors.red[50]
+                        ? Colors.red.shade50
                         : AppColors.primaryGreen.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -807,7 +1026,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
             ),
             const SizedBox(height: 12),
             Text(
-              feedback.message,
+              displayMessage,
               style: const TextStyle(
                 fontSize: 14,
                 color: AppColors.textPrimary,
@@ -819,9 +1038,9 @@ class _FeedbackScreenState extends State<FeedbackScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.grey[50],
+                  color: Colors.grey.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[200]!),
+                  border: Border.all(color: Colors.grey.shade200),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

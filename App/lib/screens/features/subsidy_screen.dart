@@ -1,11 +1,12 @@
-// lib/src/screens/features/subsidy_screen.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/colors.dart';
 import '../shared/smart_retranslator.dart';
 import '../shared/custom_app_bar.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/api_service.dart';
+import '../../src/services/language_service.dart';
 import '../../src/database/database_helper.dart';
 
 class Subsidy {
@@ -59,11 +60,15 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
   final AuthService _authService = AuthService();
   final DatabaseHelper _db = DatabaseHelper.instance;
 
+  // ✅ Translation cache for search
+  final Map<String, String> _translatedTitles = {};
+  final Map<String, String> _translatedStates = {};
+
   bool _hasError = false;
   bool _showScrollToTop = false;
   bool _isRetrying = false;
   bool _isRefreshing = false;
-  bool _isInitialLoading = true; // ✅ NEW: Track initial loading
+  bool _isInitialLoading = true;
   String _errorMessage = 'Please connect to the internet and try again.';
 
   @override
@@ -116,8 +121,11 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
           _allSubsidies = cachedSubsidies;
           _filteredSubsidies = List.of(_allSubsidies);
           _hasError = false;
-          _isInitialLoading = false; // ✅ Hide initial loading
+          _isInitialLoading = false;
         });
+
+        // ✅ Preload translations
+        _preloadTranslations();
 
         // ✅ 2. Fetch fresh data in background
         _refreshInBackground();
@@ -129,6 +137,9 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
         setState(() {
           _isInitialLoading = false;
         });
+
+        // ✅ Preload translations
+        _preloadTranslations();
       }
     } catch (e) {
       print('❌ Error loading subsidies: $e');
@@ -141,12 +152,63 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
           _filteredSubsidies = List.of(_allSubsidies);
           _isInitialLoading = false;
         });
+        _preloadTranslations();
       } else {
         setState(() {
           _hasError = true;
           _isInitialLoading = false;
         });
       }
+    }
+  }
+
+  /// ✅ Preload all subsidy translations
+  Future<void> _preloadTranslations() async {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    // Only translate if not English
+    if (languageService.currentLocale.languageCode == 'en') {
+      return;
+    }
+
+    print('🔄 Preloading ${_allSubsidies.length} subsidy translations...');
+
+    // Clear existing translations
+    _translatedTitles.clear();
+    _translatedStates.clear();
+
+    int count = 0;
+    for (var subsidy in _allSubsidies) {
+      // Translate title
+      if (!_translatedTitles.containsKey(subsidy.title)) {
+        try {
+          final translated = await languageService.translate(subsidy.title);
+          _translatedTitles[subsidy.title] = translated;
+          count++;
+        } catch (e) {
+          debugPrint('Translation error for ${subsidy.title}: $e');
+        }
+      }
+
+      // Translate state name
+      if (!_translatedStates.containsKey(subsidy.stateName)) {
+        try {
+          final translated = await languageService.translate(subsidy.stateName);
+          _translatedStates[subsidy.stateName] = translated;
+          count++;
+        } catch (e) {
+          debugPrint('Translation error for ${subsidy.stateName}: $e');
+        }
+      }
+    }
+
+    print('✅ Preloaded $count translations');
+
+    if (mounted) {
+      setState(() {}); // Refresh UI with translations
     }
   }
 
@@ -183,6 +245,9 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
       print('🔄 Refreshing subsidies in background...');
 
       await fetchSubsidies();
+
+      // Reload translations
+      _preloadTranslations();
 
       print('✅ Background refresh completed');
     } catch (e) {
@@ -305,6 +370,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     });
   }
 
+  // ✅ Multilingual filter with translation support
   void _filterSubsidies() {
     final query = _searchController.text.toLowerCase().trim();
     setState(() {
@@ -312,8 +378,21 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
         _filteredSubsidies = List.of(_allSubsidies);
       } else {
         _filteredSubsidies = _allSubsidies.where((s) {
-          return s.title.toLowerCase().contains(query) ||
-              s.stateName.toLowerCase().contains(query);
+          // Original English text
+          final title = s.title.toLowerCase();
+          final state = s.stateName.toLowerCase();
+
+          // Translated text
+          final translatedTitle = (_translatedTitles[s.title] ?? '')
+              .toLowerCase();
+          final translatedState = (_translatedStates[s.stateName] ?? '')
+              .toLowerCase();
+
+          // Search in both English and translated text
+          return title.contains(query) ||
+              state.contains(query) ||
+              translatedTitle.contains(query) ||
+              translatedState.contains(query);
         }).toList();
       }
     });
@@ -400,9 +479,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
               ),
             )
           : _isInitialLoading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            ) // ✅ Only show on very first load
+          ? const Center(child: CircularProgressIndicator())
           : _allSubsidies.isEmpty
           ? const Center(
               child: SmartReTranslator(
@@ -430,83 +507,140 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: AppColors.primaryGreen,
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 0,
-                                horizontal: 14,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                            ),
+                          // ✅ Use ListenableBuilder for proper rebuild
+                          ListenableBuilder(
+                            listenable: _searchController,
+                            builder: (context, _) {
+                              return TextField(
+                                controller: _searchController,
+                                decoration: InputDecoration(
+                                  prefixIcon: const Icon(
+                                    Icons.search,
+                                    color: AppColors.primaryGreen,
+                                  ),
+                                  suffixIcon: _searchController.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(
+                                            Icons.clear,
+                                            color: Colors.grey,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                          },
+                                        )
+                                      : null,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 0,
+                                    horizontal: 14,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
                     ),
                   ),
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final subsidy = _filteredSubsidies[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 0,
-                          vertical: 4,
-                        ),
-                        child: Card(
-                          key: ValueKey(subsidy.id),
-                          color: Colors.white,
-                          elevation: 3,
-                          shadowColor: AppColors.primaryGreen.withOpacity(0.13),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
-                            ),
-                            title: SmartReTranslator(
-                              text: subsidy.title,
-                              style: const TextStyle(
-                                color: AppColors.primaryGreen,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            subtitle: SmartReTranslator(
-                              text: subsidy.stateName,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            trailing: const Icon(
-                              Icons.arrow_forward_ios,
-                              size: 16,
-                              color: Colors.grey,
-                            ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      SubsidyDetailScreen(subsidy: subsidy),
+                  _filteredSubsidies.isEmpty
+                      ? SliverFillRemaining(
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 80,
+                                  color: Colors.grey[400],
                                 ),
-                              );
-                            },
+                                const SizedBox(height: 16),
+                                SmartReTranslator(
+                                  text: 'No subsidies found',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                SmartReTranslator(
+                                  text: 'Try searching with different keywords',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                        )
+                      : SliverList(
+                          delegate: SliverChildBuilderDelegate((
+                            context,
+                            index,
+                          ) {
+                            final subsidy = _filteredSubsidies[index];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 0,
+                                vertical: 4,
+                              ),
+                              child: Card(
+                                key: ValueKey(subsidy.id),
+                                color: Colors.white,
+                                elevation: 3,
+                                shadowColor: AppColors.primaryGreen.withOpacity(
+                                  0.13,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 12,
+                                  ),
+                                  title: SmartReTranslator(
+                                    text: subsidy.title,
+                                    style: const TextStyle(
+                                      color: AppColors.primaryGreen,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  subtitle: SmartReTranslator(
+                                    text: subsidy.stateName,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  trailing: const Icon(
+                                    Icons.arrow_forward_ios,
+                                    size: 16,
+                                    color: Colors.grey,
+                                  ),
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            SubsidyDetailScreen(
+                                              subsidy: subsidy,
+                                            ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            );
+                          }, childCount: _filteredSubsidies.length),
                         ),
-                      );
-                    }, childCount: _filteredSubsidies.length),
-                  ),
                 ],
               ),
             ),
