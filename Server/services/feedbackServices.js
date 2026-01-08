@@ -17,7 +17,10 @@ async function generateUniqueId(client, tableName, idColumn) {
 // Get all feedbacks, latest first
 const getAllFeedbacks = async () => {
   const result = await db.query(
-    `SELECT * FROM feedback ORDER BY created_at DESC`
+    `SELECT f.*, u.name AS user_name
+     FROM feedback f
+     LEFT JOIN user_details u ON f.user_id = u.user_id
+     ORDER BY f.created_at DESC`
   );
   return result.rows;
 };
@@ -39,7 +42,9 @@ const addFeedback = async ({ user_id, message, isproblem }) => {
 
 // Get feedback by USER_ID
 const getFeedbackById = async (user_id) => {
-  const result = await db.query(`SELECT * FROM feedback WHERE user_id = $1`, [user_id]);
+  const result = await db.query(`SELECT * FROM feedback WHERE user_id = $1`, [
+    user_id,
+  ]);
   return result.rows;
 };
 

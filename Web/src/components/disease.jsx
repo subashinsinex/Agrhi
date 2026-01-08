@@ -30,7 +30,7 @@ const newComponentStyles = `
 }
 
 .app-container-new {
-    padding: 20px;
+    padding: 40px;
     background-color: var(--background-new);
     min-height: 100vh;
     font-family: Arial, sans-serif;
@@ -62,11 +62,13 @@ const newComponentStyles = `
 .search-box-new {
     display: flex;
     align-items: center;
+    padding: 10px 15px 10px 40px;
     background: var(--surface-new);
     border: 1px solid var(--border-new);
-    border-radius: 4px;
+    border-radius: 20px;
     padding: 6px 12px;
     box-shadow: var(--shadow-new);
+    font-size: 1rem;
 }
 
 .search-input-new {
@@ -950,7 +952,7 @@ const Disease = () => {
       <style>{newComponentStyles}</style>
       {/* Header and Controls */}
       <div className="header-container-new">
-        <h1 className="main-title-new">Disease Management</h1>
+        <div className="main-title-new"> </div>
         <div className="controls-group-new">
           <div className="search-box-new">
             <input

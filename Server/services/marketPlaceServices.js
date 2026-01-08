@@ -109,6 +109,58 @@ exports.getFarmerListings = async (req, res) => {
   }
 };
 
+// Admin: all listings with optional filters
+exports.getAllListings = async (req, res) => {
+  // query params: ?is_active=true&crop_type_id=1&farmer_id=uuid
+  const { is_active, crop_type_id, farmer_id } = req.query;
+
+  const conditions = [];
+  const values = [];
+  let idx = 1;
+
+  if (typeof is_active !== "undefined") {
+    conditions.push(`fml.is_active = $${idx++}`);
+    values.push(is_active === "true");
+  }
+
+  if (crop_type_id) {
+    conditions.push(`fml.crop_type_id = $${idx++}`);
+    values.push(crop_type_id);
+  }
+
+  if (farmer_id) {
+    conditions.push(`fml.farmer_id = $${idx++}`);
+    values.push(farmer_id);
+  }
+
+  const whereClause = conditions.length
+    ? `WHERE ${conditions.join(" AND ")}`
+    : "";
+
+  try {
+    const sql = `
+      SELECT 
+        fml.*, 
+        p.plant_name, 
+        ct.name AS crop_type,
+        ud.name AS farmer_name,
+        u.phone_number AS farmer_phone
+      FROM farmer_market_listings fml
+      LEFT JOIN plants p ON fml.plant_id = p.plant_id
+      LEFT JOIN crop_types ct ON fml.crop_type_id = ct.crop_type_id
+      LEFT JOIN user_details ud ON fml.farmer_id = ud.user_id
+      LEFT JOIN users_auth u ON fml.farmer_id = u.user_id
+      ${whereClause}
+      ORDER BY fml.created_at DESC
+    `;
+    const result = await pool.query(sql, values);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getAllListings error:", error);
+    res.status(500).json({ message: "Error fetching all listings", error });
+  }
+};
+
 exports.updateListing = async (req, res) => {
   const { id } = req.params; // listing_id
   const { price_per_unit, unit, available_qty, min_order_qty, is_active } =
@@ -218,11 +270,11 @@ exports.getNearbyListings = async (req, res) => {
         FROM farmer_market_listings fml
         JOIN user_details ud ON fml.farmer_id = ud.user_id
         LEFT JOIN plants p ON fml.plant_id = p.plant_id
-        LEFT JOIN crop_types ct ON fml.crop_type_id = ct.croptype_id
+        LEFT JOIN crop_types ct ON fml.crop_type_id = ct.crop_type_id
         WHERE fml.is_active = true
           AND ud.latitude BETWEEN $1-0.05 AND $1+0.05
           AND ud.longitude BETWEEN $2-0.05 AND $2+0.05
-          AND ($3::integer IS NULL OR fml.crop_type_id = $3)
+          AND ($3::uuid IS NULL OR fml.crop_type_id = $3)
       )
       SELECT * FROM nearby
       WHERE distance_km <= 5
@@ -237,5 +289,45 @@ exports.getNearbyListings = async (req, res) => {
   } catch (error) {
     console.error("getNearbyListings error:", error);
     res.status(500).json({ message: "Error fetching nearby listings", error });
+  }
+};
+
+exports.getFarmers = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT ud.user_id, ud.name 
+      FROM user_details ud 
+      JOIN user_category uc ON ud.category_id = uc.category_id 
+      WHERE uc.category = 'Farmer' 
+      ORDER BY ud.name
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getFarmers error:", error);
+    res.status(500).json({ message: "Error fetching farmers", error });
+  }
+};
+
+exports.getCropTypes = async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT crop_type_id, name FROM crop_types ORDER BY name"
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getCropTypes error:", error);
+    res.status(500).json({ message: "Error fetching crop types", error });
+  }
+};
+
+exports.getPlants = async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT plant_id, plant_name FROM plants ORDER BY plant_name"
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getPlants error:", error);
+    res.status(500).json({ message: "Error fetching plants", error });
   }
 };

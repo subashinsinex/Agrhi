@@ -12,11 +12,14 @@ import Master from "./components/master";
 import Disease from "./components/disease";
 import Report from "./components/report";
 import Feedback from "./components/feedback";
+import RetailManager from "./components/retailManager";
+import MarketPlaceManagement from "./components/marketPlaceManagement";
 import Account from "./components/account";
 import { Header } from "./components/header";
 import { DESKTOP_BREAKPOINT } from "./constant";
 import ProtectedRoute from "./components/protectedRoute";
 import ResetPassword from "./components/resetPassword";
+
 // Import the 3D Background component
 import AgrhiBackground from "./parts/background";
 
@@ -170,6 +173,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Feedback />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/retail-manager"
+              element={
+                <ProtectedRoute>
+                  <RetailManager />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/marketplace-management"
+              element={
+                <ProtectedRoute>
+                  <MarketPlaceManagement />
                 </ProtectedRoute>
               }
             />

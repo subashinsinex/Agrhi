@@ -9,6 +9,7 @@ import {
   BarChart2, // For Reports
   MessageSquare, // For Advisory
   PersonStanding, // For Account
+  Store, // For Retail Manager
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -70,6 +71,20 @@ const dashboardModules = [
     color: "#84cc16",
     path: "/feedback",
   },
+  {
+    title: "Retail Manager",
+    description: "Manage retailers and their products.",
+    icon: Store,
+    color: "#8b5cf6",
+    path: "/retail-manager",
+  },
+  {
+    title: "Marketplace Management",
+    description: "Oversee marketplace activities and listings.",
+    icon: Store,
+    color: "#cabf23ff",
+    path: "/marketplace-management",
+  },
 ];
 
 // NOTE: We assume the Dashboard component does NOT receive isSidebarOpen and toggleSidebar props
@@ -116,11 +131,12 @@ const Dashboard = () => {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
         gap: 30px;
+        align-items: start;
     }
 
     /* Card Styling */
     .module-card {
-        background:rgba(255, 255, 255, 0.95);
+        background:rgba(255, 255, 255, 0.50);
         backdrop-filter: blur(10px); /* Frosted glass effect */
         border: 1px solid rgba(255, 255, 255, 0.3);
         border-radius: 16px;
@@ -131,18 +147,31 @@ const Dashboard = () => {
         transition: transform 0.3s ease, box-shadow 0.3s ease;
         position: relative;
         overflow: hidden;
-        opacity: 0.9;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 220px;
     }
     .module-card:hover {
         transform: translateY(-5px);
         box-shadow: 0 15px 40px rgba(79, 70, 229, 0.2); /* Shadow with primary color hint */
     }
 
+    .module-card p {
+        flex: 1;
+        margin: 0 0 18px 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
     /* Card Header (Icon and Title) */
     .card-title-block {
         display: flex;
         align-items: center;
-        margin-bottom: 15px;
+        margin-bottom: 18px;
+        flex-shrink: 0;
     }
     .card-icon {
         width: 60px;
@@ -164,6 +193,8 @@ const Dashboard = () => {
     .card-icon-6366f1 { background-color: #6366f1; }
     .card-icon-f97316 { background-color: #f97316; }
     .card-icon-84cc16 { background-color: #84cc16; }
+    .card-icon-8b5cf6 { background-color: #8b5cf6; }
+    .card-icon-cabf23ff { background-color: #cabf23ff; }
 
 
     .card-title-block h2 {
@@ -181,14 +212,15 @@ const Dashboard = () => {
     
     /* Footer/Action Link */
     .card-footer {
-        padding-top: 15px;
+        padding-top: 12px;
         border-top: 1px dashed #e2e8f0;
-        margin-top: 15px;
+        margin-top: auto;
         display: flex;
         justify-content: flex-end;
+        flex-shrink: 0;
     }
     .card-link {
-        color: rgba(5, 82, 25, 1);
+        color: rgba(0, 0, 0, 1);
         font-weight: 600;
         text-decoration: none;
         font-size: 0.95rem;

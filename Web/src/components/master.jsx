@@ -132,7 +132,7 @@ const Master = ({ isSidebarOpen }) => {
         body,
         authConfig
       );
-      setMsg(`${type.toUpperCase()} entry successfully registered.`);
+      setMsg(`${type} entry successfully registered.`);
       fetchAll();
       // Reset specific form fields
       setForm((prev) => ({
@@ -180,7 +180,7 @@ const Master = ({ isSidebarOpen }) => {
       }
 
       await axiosInstance.delete(`${apiBase}/masters/${endpoint}`, authConfig);
-      setMsg("Record successfully purged from registry.");
+      setMsg("Record successfully deleted from registry.");
       fetchAll();
     } catch (err) {
       setErrorMsg(

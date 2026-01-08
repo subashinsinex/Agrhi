@@ -24,7 +24,7 @@ import {
   ShieldCheck,
   Activity,
   ArrowUpRight,
-  MapPin,
+  //MapPin,
   Clock,
 } from "lucide-react";
 import { SERVER_IP, SERVER_PORT } from "../constant";
@@ -87,10 +87,35 @@ const Report = () => {
           headers: { Authorization: `Bearer ${access_token}` },
         }
       );
+      // 1. group by analysis id
+      const grouped = res.data.reduce((acc, row) => {
+        const key = row.id;
+        if (!acc[key]) {
+          acc[key] = {
+            ...row,
+            // start remedy aggregation
+            remedies: row.remedy ? [row.remedy] : [],
+          };
+        } else {
+          if (row.remedy && !acc[key].remedies.includes(row.remedy)) {
+            acc[key].remedies.push(row.remedy);
+          }
+        }
+        return acc;
+      }, {});
+
+      // 2. convert map → array and pick a display string
+      const normalizedReports = Object.values(grouped).map((r) => ({
+        ...r,
+        remedy: r.remedies.join(", "), // what you show on the card & modal
+      }));
+
+      console.log("Fetched Reports:", res.data.length, res.data);
       // Ensure data is an array
       setReports(Array.isArray(res.data) ? res.data : []);
+      setReports(normalizedReports);
     } catch (err) {
-      showToast("Sync Error: Unable to reach the diagnosis server.", "error");
+      showToast("Sync Error: Unable to reach the server.", "error");
       console.error("API Error:", err);
     } finally {
       setLoading(false);
@@ -613,7 +638,7 @@ const Report = () => {
       <div className="ag-stats-row">
         {[
           {
-            label: "Total Diagnoses",
+            label: "Total Reports",
             val: reports.length,
             icon: <Activity />,
             color: THEME.primary,
@@ -980,7 +1005,7 @@ const Report = () => {
                     </span>
                   </div>
                 </div>
-                <div className="detail-field">
+                {/* <div className="detail-field">
                   <p
                     style={{
                       margin: "0 0 5px 0",
@@ -1000,7 +1025,7 @@ const Report = () => {
                       Regional Sector A-12
                     </span>
                   </div>
-                </div>
+                </div> */}
                 <div className="detail-field">
                   <p
                     style={{
@@ -1149,7 +1174,7 @@ const Report = () => {
               margin: "10px auto",
             }}
           >
-            We couldn't find any diagnosis reports matching your current search
+            We couldn't find any reports matching your current search
             parameters. Try adjusting your filters or search keywords.
           </p>
           <button

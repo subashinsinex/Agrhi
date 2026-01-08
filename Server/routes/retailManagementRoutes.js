@@ -6,22 +6,41 @@ const jwtChecker = require("../middleware/jwtChecker");
 const adminChecker = require("../middleware/adminChecker");
 
 // Retailer profile
-router.post("/retailers", jwtChecker, retailService.createRetailer);
-router.get("/retailers/:id", jwtChecker, retailService.getRetailerById);
-router.put("/retailers/:id", jwtChecker, retailService.updateRetailer);
+router.post("/createretailers", jwtChecker, retailService.createRetailer);
+
+// NEW: list all retailers (admin / authenticated)
+router.get("/allretailers", jwtChecker, retailService.getAllRetailers);
+
+router.get("/getretailers/:id", jwtChecker, retailService.getRetailerById);
+router.get("/getretail/:id", jwtChecker, retailService.getRetailerByRetailId);
+router.put("/updateretailers/:id", jwtChecker, retailService.updateRetailer);
 router.get("/retailers/nearby", jwtChecker, retailService.getNearbyRetailers);
 
-// Retailer products
-router.post("/products", jwtChecker, retailService.createProduct);
+// NEW: all retailers with nested products
 router.get(
-  "/products/retailer/:id",
+  "/retailers-with-products",
+  jwtChecker,
+  retailService.getRetailersWithProducts
+);
+
+// Retailer products
+router.post("/createproducts", jwtChecker, retailService.createProduct);
+
+router.get(
+  "/getproducts/retailer/:id",
   jwtChecker,
   retailService.getProductsByRetailer
 );
-router.put("/products/:id", jwtChecker, retailService.updateProduct);
-router.put("/products/:id/isactive", jwtChecker, retailService.toggleProduct);
+
+router.put("/updateproducts/:id", jwtChecker, retailService.updateProduct);
+router.put(
+  "/toggleproducts/:id/isactive",
+  jwtChecker,
+  retailService.toggleProduct
+);
+
 router.delete(
-  "/products/:id",
+  "/deleteproducts/:id",
   jwtChecker,
   adminChecker,
   retailService.deleteProduct

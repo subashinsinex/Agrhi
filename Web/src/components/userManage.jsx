@@ -49,6 +49,18 @@ const categoryOptions = [
     color: "#1B5E20",
     bg: "#A5D6A7",
   },
+  {
+    id: "c7f2d8e1-9a54-4a6c-8e37-5d2b1f8c4e12",
+    label: "Retailer",
+    color: "#05410eff",
+    bg: "#FFF3E0",
+  },
+  {
+    id: "a3e9a9b4-4c2d-4b1f-9b3b-23f5c4a7d901",
+    label: "Consumer",
+    color: "#012c0bff",
+    bg: "#FFF8E1",
+  },
 ];
 
 const getCategoryDetails = (id) => {
@@ -73,6 +85,7 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
   const [userToDelete, setUserToDelete] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormVisible, setIsFormVisible] = useState(false);
+  const formOverlayRef = useRef(null);
 
   // Dashboard Analytics (Simulated/Calculated)
   const stats = useMemo(
@@ -102,6 +115,13 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
   const [isEdit, setIsEdit] = useState(false);
   const formSectionRef = useRef(null);
   const access_token = localStorage.getItem("access_token");
+
+  // Add this handler for clicking outside modal
+  const handleOverlayClick = useCallback((e) => {
+    if (formOverlayRef.current && !formOverlayRef.current.contains(e.target)) {
+      resetForm(false);
+    }
+  }, []);
 
   // --- API OPERATIONS ---
 
@@ -222,7 +242,13 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
     });
     setIsEdit(true);
     setIsFormVisible(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Scroll ONLY to form (remove window.scrollTo)
+    setTimeout(() => {
+      formSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
   };
 
   const filteredUsers = useMemo(() => {
@@ -607,127 +633,131 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
 
       {/* Form Section */}
       {isFormVisible && (
-        <div className="ag-form-container" ref={formSectionRef}>
-          <h2
-            style={{ marginTop: 0, marginBottom: "30px", fontSize: "1.5rem" }}
-          >
-            {isEdit ? "Update User Profile" : "Add New User"}
-          </h2>
-          <form onSubmit={handleSubmit}>
-            <div className="ag-form-grid">
-              <div className="ag-input-group">
-                <label>Full Name</label>
-                <input
-                  name="name"
-                  value={form.name}
-                  onChange={handleChange}
-                  required
-                  placeholder="Enter full name"
-                />
-              </div>
-              <div className="ag-input-group">
-                <label>Email Address</label>
-                <input
-                  name="email"
-                  type="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  required
-                  placeholder="email@example.com"
-                />
-              </div>
-              <div className="ag-input-group">
-                <label>Phone Number</label>
-                <input
-                  name="phone_number"
-                  value={form.phone_number}
-                  onChange={handleChange}
-                  required
-                  placeholder="Contact number"
-                />
-              </div>
-              <div className="ag-input-group">
-                <label>Birth Date</label>
-                <input
-                  name="dob"
-                  type="date"
-                  value={form.dob}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-              <div className="ag-input-group">
-                <label>User Category</label>
-                <select
-                  name="category_id"
-                  value={form.category_id}
-                  onChange={handleChange}
-                  required
+        <div className="ag-overlay" onClick={handleOverlayClick}>
+          <div className="ag-modal" ref={formOverlayRef}>
+            <h2
+              style={{ marginTop: 0, marginBottom: "30px", fontSize: "1.5rem" }}
+            >
+              {isEdit ? "Update User Profile" : "Add New User"}
+            </h2>
+            <form onSubmit={handleSubmit}>
+              <div className="ag-form-grid">
+                {/* All existing form fields stay exactly the same */}
+                <div className="ag-input-group">
+                  <label>Full Name</label>
+                  <input
+                    name="name"
+                    value={form.name}
+                    onChange={handleChange}
+                    required
+                    placeholder="Enter full name"
+                  />
+                </div>
+                {/* ... include ALL other input groups exactly as-is ... */}
+                <div className="ag-input-group">
+                  <label>Email Address</label>
+                  <input
+                    name="email"
+                    type="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    required
+                    placeholder="email@example.com"
+                  />
+                </div>
+                <div className="ag-input-group">
+                  <label>Phone Number</label>
+                  <input
+                    name="phone_number"
+                    value={form.phone_number}
+                    onChange={handleChange}
+                    required
+                    placeholder="Contact number"
+                  />
+                </div>
+                <div className="ag-input-group">
+                  <label>Birth Date</label>
+                  <input
+                    name="dob"
+                    type="date"
+                    value={form.dob}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="ag-input-group">
+                  <label>User Category</label>
+                  <select
+                    name="category_id"
+                    value={form.category_id}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Select Category</option>
+                    {categoryOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="ag-input-group">
+                  <label>Pincode</label>
+                  <input
+                    name="pincode"
+                    value={form.pincode}
+                    onChange={handleChange}
+                    required
+                    placeholder="6-digit code"
+                  />
+                </div>
+                <div
+                  className="ag-input-group"
+                  style={{ gridColumn: "1 / -1" }}
                 >
-                  <option value="">Select Category</option>
-                  {categoryOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="ag-input-group">
-                <label>Pincode</label>
-                <input
-                  name="pincode"
-                  value={form.pincode}
-                  onChange={handleChange}
-                  required
-                  placeholder="6-digit code"
-                />
-              </div>
-              <div className="ag-input-group" style={{ gridColumn: "1 / -1" }}>
-                <label>User Address</label>
-                <input
-                  name="address"
-                  value={form.address}
-                  onChange={handleChange}
-                  required
-                  placeholder="Full Home or Farm address"
-                />
-              </div>
-              <div className="ag-input-group">
-                <label>
-                  Secure Password {isEdit && "(Leave blank to skip)"}
-                </label>
-                <input
-                  name="password"
-                  type="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  required={!isEdit}
-                />
-              </div>
-            </div>
+                  <label>User Address</label>
+                  <input
+                    name="address"
+                    value={form.address}
+                    onChange={handleChange}
+                    required
+                    placeholder="Full Home or Farm address"
+                  />
+                </div>
 
-            <div style={{ marginTop: "40px", display: "flex", gap: "15px" }}>
-              <button
-                className="btn-ag"
-                type="submit"
-                style={{ padding: "14px 40px" }}
-              >
-                {isEdit ? "Update" : "Submit"}
-              </button>
-              <button
-                className="btn-ag"
-                type="button"
-                onClick={() => resetForm(false)}
-                style={{
-                  background: "transparent",
-                  color: "var(--ag-sage)",
-                  boxShadow: "none",
-                }}
-              >
-                Discard
-              </button>
-            </div>
-          </form>
+                <div className="ag-input-group">
+                  <label>
+                    Secure Password {isEdit && "(Leave blank to skip)"}
+                  </label>
+                  <input
+                    name="password"
+                    type="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    required={!isEdit}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: "40px", display: "flex", gap: "15px" }}>
+                <button
+                  className="btn-ag"
+                  type="submit"
+                  style={{ padding: "14px 40px", flex: 1 }}
+                >
+                  {isEdit ? "Update" : "Submit"}
+                </button>
+                <button
+                  className="btn-ag cancel"
+                  type="button"
+                  onClick={() => resetForm(false)}
+                  style={{ padding: "14px 40px", flex: 1 }}
+                >
+                  <X size={20} /> Cancel
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

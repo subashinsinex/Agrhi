@@ -612,7 +612,7 @@ const Subsidies = () => {
 
       {/* Header with Search and Add Button */}
       <div className="header-container">
-        <div className="main-title">Subsidy Programs</div>
+        <div className="main-title"></div>
         <div className="controls-group">
           <div className="search-box">
             <Search />

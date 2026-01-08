@@ -15,6 +15,9 @@ const Header = () => {
     "/account": "Account",
     "/reports": "Reports",
     "/advisory": "Advisory",
+    "/retail-manager": "Retail Manager",
+    "/marketplace-management": "Marketplace Management",
+    "/feedback": "Feedback",
     "/": "Login",
   };
 

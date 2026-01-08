@@ -288,6 +288,8 @@ const Feedback = () => {
         margin-bottom: 20px;
         line-height: 1.5;
         flex-grow: 1;
+        white-space: pre-wrap;
+        word-break: break-word;
     }
     .ag-reply-preview {
         background: ${THEME.bgLight};
@@ -525,8 +527,10 @@ const Feedback = () => {
               </div>
 
               {/* User Info */}
+              {/* User Info */}
               <div className="ag-card-meta">
-                <User size={14} /> ID: {f.user_id}
+                <User size={14} />
+                {f.user_name ? <> {f.user_name} </> : <> ID: {f.user_id} </>}
                 {f.isproblem && (
                   <span
                     style={{
@@ -542,7 +546,19 @@ const Feedback = () => {
               </div>
 
               {/* Message Content */}
-              <div className="ag-card-msg">"{f.message}"</div>
+              <div
+                className="ag-card-msg"
+                style={{
+                  background: THEME.bgLight,
+                  padding: 15,
+                  borderRadius: 8,
+                  color: THEME.textDark,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
+                {showForm ? form.message : f.message}
+              </div>
 
               {/* Reply Preview */}
               <div className="ag-reply-preview">
@@ -552,7 +568,7 @@ const Feedback = () => {
                   </div>
                 ) : (
                   <span style={{ color: THEME.error, fontStyle: "italic" }}>
-                    Waiting for cultivation...
+                    Waiting for Response...
                   </span>
                 )}
               </div>
@@ -625,10 +641,13 @@ const Feedback = () => {
                 >
                   <User size={18} />
                   <strong>
-                    User ID:{" "}
-                    {showForm ? form.user_id : selectedFeedback.user_id}
+                    {showForm
+                      ? form.user_name || `ID: ${form.user_id}`
+                      : selectedFeedback.user_name ||
+                        `ID: ${selectedFeedback.user_id}`}
                   </strong>
                 </div>
+
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <Calendar size={18} />
                   {showForm ? "Editing Record" : "Viewing Record"}
@@ -750,7 +769,7 @@ const Feedback = () => {
             <div style={{ margin: "0 auto 20px", color: THEME.error }}>
               <Trash2 size={48} />
             </div>
-            <h3 style={{ margin: "0 0 10px" }}>Uproot this record?</h3>
+            <h3 style={{ margin: "0 0 10px" }}>Delete this record?</h3>
             <p style={{ color: THEME.textMuted, marginBottom: 25 }}>
               Are you sure you want to delete Feedback #{feedbackToDelete.id}?
               This action cannot be undone.

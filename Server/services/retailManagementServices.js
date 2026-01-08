@@ -28,7 +28,8 @@ exports.createRetailer = async (req, res) => {
     license_number,
     latitude,
     longitude,
-    image_id, // <--- NEW: from images table
+    image_id,
+    shop_number, // <--- NEW: from images table
   } = req.body;
 
   const client = await pool.connect();
@@ -51,8 +52,8 @@ exports.createRetailer = async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO retailers 
-        (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, image_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, image_id, shop_number)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11)
        RETURNING *`,
       [
         retailer_id,
@@ -65,6 +66,7 @@ exports.createRetailer = async (req, res) => {
         latitude,
         longitude,
         image_id || null,
+        shop_number,
       ]
     );
 
@@ -80,6 +82,32 @@ exports.createRetailer = async (req, res) => {
 };
 
 exports.getRetailerById = async (req, res) => {
+  const { id } = req.params; // retailer_id
+  try {
+    const sql = `
+      SELECT 
+        r.*,
+        ud.name,
+        ud.address,
+        ud.pincode,
+        img.image_url AS shop_image_url
+      FROM retailers r
+      LEFT JOIN user_details ud ON r.user_id = ud.user_id
+      LEFT JOIN images img ON r.image_id = img.image_id
+      WHERE r.user_id = $1
+    `;
+    const result = await pool.query(sql, [id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Retailer not found" });
+    }
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getRetailerById error:", error);
+    res.status(500).json({ message: "Error fetching retailer", error });
+  }
+};
+
+exports.getRetailerByRetailId = async (req, res) => {
   const { id } = req.params; // retailer_id
   try {
     const sql = `
@@ -115,6 +143,7 @@ exports.updateRetailer = async (req, res) => {
     license_number,
     is_verified,
     image_id, // <--- NEW
+    shop_number,
   } = req.body;
 
   try {
@@ -126,7 +155,8 @@ exports.updateRetailer = async (req, res) => {
           business_type = COALESCE($5, business_type),
           license_number = COALESCE($6, license_number),
           is_verified = COALESCE($7, is_verified),
-          image_id = COALESCE($8, image_id)
+          image_id = COALESCE($8, image_id),
+          shop_number = COALESCE($9, shop_number)
       WHERE retailer_id = $1
       RETURNING *
     `;
@@ -139,6 +169,7 @@ exports.updateRetailer = async (req, res) => {
       license_number,
       is_verified,
       image_id,
+      shop_number,
     ]);
 
     if (result.rowCount === 0) {
@@ -353,5 +384,119 @@ exports.deleteProduct = async (req, res) => {
   } catch (error) {
     console.error("deleteProduct error:", error);
     res.status(500).json({ message: "Error deleting product", error });
+  }
+};
+
+// ---- List all retailers with basic details + owner + image ----
+exports.getAllRetailers = async (req, res) => {
+  try {
+    const sql = `
+      SELECT
+        r.*,
+        ud.name,
+        ud.address,
+        ud.pincode,
+        img.image_url AS shop_image_url
+      FROM retailers r
+      LEFT JOIN user_details ud ON r.user_id = ud.user_id
+      LEFT JOIN images img ON r.image_id = img.image_id
+      ORDER BY r.created_at DESC
+    `;
+    const result = await pool.query(sql);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getAllRetailers error:", error);
+    res.status(500).json({ message: "Error fetching retailers", error });
+  }
+};
+
+// ---- List all retailers with their products (nested) ----
+exports.getRetailersWithProducts = async (req, res) => {
+  try {
+    const sql = `
+      SELECT
+        r.retailer_id,
+        r.user_id,
+        r.shop_name,
+        r.shop_address,
+        r.gst_number,
+        r.business_type,
+        r.license_number,
+        r.is_verified,
+        r.created_at,
+        r.latitude,
+        r.longitude,
+        ud.name,
+        ud.address,
+        ud.pincode,
+        img.image_url AS shop_image_url,
+        rp.product_id,
+        rp.category,
+        rp.product_name,
+        rp.brand,
+        rp.price,
+        rp.unit,
+        rp.stock_qty,
+        rp.is_active,
+        rp.created_at AS product_created_at,
+        img_p.image_url AS product_image_url
+      FROM retailers r
+      LEFT JOIN user_details ud ON r.user_id = ud.user_id
+      LEFT JOIN images img ON r.image_id = img.image_id
+      LEFT JOIN retailer_products rp ON r.retailer_id = rp.retailer_id
+      LEFT JOIN images img_p ON rp.image_id = img_p.image_id
+      ORDER BY r.created_at DESC, rp.created_at DESC
+    `;
+
+    const result = await pool.query(sql);
+
+    // Nest products under each retailer
+    const map = new Map();
+
+    for (const row of result.rows) {
+      if (!map.has(row.retailer_id)) {
+        map.set(row.retailer_id, {
+          retailer_id: row.retailer_id,
+          user_id: row.user_id,
+          shop_name: row.shop_name,
+          shop_address: row.shop_address,
+          gst_number: row.gst_number,
+          business_type: row.business_type,
+          license_number: row.license_number,
+          is_verified: row.is_verified,
+          created_at: row.created_at,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          name: row.name,
+          address: row.address,
+          pincode: row.pincode,
+          shop_image_url: row.shop_image_url,
+          products: [],
+        });
+      }
+
+      if (row.product_id) {
+        map.get(row.retailer_id).products.push({
+          product_id: row.product_id,
+          retailer_id: row.retailer_id,
+          category: row.category,
+          product_name: row.product_name,
+          brand: row.brand,
+          price: row.price,
+          unit: row.unit,
+          stock_qty: row.stock_qty,
+          is_active: row.is_active,
+          created_at: row.product_created_at,
+          product_image_url: row.product_image_url,
+        });
+      }
+    }
+
+    res.json(Array.from(map.values()));
+  } catch (error) {
+    console.error("getRetailersWithProducts error:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching retailers & products", error });
   }
 };
