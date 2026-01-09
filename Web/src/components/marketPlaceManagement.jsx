@@ -61,7 +61,7 @@ const THEME = {
 };
 
 const INITIAL_FORM_STATE = {
-  farmer_id: "",
+  phone_number: "",
   crop_type_id: "",
   plant_id: "",
   variety: "",
@@ -117,7 +117,7 @@ const styles = {
   },
   subTitle: {
     fontSize: "1rem",
-    color: THEME.textMuted,
+    color: THEME.bgWhite,
     fontWeight: 400,
     maxWidth: "600px",
     lineHeight: 1.5,
@@ -217,7 +217,7 @@ const styles = {
     width: "100%",
     padding: "14px 14px 14px 48px",
     fontSize: "0.95rem",
-    border: `2px solid ${THEME.bgLight}`, // subtle border
+    border: `2px solid ${THEME.bgLight}`,
     backgroundColor: THEME.bgLight,
     borderRadius: THEME.radiusPill,
     outline: "none",
@@ -225,7 +225,6 @@ const styles = {
     color: THEME.textMain,
     boxSizing: "border-box",
   },
-  // Dynamic style injection for focus
   searchInputFocus: {
     borderColor: THEME.primary,
     backgroundColor: THEME.bgWhite,
@@ -381,12 +380,12 @@ const styles = {
     textTransform: "uppercase",
   },
   badgeActive: {
-    backgroundColor: "#e8f5e9", // Light Green
+    backgroundColor: "#e8f5e9",
     color: "#27ae60",
     border: "1px solid #c8e6c9",
   },
   badgeInactive: {
-    backgroundColor: "#ffebee", // Light Red
+    backgroundColor: "#ffebee",
     color: "#c0392b",
     border: "1px solid #ffcdd2",
   },
@@ -450,7 +449,7 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(19, 15, 64, 0.6)", // Dark Navy transparent
+    backgroundColor: "rgba(19, 15, 64, 0.6)",
     backdropFilter: "blur(4px)",
     zIndex: 1000,
     display: "flex",
@@ -551,7 +550,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "12px",
-    borderLeft: "6px solid", // Color set dynamically
+    borderLeft: "6px solid",
     animation: "slideInRight 0.3s ease",
   },
   toastContent: {
@@ -622,7 +621,6 @@ const GlobalStyles = () => (
       @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
       @keyframes slideInRight { from { opacity: 0; transform: translateX(100%); } to { opacity: 1; transform: translateX(0); } }
       
-      /* Scrollbar styling */
       ::-webkit-scrollbar { width: 8px; height: 8px; }
       ::-webkit-scrollbar-track { background: #f1f1f1; }
       ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
@@ -737,7 +735,7 @@ const FormInput = ({
   placeholder,
   required,
   error,
-  options = null, // if provided, renders select
+  options = null,
   helperText,
 }) => {
   const [focused, setFocused] = useState(false);
@@ -815,7 +813,6 @@ const ListingModal = ({
   onSubmit,
   initialData,
   isEdit,
-  farmers,
   cropTypes,
   plants,
   fetchDropdownData,
@@ -827,7 +824,7 @@ const ListingModal = ({
     if (isOpen) {
       if (initialData) {
         setFormData({
-          farmer_id: initialData.farmer_id || "",
+          phone_number: "", // not editable in edit mode (backend identifies farmer by listing)
           crop_type_id: initialData.crop_type_id || "",
           plant_id: initialData.plant_id || "",
           variety: initialData.variety || "",
@@ -845,15 +842,31 @@ const ListingModal = ({
 
   const validate = () => {
     const newErrors = {};
-    if (!formData.farmer_id) newErrors.farmer_id = "Farmer ID is required";
-    if (!formData.crop_type_id)
-      newErrors.crop_type_id = "Crop Type ID is required";
-    if (!formData.plant_id) newErrors.plant_id = "Plant ID is required";
-    if (!formData.price_per_unit) newErrors.price_per_unit = "Price required";
-    if (isNaN(formData.price_per_unit) || Number(formData.price_per_unit) < 0)
-      newErrors.price_per_unit = "Must be a positive number";
+    if (!isEdit && !formData.phone_number) {
+      newErrors.phone_number = "Farmer phone number is required";
+    }
+    if (
+      !isEdit &&
+      formData.phone_number &&
+      !/^\d{10}$/.test(formData.phone_number)
+    ) {
+      newErrors.phone_number = "Enter a valid 10-digit phone";
+    }
 
+    if (!formData.crop_type_id)
+      newErrors.crop_type_id = "Crop Type is required";
+    if (!formData.plant_id) newErrors.plant_id = "Plant is required";
+    if (!formData.price_per_unit) newErrors.price_per_unit = "Price required";
+    if (isNaN(formData.price_per_unit) || Number(formData.price_per_unit) <= 0)
+      newErrors.price_per_unit = "Must be a positive number";
     if (!formData.available_qty) newErrors.available_qty = "Quantity required";
+    if (isNaN(formData.available_qty) || Number(formData.available_qty) < 0)
+      newErrors.available_qty = "Must be zero or more";
+    if (
+      formData.min_order_qty &&
+      (isNaN(formData.min_order_qty) || Number(formData.min_order_qty) < 0)
+    )
+      newErrors.min_order_qty = "Must be zero or more";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -862,7 +875,6 @@ const ListingModal = ({
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-    // clear error on change
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: null }));
     }
@@ -871,14 +883,17 @@ const ListingModal = ({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validate()) {
-      onSubmit(formData);
+      const payload = { ...formData };
+      if (isEdit) {
+        // backend updateListing ignores phone_number; remove to avoid confusion
+        delete payload.phone_number;
+      }
+      onSubmit(payload);
     }
   };
 
   useEffect(() => {
-    if (isOpen) {
-      fetchDropdownData();
-    }
+    if (isOpen) fetchDropdownData();
   }, [isOpen, fetchDropdownData]);
 
   if (!isOpen) return null;
@@ -897,31 +912,27 @@ const ListingModal = ({
         <form onSubmit={handleSubmit}>
           <div style={styles.modalBody}>
             <div style={styles.formGrid}>
-              <div style={styles.fullWidth}>
+              {!isEdit && (
                 <FormInput
-                  label="Farmer UUID"
-                  name="farmer_id"
-                  value={formData.farmer_id}
+                  label="Farmer Phone Number"
+                  name="phone_number"
+                  type="tel"
+                  placeholder="e.g., 9876543210"
+                  value={formData.phone_number}
                   onChange={handleChange}
-                  options={farmers.map((f) => ({
-                    value: f.userid,
-                    label: f.name,
-                  }))}
-                  placeholder="e.g. 550e8400-e29b..."
                   required
-                  error={errors.farmer_id}
-                  // In edit mode, usually we don't change the owner, but keeping it editable for admin flexibility
+                  error={errors.phone_number}
+                  helperText="Linked to users_auth.phone_number"
                 />
-              </div>
+              )}
 
               <FormInput
-                label="Crop Type ID"
+                label="Crop Type"
                 name="crop_type_id"
                 value={formData.crop_type_id}
                 onChange={handleChange}
-                placeholder="UUID/ID"
                 options={cropTypes.map((ct) => ({
-                  value: ct.croptypeid,
+                  value: ct.crop_type_id,
                   label: ct.name,
                 }))}
                 required
@@ -929,11 +940,10 @@ const ListingModal = ({
               />
 
               <FormInput
-                label="Plant ID"
+                label="Plant"
                 name="plant_id"
                 value={formData.plant_id}
                 onChange={handleChange}
-                placeholder="UUID/ID"
                 options={plants.map((p) => ({
                   value: p.plant_id,
                   label: p.plant_name,
@@ -969,10 +979,9 @@ const ListingModal = ({
                 options={[
                   { value: "kg", label: "Kilogram (kg)" },
                   { value: "g", label: "Gram (g)" },
-                  { value: "ton", label: "Ton" },
-                  { value: "bunch", label: "Bunch" },
-                  { value: "pcs", label: "Pieces" },
-                  { value: "liter", label: "Liter" },
+                  { value: "piece", label: "Piece" },
+                  { value: "litre", label: "Litre" },
+                  { value: "dozen", label: "Dozen" },
                 ]}
                 required
               />
@@ -995,6 +1004,7 @@ const ListingModal = ({
                 value={formData.min_order_qty}
                 onChange={handleChange}
                 placeholder="1"
+                error={errors.min_order_qty}
               />
             </div>
           </div>
@@ -1074,7 +1084,7 @@ const MarketPlaceManagement = () => {
     if (filterActive === "false") params.is_active = false;
     if (filterCropType) params.crop_type_id = filterCropType;
     if (filterFarmerId) params.farmer_id = filterFarmerId;
-    if (filterPlantId) params.plant_id = filterPlantId;
+    if (filterPlantId) params.crop_type_id = filterCropType;
 
     try {
       const response = await axiosInstance.get(`${API_BASE}/alllistings`, {
@@ -1084,7 +1094,6 @@ const MarketPlaceManagement = () => {
       setListings(response.data || []);
       setCurrentPage(1);
     } catch (error) {
-      console.error(error);
       const msg = error.response?.data?.message || "Failed to fetch listings.";
       addToast(msg, "error");
     } finally {
@@ -1092,14 +1101,12 @@ const MarketPlaceManagement = () => {
     }
   }, [filterActive, filterCropType, filterFarmerId, filterPlantId, addToast]);
 
-  const fetchDropdownData = async () => {
-    const accessToken = localStorage.getItem("access_token"); // <- fix key
-
+  const fetchDropdownData = useCallback(async () => {
+    const accessToken = localStorage.getItem("access_token");
     if (!accessToken) {
       addToast("Authentication missing. Please login.", "error");
       return;
     }
-
     try {
       const [farmersRes, cropRes, plantsRes] = await Promise.all([
         axiosInstance.get(`${API_BASE}/farmers`, {
@@ -1109,23 +1116,21 @@ const MarketPlaceManagement = () => {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
         axiosInstance.get(`${API_BASE}/plants`, {
-          headers: { Authorization: `Bearer ${accessToken}` }, // <- fix here
+          headers: { Authorization: `Bearer ${accessToken}` },
         }),
       ]);
-
-      setFarmers(farmersRes.data || []);
-      setCropTypes(cropRes.data || []);
-      setPlants(plantsRes.data || []); // plantsRes.data should contain { plantid, plantname }
-    } catch (error) {
+      setFarmers(farmersRes.data);
+      setCropTypes(cropRes.data);
+      setPlants(plantsRes.data);
+    } catch {
       addToast("Error loading dropdown options", "error");
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
     fetchListings();
   }, [fetchListings]);
 
-  // Filter application handler
   const handleApplyFilters = () => {
     fetchListings();
   };
@@ -1134,23 +1139,12 @@ const MarketPlaceManagement = () => {
     setFilterActive("");
     setFilterCropType("");
     setFilterFarmerId("");
+    setFilterPlantId("");
     setSearchTerm("");
-    // We need to wait for state update in next tick or call fetch directly with clear params
-    // To keep it simple, we just set state and user clicks apply, or we trigger effect
-    // Let's trigger fetch manually with cleared params
-    setLoading(true);
-    const accessToken = localStorage.getItem("access_token");
-    axiosInstance
-      .get(`${API_BASE}/alllistings`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      .then((res) => setListings(res.data || []))
-      .catch((err) => console.error(err))
-      .finally(() => setLoading(false));
+    fetchListings();
   };
 
   // --- CRUD HANDLERS ---
-
   const handleCreate = async (formData) => {
     const accessToken = localStorage.getItem("access_token");
     try {
@@ -1211,7 +1205,7 @@ const MarketPlaceManagement = () => {
         "success"
       );
       fetchListings();
-    } catch (error) {
+    } catch {
       addToast("Failed to change status", "error");
     }
   };
@@ -1249,12 +1243,10 @@ const MarketPlaceManagement = () => {
     setIsModalOpen(true);
   };
 
-  // --- DATA PROCESSING (Search, Sort, Paginate) ---
-
+  // --- DATA PROCESSING ---
   const processedListings = useMemo(() => {
     let result = [...listings];
 
-    // 1. Client-side Search (broader than API filters)
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       result = result.filter(
@@ -1267,17 +1259,14 @@ const MarketPlaceManagement = () => {
       );
     }
 
-    // 2. Sorting
     if (sortConfig.key) {
       result.sort((a, b) => {
         let aVal = a[sortConfig.key];
         let bVal = b[sortConfig.key];
 
-        // Handle nulls
         if (aVal === null) aVal = "";
         if (bVal === null) bVal = "";
 
-        // String comparison
         if (typeof aVal === "string") {
           aVal = aVal.toLowerCase();
           bVal = bVal.toLowerCase();
@@ -1359,12 +1348,10 @@ const MarketPlaceManagement = () => {
     document.body.removeChild(link);
   };
 
-  // --- STATS CALCULATION ---
+  // --- STATS ---
   const stats = useMemo(() => {
     const total = listings.length;
-    const active = listings
-      .filter((l) => l.is_active)
-      .reduce((acc, curr) => acc + 1, 0);
+    const active = listings.filter((l) => l.is_active).length;
     const totalStock = listings.reduce(
       (acc, curr) => acc + Number(curr.available_qty || 0),
       0
@@ -1373,107 +1360,81 @@ const MarketPlaceManagement = () => {
     return { total, active, totalStock, uniqueFarmers };
   }, [listings]);
 
-  // --- RENDER HELPERS ---
-  const renderRow = (item) => (
-    <tr
-      key={item.listing_id}
-      style={styles.tr}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.backgroundColor = "rgba(5, 82, 25, 0.03)")
-      }
-      onMouseLeave={(e) =>
-        (e.currentTarget.style.backgroundColor = "transparent")
-      }
-    >
+  const renderRow = (l) => (
+    <tr key={l.listing_id} style={styles.tr}>
+      <td style={styles.td}>{l.listing_id}</td>
       <td style={styles.td}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <FaUser size={14} color={THEME.textMuted} />
+          <span>{l.farmer_name || "Unknown"}</span>
+        </div>
         <div
           style={{
-            fontWeight: 600,
-            fontSize: "0.8rem",
-            fontFamily: "monospace",
+            fontSize: "0.75rem",
             color: THEME.textMuted,
+            marginTop: "2px",
           }}
         >
-          {item.listing_id.slice(0, 8)}...
+          {l.farmer_phone ? `📞 ${l.farmer_phone}` : ""}
         </div>
       </td>
+      <td style={styles.td}>{l.crop_type || "-"}</td>
       <td style={styles.td}>
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <span style={{ fontWeight: 600 }}>
-            {item.farmer_name || "Unknown"}
-          </span>
-          <span style={{ fontSize: "0.75rem", color: THEME.textMuted }}>
-            {item.farmer_phone}
-          </span>
-        </div>
-      </td>
-      <td style={styles.td}>{item.crop_type || "-"}</td>
-      <td style={styles.td}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          {item.plant_name || "-"}
-          {item.variety && (
-            <span
-              style={{
-                fontSize: "0.75rem",
-                color: THEME.primary,
-                backgroundColor: THEME.bgLight,
-                padding: "2px 6px",
-                borderRadius: "4px",
-              }}
-            >
-              {item.variety}
-            </span>
-          )}
-        </div>
+        <div>{l.plant_name || "-"}</div>
+        {l.variety && (
+          <div
+            style={{
+              fontSize: "0.8rem",
+              color: THEME.textMuted,
+              marginTop: "2px",
+            }}
+          >
+            Variety: {l.variety}
+          </div>
+        )}
       </td>
       <td style={styles.td}>
-        {formatCurrency(item.price_per_unit)}
-        <span style={styles.unitBadge}>/{item.unit}</span>
+        <div>{formatCurrency(l.price_per_unit)}</div>
+        <span style={styles.unitBadge}>{l.unit}</span>
       </td>
+      <td style={styles.td}>{l.available_qty}</td>
       <td style={styles.td}>
-        {item.available_qty} {item.unit}
-      </td>
-      <td style={styles.td}>
-        <div
-          style={item.is_active ? styles.badgeActive : styles.badgeInactive}
-          styleName="badge" // For reference only
+        <span
+          style={{
+            ...styles.badge,
+            ...(l.is_active ? styles.badgeActive : styles.badgeInactive),
+          }}
         >
-          {item.is_active ? <FaToggleOn /> : <FaToggleOff />}
-          <span>{item.is_active ? "Active" : "Inactive"}</span>
-        </div>
+          {l.is_active ? (
+            <>
+              <FaToggleOn /> Active
+            </>
+          ) : (
+            <>
+              <FaToggleOff /> Inactive
+            </>
+          )}
+        </span>
       </td>
-      <td style={styles.td}>{formatDate(item.created_at)}</td>
-      <td style={styles.td}>
-        <div style={styles.actionCell}>
-          <Button
-            variant="ghost"
-            style={styles.btnIconOnly}
-            onClick={() => handleToggleStatus(item)}
-            title={item.is_active ? "Deactivate" : "Activate"}
-          >
-            {item.is_active ? (
-              <FaToggleOff size={18} />
-            ) : (
-              <FaToggleOn size={18} />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            style={styles.btnIconOnly}
-            onClick={() => openEditModal(item)}
-            title="Edit"
-          >
-            <FaEdit size={16} />
-          </Button>
-          <Button
-            variant="ghost"
-            style={{ ...styles.btnIconOnly, color: THEME.danger }}
-            onClick={() => handleDelete(item.listing_id)}
-            title="Delete"
-          >
-            <FaTrash size={14} />
-          </Button>
-        </div>
+      <td style={styles.td}>{formatDate(l.created_at)}</td>
+      <td style={{ ...styles.td, ...styles.actionCell }}>
+        <Button variant="ghost" icon={FaEdit} onClick={() => openEditModal(l)}>
+          Edit
+        </Button>
+        <Button
+          variant="ghost"
+          icon={l.is_active ? FaToggleOff : FaToggleOn}
+          onClick={() => handleToggleStatus(l)}
+        >
+          {l.is_active ? "Deactivate" : "Activate"}
+        </Button>
+        <Button
+          variant="danger"
+          icon={FaTrash}
+          onClick={() => handleDelete(l.listing_id)}
+        >
+          Delete
+        </Button>
       </td>
     </tr>
   );
@@ -1481,67 +1442,75 @@ const MarketPlaceManagement = () => {
   return (
     <>
       <GlobalStyles />
+
       <div style={styles.pageWrapper}>
         <div style={styles.container}>
           {/* HEADER */}
           <div style={styles.headerRow}>
             <div style={styles.titleGroup}>
-              <div style={styles.mainTitle}></div>
+              <h1 style={styles.mainTitle}>
+                <FaShoppingBasket color={THEME.primary} />
+                Marketplace Listings
+              </h1>
+              <p style={styles.subTitle}>
+                Manage farmer-to-consumer listings, update pricing and
+                availability, and monitor marketplace activity.
+              </p>
             </div>
+
             <div style={styles.headerActions}>
               <Button
                 variant="secondary"
-                onClick={handleExportCSV}
                 icon={FaFileExport}
+                onClick={handleExportCSV}
               >
                 Export CSV
               </Button>
-              <Button
-                variant="primary"
-                onClick={openCreateModal}
-                icon={FaPlus}
-                style={{ padding: "12px 24px", fontSize: "1rem" }}
-              >
+              <Button variant="primary" icon={FaPlus} onClick={openCreateModal}>
                 New Listing
               </Button>
             </div>
           </div>
 
-          {/* STATS DASHBOARD */}
+          {/* STATS */}
           <div style={styles.statsGrid}>
             <div style={styles.statCard}>
               <div style={styles.statIconBox}>
                 <FaShoppingBasket />
               </div>
               <div style={styles.statContent}>
-                <span style={styles.statLabel}>Total Listings</span>
-                <span style={styles.statValue}>{stats.total}</span>
+                <div style={styles.statLabel}>Total Listings</div>
+                <div style={styles.statValue}>{stats.total}</div>
               </div>
             </div>
+
             <div style={styles.statCard}>
-              <div
-                style={{
-                  ...styles.statIconBox,
-                  backgroundColor: "rgba(46, 204, 113, 0.1)",
-                  color: "#27ae60",
-                }}
-              >
+              <div style={styles.statIconBox}>
                 <FaLeaf />
               </div>
               <div style={styles.statContent}>
-                <span style={styles.statLabel}>Active Stock</span>
-                <span style={{ ...styles.statValue, color: "#27ae60" }}>
-                  {stats.active}
-                </span>
+                <div style={styles.statLabel}>Active Listings</div>
+                <div style={styles.statValue}>{stats.active}</div>
               </div>
             </div>
+
             <div style={styles.statCard}>
               <div style={styles.statIconBox}>
                 <FaUser />
               </div>
               <div style={styles.statContent}>
-                <span style={styles.statLabel}>Participating Farmers</span>
-                <span style={styles.statValue}>{stats.uniqueFarmers}</span>
+                <div style={styles.statLabel}>Unique Farmers</div>
+                <div style={styles.statValue}>{stats.uniqueFarmers}</div>
+              </div>
+            </div>
+
+            <div style={styles.statCard}>
+              <div style={styles.statIconBox}>
+                <FaShoppingBasket />
+              </div>
+              <div style={styles.statContent}>
+                <div style={styles.statLabel}>Total Stock</div>
+                <div style={styles.statValue}>{stats.totalStock}</div>
               </div>
             </div>
           </div>
@@ -1549,101 +1518,117 @@ const MarketPlaceManagement = () => {
           {/* TOOLBAR */}
           <div style={styles.toolbar}>
             <div style={styles.toolbarTop}>
-              {/* Search */}
               <div style={styles.searchContainer}>
                 <FaSearch style={styles.searchIcon} />
                 <input
-                  style={styles.searchInput}
-                  placeholder="Search listings, crops, or farmers..."
+                  type="text"
+                  placeholder="Search by farmer, crop, plant, variety, or listing ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onFocus={(e) =>
-                    Object.assign(e.target.style, styles.searchInputFocus)
-                  }
-                  onBlur={(e) => {
-                    e.target.style.backgroundColor = THEME.bgLight;
-                    e.target.style.boxShadow = "none";
-                    e.target.style.borderColor = THEME.bgLight;
-                  }}
+                  style={styles.searchInput}
                 />
               </div>
 
-              {/* Filter Toggles */}
               <div style={styles.filterToggleRow}>
                 <Button
-                  variant="secondary"
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  variant={isFilterOpen ? "primary" : "secondary"}
                   icon={FaFilter}
+                  onClick={() => setIsFilterOpen((prev) => !prev)}
                 >
-                  Filters {isFilterOpen ? "(Hide)" : "(Show)"}
+                  Filters
                 </Button>
-                <Button
-                  variant="ghost"
-                  onClick={fetchListings}
-                  icon={FaSync}
-                  title="Refresh Data"
-                >
+                <Button variant="ghost" icon={FaSync} onClick={fetchListings}>
                   Refresh
                 </Button>
               </div>
             </div>
 
-            {/* Filter Panel (Collapsible) */}
             {isFilterOpen && (
               <div style={styles.filterPanel}>
                 <div style={styles.filterGroup}>
-                  <label style={styles.label}>Listing Status</label>
+                  <label style={styles.label}>Status</label>
                   <select
-                    style={styles.selectInput}
                     value={filterActive}
                     onChange={(e) => setFilterActive(e.target.value)}
+                    style={styles.selectInput}
                   >
-                    <option value="">All Statuses</option>
-                    <option value="true">Active Only</option>
-                    <option value="false">Inactive Only</option>
+                    <option value="">All</option>
+                    <option value="true">Active only</option>
+                    <option value="false">Inactive only</option>
                   </select>
                 </div>
+
                 <div style={styles.filterGroup}>
-                  <label style={styles.label}>Crop Type ID</label>
-                  <input
-                    style={{ ...styles.selectInput, cursor: "text" }}
-                    placeholder="Enter UUID..."
+                  <label style={styles.label}>Crop Type</label>
+                  <select
                     value={filterCropType}
                     onChange={(e) => setFilterCropType(e.target.value)}
-                  />
+                    style={styles.selectInput}
+                  >
+                    <option value="">All</option>
+                    {cropTypes.map((ct) => (
+                      <option key={ct.crop_type_id} value={ct.crop_type_id}>
+                        {ct.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
                 <div style={styles.filterGroup}>
-                  <label style={styles.label}>Farmer ID</label>
-                  <input
-                    style={{ ...styles.selectInput, cursor: "text" }}
-                    placeholder="Enter UUID..."
+                  <label style={styles.label}>Farmer</label>
+                  <select
                     value={filterFarmerId}
                     onChange={(e) => setFilterFarmerId(e.target.value)}
-                  />
+                    style={styles.selectInput}
+                  >
+                    <option value="">All</option>
+                    {farmers.map((f) => (
+                      <option key={f.user_id} value={f.user_id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
                 <div style={styles.filterGroup}>
-                  <label style={styles.label}>Plant ID</label>
-                  <input
-                    style={{ ...styles.selectInput, cursor: "text" }}
-                    placeholder="Enter UUID..."
+                  <label style={styles.label}>Plant</label>
+                  <select
                     value={filterPlantId}
                     onChange={(e) => setFilterPlantId(e.target.value)}
-                  />
+                    style={styles.selectInput}
+                  >
+                    <option value="">All</option>
+                    {plants.map((p) => (
+                      <option key={p.plant_id} value={p.plant_id}>
+                        {p.plant_name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
                 <div
                   style={{
-                    display: "flex",
-                    gap: "10px",
-                    flex: "1 1 auto",
-                    justifyContent: "flex-end",
+                    ...styles.filterGroup,
+                    alignItems: "flex-end",
+                    flex: "0 0 auto",
                   }}
                 >
-                  <Button variant="secondary" onClick={handleResetFilters}>
-                    Reset
-                  </Button>
-                  <Button variant="primary" onClick={handleApplyFilters}>
-                    Apply Filters
-                  </Button>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <Button
+                      variant="primary"
+                      icon={FaCheck}
+                      onClick={handleApplyFilters}
+                    >
+                      Apply
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      icon={FaTimes}
+                      onClick={handleResetFilters}
+                    >
+                      Reset
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1738,7 +1723,10 @@ const MarketPlaceManagement = () => {
                       >
                         <div style={styles.spinner}></div>
                         <p
-                          style={{ marginTop: "16px", color: THEME.textMuted }}
+                          style={{
+                            marginTop: "16px",
+                            color: THEME.textMuted,
+                          }}
                         >
                           Loading Listings...
                         </p>
@@ -1761,7 +1749,6 @@ const MarketPlaceManagement = () => {
               </table>
             </div>
 
-            {/* Pagination Controls */}
             {!loading && paginatedListings.length > 0 && (
               <div style={styles.paginationBar}>
                 <div style={styles.pageInfo}>
@@ -1831,14 +1818,12 @@ const MarketPlaceManagement = () => {
         </div>
       </div>
 
-      {/* Global Modals & Toasts */}
       <ListingModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={editingListing ? handleUpdate : handleCreate}
         initialData={editingListing}
         isEdit={!!editingListing}
-        farmers={farmers}
         cropTypes={cropTypes}
         plants={plants}
         fetchDropdownData={fetchDropdownData}

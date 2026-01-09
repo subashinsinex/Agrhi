@@ -77,21 +77,19 @@ router.post(
   }
 );
 
-router.get("/getUserDetails/:userid", jwtChecker, async (req, res) => {
+router.get("/getUserDetails/:user_id", jwtChecker, async (req, res) => {
   try {
-    const userid = req.params.userid;
-    const user = await profileServices.getUserById(userid);
+    const { user_id } = req.params; // ✅ Get user_id from URL
+    const user = await profileServices.getUserById(user_id);
+
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({ message: "User not found" });
     }
-    res.json({ success: true, user });
+
+    res.json(user);
   } catch (error) {
     console.error("Error fetching user details:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Error fetching user details" });
+    res.status(500).json({ message: "Error fetching user details" });
   }
 });
 
@@ -131,11 +129,11 @@ router.put("/updateUser/:userid", jwtChecker, async (req, res) => {
   }
 });
 
-router.get("/get-image-id/:userid", jwtChecker, async (req, res) => {
+router.get("/get-image-url/:imageId", jwtChecker, async (req, res) => {
   try {
-    const userid = req.params.userid;
-    const imageId = await profileServices.getImageIdByUserId(userid);
-    res.json({ success: true, image_id: imageId });
+    const { imageId } = req.params;
+    const imageUrl = await profileServices.getImageURL(imageId);
+    res.json({ success: true, image_url: imageUrl });
   } catch (error) {
     console.error("Error fetching image id:", error);
     res.status(500).json({ success: false, message: error.message });
