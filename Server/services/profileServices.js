@@ -29,6 +29,7 @@ async function getUserById(userId) {
       ud.pincode, 
       ud.category_id,
       ud.updated_at
+      ud.image_id,
     FROM users_auth ua
     JOIN user_details ud ON ua.user_id = ud.user_id
     JOIN user_category uc ON ud.category_id = uc.category_id
@@ -37,6 +38,17 @@ async function getUserById(userId) {
   `;
   const result = await pool.query(sql, [userId]);
   return result.rows[0];
+}
+
+async function getImageIdByUserId(userId) {
+  const result = await pool.query(
+    "SELECT image_id FROM user_details WHERE user_id = $1",
+    [userId]
+  );
+  if (result.rowCount === 0) {
+    throw new Error("User not found");
+  }
+  return result.rows[0].imageid;
 }
 
 async function createUser(newUser) {
@@ -75,10 +87,16 @@ async function createUser(newUser) {
       [user_id, hashedPassword, newUser.phone_number, newUser.email]
     );
 
+    // Generate image_id upfront
+    const image_id = await generateUniqueId(client, "images", "image_id");
+
+    // Insert into images with null imageurl
+    await client.query("INSERT INTO images (image_id) VALUES ($1)", [image_id]);
+
     // Insert into user_details
     await client.query(
-      `INSERT INTO user_details (user_id, name, dob, address, pincode, category_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+      `INSERT INTO user_details (user_id, name, dob, address, pincode, category_id, image_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
       [
         user_id,
         newUser.name,
@@ -86,6 +104,7 @@ async function createUser(newUser) {
         newUser.address,
         newUser.pincode,
         newUser.category_id,
+        image_id,
       ]
     );
 
@@ -118,20 +137,10 @@ async function updateUser(user_id, updatedUser) {
     const { email_verified } = authRes.rows[0];
 
     // 2) Dynamically update users_auth (ONLY email, never phone/password)
-    const authSet = [];
-    const authValues = [];
-    let idx = 1;
-
     if (!email_verified && updatedUser.email) {
-      authSet.push(`email = $${idx++}`);
-      authValues.push(updatedUser.email);
-    }
-
-    if (authSet.length > 0) {
-      authValues.push(user_id); // last parameter is user_id
       await client.query(
-        `UPDATE users_auth SET ${authSet.join(", ")} WHERE user_id = $${idx}`,
-        authValues
+        "UPDATE users_auth SET email = $1, updated_at = NOW() WHERE user_id = $2",
+        [updatedUser.email, user_id]
       );
     }
 
@@ -182,4 +191,32 @@ async function updateUser(user_id, updatedUser) {
   }
 }
 
-module.exports = { getUserById, createUser, updateUser };
+async function updateProfileImageUrl(imageId, imageUrl) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      "UPDATE images SET image_url = $1 WHERE image_id = $2 RETURNING image_id, image_url",
+      [imageUrl, imageId]
+    );
+    if (result.rowCount === 0) {
+      throw new Error("Image not found");
+    }
+    await client.query("COMMIT");
+    return result.rows[0];
+  } catch (error) {
+    console.error("Error updating image url:", error);
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = {
+  getUserById,
+  createUser,
+  updateUser,
+  getImageIdByUserId,
+  updateProfileImageUrl,
+};
