@@ -62,8 +62,58 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
+
+    // Show option to choose camera or gallery
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const SmartReTranslator(
+          text: 'Choose Image Source',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.camera_alt,
+                  color: AppColors.primaryGreen,
+                ),
+              ),
+              title: const SmartReTranslator(text: 'Camera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.photo_library,
+                  color: AppColors.primaryGreen,
+                ),
+              ),
+              title: const SmartReTranslator(text: 'Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
     final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery,
+      source: source,
       maxWidth: 1024,
       maxHeight: 1024,
       imageQuality: 85,
@@ -72,6 +122,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     if (pickedFile != null) {
       setState(() {
         _selectedImage = File(pickedFile.path);
+        _productImageUrl = null; // Clear old image
       });
     }
   }
@@ -104,7 +155,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         productId = response['product_id'];
       }
 
-      // Upload image if selected
       if (_selectedImage != null && productId != null) {
         await RetailService.uploadProductImage(productId, _selectedImage!);
       }
@@ -149,159 +199,357 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           ? Center(
               child: CircularProgressIndicator(color: AppColors.primaryGreen),
             )
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildSectionTitle('Product Image'),
-                  const SizedBox(height: 12),
-                  _buildImagePicker(),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle('Basic Information'),
-                  const SizedBox(height: 12),
-                  _buildTextField(
-                    controller: _productNameController,
-                    label: 'Product Name',
-                    icon: Icons.shopping_bag,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Product name is required';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _brandController,
-                    label: 'Brand',
-                    icon: Icons.label,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildCategoryDropdown(),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _descriptionController,
-                    label: 'Description',
-                    icon: Icons.description,
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle('Pricing & Stock'),
-                  const SizedBox(height: 12),
-                  Row(
+          : SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        flex: 2,
-                        child: _buildTextField(
-                          controller: _priceController,
-                          label: 'Price',
-                          icon: Icons.currency_rupee,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                      // Product Image Section
+                      _buildSectionHeader(
+                        icon: Icons.image,
+                        title: 'Product Image',
+                        subtitle: 'Add a clear photo of your product',
+                      ),
+                      const SizedBox(height: 16),
+                      _buildImagePicker(),
+
+                      const SizedBox(height: 32),
+
+                      // Basic Information
+                      _buildSectionHeader(
+                        icon: Icons.inventory_2,
+                        title: 'Basic Information',
+                        subtitle: 'Enter product details',
+                      ),
+                      const SizedBox(height: 16),
+
+                      _buildLabeledTextField(
+                        label: 'Product Name',
+                        controller: _productNameController,
+                        icon: Icons.shopping_bag_outlined,
+                        hint: 'Enter product name',
+                        isRequired: true,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Product name is required';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 20),
+
+                      _buildLabeledTextField(
+                        label: 'Brand',
+                        controller: _brandController,
+                        icon: Icons.label_outlined,
+                        hint: 'Enter brand name',
+                        isRequired: false,
+                      ),
+                      const SizedBox(height: 20),
+
+                      _buildLabeledDropdown(
+                        label: 'Category',
+                        value: _category,
+                        icon: Icons.category_outlined,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'fertilizer',
+                            child: SmartReTranslator(text: 'Fertilizer'),
                           ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'^\d*\.?\d*'),
+                          DropdownMenuItem(
+                            value: 'seeds',
+                            child: SmartReTranslator(text: 'Seeds'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'tools',
+                            child: SmartReTranslator(text: 'Tools'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'pesticides',
+                            child: SmartReTranslator(text: 'Pesticides'),
+                          ),
+                        ],
+                        onChanged: (value) => setState(() => _category = value),
+                      ),
+                      const SizedBox(height: 20),
+
+                      _buildLabeledTextField(
+                        label: 'Description',
+                        controller: _descriptionController,
+                        icon: Icons.description_outlined,
+                        hint: 'Enter product description (Optional)',
+                        maxLines: 3,
+                        isRequired: false,
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Pricing & Stock
+                      _buildSectionHeader(
+                        icon: Icons.attach_money,
+                        title: 'Pricing & Stock',
+                        subtitle: 'Set price and availability',
+                      ),
+                      const SizedBox(height: 16),
+
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: _buildLabeledTextField(
+                              label: 'Price',
+                              controller: _priceController,
+                              icon: Icons.currency_rupee,
+                              hint: 'Enter price',
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d*\.?\d*'),
+                                ),
+                              ],
+                              isRequired: true,
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Price required';
+                                }
+                                final price = double.tryParse(value);
+                                if (price == null || price <= 0) {
+                                  return 'Invalid price';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildLabeledDropdown(
+                              label: 'Unit',
+                              value: _unit,
+                              icon: null,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'kg',
+                                  child: Text('kg'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'liter',
+                                  child: Text('liter'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'piece',
+                                  child: Text('piece'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'bag',
+                                  child: Text('bag'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'box',
+                                  child: Text('box'),
+                                ),
+                              ],
+                              onChanged: (value) =>
+                                  setState(() => _unit = value),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      _buildLabeledTextField(
+                        label: 'Stock Quantity',
+                        controller: _stockQtyController,
+                        icon: Icons.inventory_outlined,
+                        hint: 'Enter available stock',
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d*'),
+                          ),
+                        ],
+                        isRequired: true,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Stock quantity is required';
+                          }
+                          final qty = double.tryParse(value);
+                          if (qty == null || qty < 0) {
+                            return 'Enter valid quantity';
+                          }
+                          return null;
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Active Status Toggle
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: _isActive
+                                    ? AppColors.successColor.withOpacity(0.1)
+                                    : Colors.grey.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                _isActive ? Icons.check_circle : Icons.cancel,
+                                color: _isActive
+                                    ? AppColors.successColor
+                                    : Colors.grey,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SmartReTranslator(
+                                    text: 'Product Status',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  SmartReTranslator(
+                                    text: _isActive
+                                        ? 'Visible to customers'
+                                        : 'Hidden from customers',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: _isActive,
+                              activeColor: AppColors.successColor,
+                              onChanged: (value) =>
+                                  setState(() => _isActive = value),
                             ),
                           ],
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Price is required';
-                            }
-                            final price = double.tryParse(value);
-                            if (price == null || price <= 0) {
-                              return 'Enter valid price';
-                            }
-                            return null;
-                          },
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(child: _buildUnitDropdown()),
+
+                      const SizedBox(height: 40),
+
+                      // Save Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _saveProduct,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryGreen,
+                            disabledBackgroundColor: Colors.grey.shade300,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      _isEditing
+                                          ? Icons.check_circle
+                                          : Icons.add_circle,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SmartReTranslator(
+                                      text: _isEditing
+                                          ? 'Update Product'
+                                          : 'Create Product',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _stockQtyController,
-                    label: 'Stock Quantity',
-                    icon: Icons.inventory_2,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-                    ],
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Stock quantity is required';
-                      }
-                      final qty = double.tryParse(value);
-                      if (qty == null || qty < 0) {
-                        return 'Enter valid quantity';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  SwitchListTile(
-                    title: const SmartReTranslator(
-                      text: 'Product Active',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    subtitle: const SmartReTranslator(
-                      text:
-                          'Inactive products will not be visible to customers',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    value: _isActive,
-                    activeColor: AppColors.primaryGreen,
-                    onChanged: (value) => setState(() => _isActive = value),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _saveProduct,
-                    icon: Icon(
-                      _isEditing ? Icons.save : Icons.add,
-                      color: Colors.white,
-                    ),
-                    label: SmartReTranslator(
-                      text: _isEditing ? 'Update Product' : 'Create Product',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 2,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return SmartReTranslator(
-      text: title,
-      style: const TextStyle(
-        fontWeight: FontWeight.bold,
-        fontSize: 18,
-        color: AppColors.textPrimary,
-      ),
+  Widget _buildSectionHeader({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.primaryGreen.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: AppColors.primaryGreen, size: 24),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SmartReTranslator(
+                text: title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              SmartReTranslator(
+                text: subtitle,
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -309,160 +557,325 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     return GestureDetector(
       onTap: _pickImage,
       child: Container(
-        height: 200,
+        alignment: Alignment.center,
+        height: 240,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: _selectedImage != null || _productImageUrl != null
+                ? AppColors.primaryGreen
+                : Colors.grey.shade300,
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: _selectedImage != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(_selectedImage!, fit: BoxFit.cover),
-              )
-            : _productImageUrl != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  '${AppConstants.baseUrl.replaceAll('/api', '')}$_productImageUrl',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return _buildImagePlaceholder();
-                  },
-                ),
-              )
-            : _buildImagePlaceholder(),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: _selectedImage != null
+              ? _buildSelectedImagePreview()
+              : _productImageUrl != null
+              ? _buildNetworkImagePreview()
+              : _buildImagePlaceholder(),
+        ),
       ),
     );
   }
 
-  Widget _buildImagePlaceholder() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildSelectedImagePreview() {
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        Icon(Icons.add_photo_alternate, size: 48, color: Colors.grey.shade400),
-        const SizedBox(height: 8),
-        SmartReTranslator(
-          text: 'Tap to add product image',
-          style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+        Image.file(_selectedImage!, fit: BoxFit.cover),
+        Positioned(
+          top: 12,
+          right: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 16),
+                SizedBox(width: 6),
+                SmartReTranslator(
+                  text: 'New Image',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
+  Widget _buildNetworkImagePreview() {
+    final imageUrl = _productImageUrl!.startsWith('http')
+        ? _productImageUrl!
+        : '${AppConstants.baseUrl.replaceAll('/api', '')}$_productImageUrl';
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                          loadingProgress.expectedTotalBytes!
+                    : null,
+                color: AppColors.primaryGreen,
+              ),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) =>
+              _buildImagePlaceholder(),
+        ),
+        Positioned(
+          top: 12,
+          right: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.edit, color: Colors.white, size: 16),
+                SizedBox(width: 6),
+                SmartReTranslator(
+                  text: 'Tap to change',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImagePlaceholder() {
+    return Container(
+      color: Colors.grey.shade50,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.add_photo_alternate,
+              size: 48,
+              color: AppColors.primaryGreen,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const SmartReTranslator(
+            text: 'Tap to add product image',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SmartReTranslator(
+            text: 'Camera or Gallery',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabeledTextField({
     required String label,
+    required TextEditingController controller,
     required IconData icon,
+    required String hint,
+    bool isRequired = false,
     String? Function(String?)? validator,
     TextInputType? keyboardType,
     List<TextInputFormatter>? inputFormatters,
     int maxLines = 1,
   }) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: AppColors.primaryGreen),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SmartReTranslator(
+              text: label,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            if (isRequired)
+              const Text(
+                ' *',
+                style: TextStyle(
+                  color: AppColors.errorColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+          ],
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          maxLines: maxLines,
+          validator: validator,
+          inputFormatters: inputFormatters,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+            prefixIcon: Icon(icon, color: AppColors.primaryGreen, size: 22),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.primaryGreen,
+                width: 2,
+              ),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.errorColor),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.errorColor,
+                width: 2,
+              ),
+            ),
+          ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.errorColor),
-        ),
-      ),
-      validator: validator,
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-      maxLines: maxLines,
+      ],
     );
   }
 
-  Widget _buildCategoryDropdown() {
-    return DropdownButtonFormField<String>(
-      value: _category,
-      decoration: InputDecoration(
-        labelText: 'Category',
-        prefixIcon: Icon(Icons.category, color: AppColors.primaryGreen),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+  Widget _buildLabeledDropdown({
+    required String label,
+    required String? value,
+    IconData? icon,
+    required List<DropdownMenuItem<String>> items,
+    required void Function(String?) onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SmartReTranslator(
+              text: label,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const Text(
+              ' *',
+              style: TextStyle(
+                color: AppColors.errorColor,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-      ),
-      dropdownColor: Colors.white,
-      items: const [
-        DropdownMenuItem(
-          value: 'fertilizer',
-          child: SmartReTranslator(text: 'Fertilizer'),
-        ),
-        DropdownMenuItem(
-          value: 'seeds',
-          child: SmartReTranslator(text: 'Seeds'),
-        ),
-        DropdownMenuItem(
-          value: 'tools',
-          child: SmartReTranslator(text: 'Tools'),
-        ),
-        DropdownMenuItem(
-          value: 'pesticides',
-          child: SmartReTranslator(text: 'Pesticides'),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: value,
+          dropdownColor: Colors.white,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textPrimary,
+          ),
+          decoration: InputDecoration(
+            prefixIcon: icon != null
+                ? Icon(icon, color: AppColors.primaryGreen, size: 22)
+                : null,
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: icon != null ? 16 : 16,
+              vertical: 16,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.primaryGreen,
+                width: 2,
+              ),
+            ),
+          ),
+          items: items,
+          onChanged: onChanged,
         ),
       ],
-      onChanged: (value) => setState(() => _category = value),
-    );
-  }
-
-  Widget _buildUnitDropdown() {
-    return DropdownButtonFormField<String>(
-      value: _unit,
-      decoration: InputDecoration(
-        labelText: 'Unit',
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-        ),
-      ),
-      dropdownColor: Colors.white,
-      items: const [
-        DropdownMenuItem(value: 'kg', child: Text('kg')),
-        DropdownMenuItem(value: 'liter', child: Text('liter')),
-        DropdownMenuItem(value: 'piece', child: Text('piece')),
-        DropdownMenuItem(value: 'bag', child: Text('bag')),
-        DropdownMenuItem(value: 'box', child: Text('box')),
-      ],
-      onChanged: (value) => setState(() => _unit = value),
     );
   }
 

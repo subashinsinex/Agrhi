@@ -6,8 +6,8 @@ import '../../../src/services/crop_care_sync_service.dart';
 import '../../../src/database/database_helper.dart';
 import '../../shared/smart_retranslator.dart';
 import '../../shared/custom_app_bar.dart';
-import 'add_farm_screen.dart';
-import 'add_crop_screen.dart';
+import 'add_edit_farm_screen.dart';
+import 'add_edit_crop_screen.dart';
 
 class CropCareScreen extends StatefulWidget {
   const CropCareScreen({super.key});

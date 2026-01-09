@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../shared/custom_app_bar.dart';
 import '../../../utils/colors.dart';
 
@@ -21,44 +22,54 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   List<Marker> _markers = [];
   bool _isMapReady = false;
   late AnimationController _pulseController;
-  double _currentZoom = 13.0;
+  double _currentZoom = 15.0;
   bool _isTracking = true;
-  bool _showLocationCard = true;
+
+  // Custom cache manager for map tiles
+  static final customCacheManager = CacheManager(
+    Config(
+      'mapTileCache',
+      stalePeriod: const Duration(days: 30), // Cache tiles for 30 days
+      maxNrOfCacheObjects: 1000, // Store up to 1000 tiles
+      repo: JsonCacheInfoRepository(databaseName: 'mapTileCache'),
+      fileService: HttpFileService(),
+    ),
+  );
 
   // Define multiple locations
   final List<LocationData> _locations = [
     LocationData(
       id: '1',
       name: 'Green Valley Farm',
-      position: LatLng(13.0827, 80.2707),
+      position: const LatLng(13.0827, 80.2707),
       description: 'Organic vegetable farm',
       type: LocationType.farm,
     ),
     LocationData(
       id: '2',
       name: 'Agri Retailer Store',
-      position: LatLng(13.0500, 80.2500),
+      position: const LatLng(13.0500, 80.2500),
       description: 'Seeds and fertilizer store',
       type: LocationType.retailer,
     ),
     LocationData(
       id: '3',
       name: 'Main Warehouse',
-      position: LatLng(13.1000, 80.3000),
+      position: const LatLng(13.1000, 80.3000),
       description: 'Central storage facility',
       type: LocationType.warehouse,
     ),
     LocationData(
       id: '4',
       name: 'Sunrise Farm',
-      position: LatLng(13.0700, 80.2600),
+      position: const LatLng(13.0700, 80.2600),
       description: 'Rice cultivation',
       type: LocationType.farm,
     ),
     LocationData(
       id: '5',
       name: 'Farm Supply Center',
-      position: LatLng(13.0900, 80.2800),
+      position: const LatLng(13.0900, 80.2800),
       description: 'Equipment and tools',
       type: LocationType.retailer,
     ),
@@ -67,12 +78,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation();
-
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
+
+    _getCurrentLocation();
   }
 
   Future<bool> _handleLocationPermission() async {
@@ -81,10 +92,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      setState(() {
-        _errorMessage = 'Location services are disabled. Please enable them.';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Location services are disabled. Please enable them.';
+          _isLoading = false;
+        });
+      }
       return false;
     }
 
@@ -92,19 +105,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        setState(() {
-          _errorMessage = 'Location permission denied';
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Location permission denied';
+            _isLoading = false;
+          });
+        }
         return false;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      setState(() {
-        _errorMessage = 'Location permissions are permanently denied';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Location permissions are permanently denied';
+          _isLoading = false;
+        });
+      }
       return false;
     }
 
@@ -120,22 +137,26 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      setState(() {
-        _currentPosition = LatLng(position.latitude, position.longitude);
-        _markers = _buildAllMarkers();
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _currentPosition = LatLng(position.latitude, position.longitude);
+          _markers = _buildAllMarkers();
+          _isLoading = false;
+        });
 
-      if (_isMapReady && _currentPosition != null) {
-        _mapController.move(_currentPosition!, _currentZoom);
+        if (_isMapReady && _currentPosition != null) {
+          _mapController.move(_currentPosition!, _currentZoom);
+        }
       }
 
       _listenToLocationUpdates();
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Error getting location: $e';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Error getting location: $e';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -146,35 +167,33 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         distanceFilter: 10,
       ),
     ).listen((Position position) {
-      if (mounted) {
-        setState(() {
-          _currentPosition = LatLng(position.latitude, position.longitude);
-          _markers = _buildAllMarkers();
-        });
+      if (!mounted) return;
 
-        if (_isTracking && _isMapReady) {
-          _mapController.move(_currentPosition!, _currentZoom);
-        }
+      final newPos = LatLng(position.latitude, position.longitude);
+
+      setState(() {
+        _currentPosition = newPos;
+        _markers = _buildAllMarkers();
+      });
+
+      if (_isTracking && _isMapReady) {
+        _mapController.move(newPos, _currentZoom);
       }
     });
   }
 
-  // Build all markers (user location + all locations)
   List<Marker> _buildAllMarkers() {
     List<Marker> allMarkers = [];
 
-    // Add user location marker
     if (_currentPosition != null) {
       allMarkers.add(_buildUserMarker());
     }
 
-    // Add all location markers
     allMarkers.addAll(_buildLocationMarkers());
 
     return allMarkers;
   }
 
-  // Build location markers
   List<Marker> _buildLocationMarkers() {
     return _locations.map((location) {
       return Marker(
@@ -237,7 +256,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }).toList();
   }
 
-  // Get color based on location type
   Color _getLocationColor(LocationType type) {
     switch (type) {
       case LocationType.retailer:
@@ -251,7 +269,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  // Get icon based on location type
   IconData _getLocationIcon(LocationType type) {
     switch (type) {
       case LocationType.retailer:
@@ -265,7 +282,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  // Show location info bottom sheet
   void _showLocationInfo(LocationData location) {
     showModalBottomSheet(
       context: context,
@@ -281,7 +297,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               children: [
                 Container(
@@ -324,8 +339,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ],
             ),
             const SizedBox(height: 16),
-
-            // Location details
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -377,8 +390,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Action buttons
             Row(
               children: [
                 Expanded(
@@ -426,21 +437,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Calculate distance between current position and location
   String _calculateDistance(LatLng destination) {
     if (_currentPosition == null) return '0.0';
-
-    final Distance distance = Distance();
+    const Distance distance = Distance();
     final double km = distance.as(
       LengthUnit.Kilometer,
       _currentPosition!,
       destination,
     );
-
     return km.toStringAsFixed(2);
   }
 
-  // Navigate map to specific location
   void _navigateToLocation(LatLng position) {
     if (_isMapReady) {
       setState(() {
@@ -450,111 +457,98 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  // Open directions in external maps app
-  // Open directions in external maps app with current location as origin
   Future<void> _openDirections(LatLng destination) async {
     if (_currentPosition == null) {
-      // If current position is not available, just show the destination
       final url = Uri.parse(
         'https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}',
       );
-
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       }
       return;
     }
 
-    // Build URL with origin (current location) and destination
     final url = Uri.parse(
       'https://www.google.com/maps/dir/?api=1'
       '&origin=${_currentPosition!.latitude},${_currentPosition!.longitude}'
       '&destination=${destination.latitude},${destination.longitude}'
-      '&travelmode=driving'
-      '&dir_action=navigate',
+      '&travelmode=driving',
     );
 
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
-      // Fallback: try opening without navigation action
-      final fallbackUrl = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1'
-        '&origin=${_currentPosition!.latitude},${_currentPosition!.longitude}'
-        '&destination=${destination.latitude},${destination.longitude}',
-      );
-
-      if (await canLaunchUrl(fallbackUrl)) {
-        await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
       }
+    } catch (e) {
+      debugPrint('Error launching maps: $e');
     }
   }
 
-
-  // Build user marker with pulse animation
   Marker _buildUserMarker() {
     return Marker(
       point: _currentPosition!,
       width: 100,
       height: 100,
-      child: AnimatedBuilder(
-        animation: _pulseController,
-        builder: (context, child) {
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              // Outer pulse circle
-              Container(
-                width: 60 + (40 * _pulseController.value),
-                height: 60 + (40 * _pulseController.value),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.mediumGreenAccent.withOpacity(
-                    0.15 * (1 - _pulseController.value),
-                  ),
-                  border: Border.all(
-                    color: AppColors.secondaryGreen.withOpacity(
-                      0.4 * (1 - _pulseController.value),
+      child: Center(
+        child: AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, child) {
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 60 + (40 * _pulseController.value),
+                  height: 60 + (40 * _pulseController.value),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.mediumGreenAccent.withOpacity(
+                      0.15 * (1 - _pulseController.value),
                     ),
-                    width: 2,
+                    border: Border.all(
+                      color: AppColors.secondaryGreen.withOpacity(
+                        0.4 * (1 - _pulseController.value),
+                      ),
+                      width: 2,
+                    ),
                   ),
                 ),
-              ),
-              // Inner accuracy circle
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.mediumGreenAccent.withOpacity(0.3),
-                  border: Border.all(color: AppColors.secondaryGreen, width: 2),
-                ),
-              ),
-              // User icon
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  border: Border.all(color: AppColors.primaryGreen, width: 3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 8,
-                      spreadRadius: 2,
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.mediumGreenAccent.withOpacity(0.3),
+                    border: Border.all(
+                      color: AppColors.secondaryGreen,
+                      width: 2,
                     ),
-                  ],
+                  ),
                 ),
-                child: const Icon(
-                  Icons.person,
-                  color: AppColors.primaryGreen,
-                  size: 24,
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: AppColors.primaryGreen, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    color: AppColors.primaryGreen,
+                    size: 24,
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -564,7 +558,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       setState(() {
         _isTracking = true;
       });
-      _mapController.move(_currentPosition!, 17.0);
+      _mapController.move(_currentPosition!, _currentZoom);
     }
   }
 
@@ -595,35 +589,26 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  // Method to clear cache if needed
+  Future<void> _clearMapCache() async {
+    await customCacheManager.emptyCache();
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Map cache cleared')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: _isLoading ? AppColors.backgroundColor : null,
-      appBar: BackAppBar(
-        title: 'Map Service',
-        actions: [
-          if (_currentPosition != null)
-            IconButton(
-              icon: Icon(
-                _showLocationCard ? Icons.visibility : Icons.visibility_off,
-                color: AppColors.textWhite,
-                size: 24,
-              ),
-              onPressed: () {
-                setState(() {
-                  _showLocationCard = !_showLocationCard;
-                });
-              },
-              tooltip: _showLocationCard ? 'Hide Info' : 'Show Info',
-            ),
-        ],
-      ),
+      appBar: BackAppBar(title: 'Map Service'),
       body: Stack(
         children: [
-          // Main content
           if (_isLoading)
-            Center(
+            const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -631,8 +616,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     color: AppColors.primaryGreen,
                     strokeWidth: 3,
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
+                  SizedBox(height: 16),
+                  Text(
                     'Getting your location...',
                     style: TextStyle(
                       color: AppColors.primaryGreen,
@@ -690,7 +675,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           else
             Stack(
               children: [
-                // Full-screen map
                 ClipRRect(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(24),
@@ -730,26 +714,25 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               _isTracking = false;
                             });
                           }
-                          setState(() {
-                            _currentZoom = position.zoom;
-                          });
+                          if (hasGesture) {
+                            setState(() {
+                              _currentZoom = position.zoom;
+                            });
+                          }
                         },
                       ),
                       children: [
-                        // OpenStreetMap tiles
-                        ColorFiltered(
-                          colorFilter: ColorFilter.mode(
-                            AppColors.secondaryGreen.withOpacity(0.12),
-                            BlendMode.softLight,
-                          ),
-                          child: TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.agrhi.app',
-                            maxZoom: 19,
+                        // TileLayer with caching enabled
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'app.agrhi.com',
+                          maxZoom: 19,
+                          // Enable tile caching
+                          tileProvider: NetworkTileProvider(
+                            headers: {'User-Agent': 'app.agrhi.com'},
                           ),
                         ),
-                        // All markers (user + locations)
                         MarkerLayer(markers: _markers),
                       ],
                     ),
@@ -762,7 +745,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   right: 16,
                   child: Column(
                     children: [
-                      // Zoom In
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -801,7 +783,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         width: 44,
                         color: AppColors.tertiaryGreen,
                       ),
-                      // Zoom Out
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -836,7 +817,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // Recenter button
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -872,159 +852,62 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   ),
                 ),
 
-                // Attribution
+                // Bottom left badges
                 Positioned(
                   bottom: 12,
                   left: 12,
-                  child: GestureDetector(
-                    onTap: _launchCopyright,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.75),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        '© OpenStreetMap',
-                        style: TextStyle(fontSize: 8, color: Colors.black87),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Compact location info card
-                if (_showLocationCard && _currentPosition != null)
-                  Positioned(
-                    top: 100,
-                    left: 12,
-                    right: 12,
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _showLocationCard = false;
-                        });
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              AppColors.primaryGreen,
-                              AppColors.primaryGreen.withOpacity(0.95),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_currentPosition != null)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 6),
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
+                            horizontal: 8,
+                            vertical: 4,
                           ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.secondaryGreen,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: const Icon(
-                                  Icons.location_on,
-                                  color: Colors.white,
-                                  size: 16,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.secondaryGreen.withOpacity(
-                                    0.3,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  'Z${_currentZoom.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: Colors.black.withOpacity(0.1),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            '${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      GestureDetector(
+                        onTap: _launchCopyright,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: Colors.black.withOpacity(0.1),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Text(
+                            '© OpenStreetMap',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.black87,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-
-                // Locations count badge
-                Positioned(
-                  top: 100,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryGreen,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.pin_drop,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${_locations.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ],
@@ -1042,7 +925,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 }
 
-// Location data model
 class LocationData {
   final String id;
   final String name;
@@ -1058,7 +940,6 @@ class LocationData {
     required this.type,
   });
 
-  // From JSON (for API integration)
   factory LocationData.fromJson(Map<String, dynamic> json) {
     return LocationData(
       id: json['id'].toString(),
@@ -1085,7 +966,6 @@ class LocationData {
     }
   }
 
-  // To JSON (for API integration)
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -1098,5 +978,4 @@ class LocationData {
   }
 }
 
-// Location type enum
 enum LocationType { retailer, farm, warehouse, other }

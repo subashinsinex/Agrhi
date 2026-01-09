@@ -4,8 +4,8 @@ import '../../../utils/constants.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
 import '../../../src/services/retail_service.dart';
-import 'manage_shop_screen.dart';
-import 'manage_products_screen.dart';
+import 'add_edit_shop_screen.dart';
+import 'products_screen.dart';
 import '../feedback_screen.dart';
 
 class ShopsListScreen extends StatefulWidget {
@@ -48,7 +48,6 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     }
   }
 
-  // ✅ Show delete popup for verified shops
   Future<void> _showDeleteVerifiedShopDialog(Map<String, dynamic> shop) async {
     final shopName = shop['shop_name'] ?? 'Unknown Shop';
     final retailerId = shop['retailer_id'];
@@ -208,7 +207,6 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     }
   }
 
-  // ✅ Show edit request popup for verified shops
   Future<void> _showEditRequestDialog(Map<String, dynamic> shop) async {
     final shopName = shop['shop_name'] ?? 'Unknown Shop';
     final retailerId = shop['retailer_id'];
@@ -396,7 +394,6 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     }
   }
 
-  // ✅ Show unverified shop restriction popup
   Future<void> _showUnverifiedShopDialog() async {
     await showDialog(
       context: context,
@@ -527,7 +524,6 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     );
   }
 
-  // ✅ Handle edit
   Future<void> _handleEdit(Map<String, dynamic> shop) async {
     final isVerified = shop['is_verified'] == true;
 
@@ -548,7 +544,6 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     }
   }
 
-  // ✅ Handle products
   Future<void> _handleProducts(Map<String, dynamic> shop) async {
     final isVerified = shop['is_verified'] == true;
 
@@ -587,14 +582,19 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
               onRefresh: _loadShops,
               color: AppColors.primaryGreen,
               child: ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 16,
+                  bottom: 90,
+                ),
                 itemCount: _shops.length,
                 itemBuilder: (context, index) {
                   return _buildShopCard(_shops[index]);
                 },
               ),
             ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final result = await Navigator.push(
             context,
@@ -606,7 +606,16 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
           }
         },
         backgroundColor: AppColors.primaryGreen,
-        child: const Icon(Icons.add, color: Colors.white),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const SmartReTranslator(
+          text: 'Add Shop',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
+        ),
+        elevation: 4,
       ),
     );
   }
@@ -689,89 +698,96 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     final businessType = shop['business_type'] ?? '';
     final gstNumber = shop['gst_number'];
     final licenseNumber = shop['license_number'];
+    final shopNumber = shop['shop_number'];
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      shadowColor: Colors.black.withOpacity(0.05),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 3,
+      shadowColor: Colors.black.withOpacity(0.08),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Column(
         children: [
-          // ✅ Shop Header with Image
           InkWell(
             onTap: isVerified ? () => _handleProducts(shop) : null,
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
             ),
             child: Container(
-              height: 140,
+              height: 160,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    AppColors.primaryGreen.withOpacity(0.7),
+                    AppColors.primaryGreen.withOpacity(0.8),
                     AppColors.primaryGreen,
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
                 ),
               ),
               child: Stack(
                 children: [
-                  // Background Image
                   if (shop['shop_image_url'] != null)
                     ClipRRect(
                       borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(20),
-                        topRight: Radius.circular(20),
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
                       ),
                       child: Image.network(
                         '${AppConstants.baseUrl.replaceAll('/api', '')}${shop['shop_image_url']}',
                         width: double.infinity,
-                        height: 140,
+                        height: 160,
                         fit: BoxFit.cover,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            color: AppColors.primaryGreen.withOpacity(0.3),
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          );
+                        },
                         errorBuilder: (context, error, stackTrace) =>
                             const SizedBox(),
                       ),
                     ),
-
-                  // Dark gradient overlay
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.black.withOpacity(0.5),
+                          Colors.black.withOpacity(0.6),
                           Colors.transparent,
                         ],
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
                       ),
                       borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(20),
-                        topRight: Radius.circular(20),
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
                       ),
                     ),
                   ),
-
-                  // Verified Badge
                   Positioned(
-                    top: 10,
-                    right: 10,
+                    top: 12,
+                    right: 12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
+                        horizontal: 12,
+                        vertical: 7,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.15),
+                            color: Colors.black.withOpacity(0.2),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -782,16 +798,16 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
                         children: [
                           Icon(
                             isVerified ? Icons.verified : Icons.schedule,
-                            size: 14,
+                            size: 16,
                             color: isVerified
                                 ? AppColors.successColor
                                 : Colors.orange.shade700,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 5),
                           SmartReTranslator(
                             text: isVerified ? 'Verified' : 'Pending',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.bold,
                               color: isVerified
                                   ? AppColors.successColor
@@ -802,103 +818,152 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
                       ),
                     ),
                   ),
-
-                  // Shop Name
                   Positioned(
-                    bottom: 12,
+                    bottom: 16,
                     left: 16,
                     right: 16,
-                    child: SmartReTranslator(
-                      text: shopName,
-                      style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black54,
-                            offset: Offset(0, 1),
-                            blurRadius: 6,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          shopName,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black87,
+                                offset: Offset(0, 1),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (shopNumber != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.phone,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                shopNumber,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
           ),
-
-          // ✅ Shop Details Section
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Business Type
-                _buildInfoRow(
-                  icon: Icons.business,
-                  label: businessType,
-                  color: AppColors.primaryGreen,
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryGreen.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.business,
+                            size: 14,
+                            color: AppColors.primaryGreen,
+                          ),
+                          const SizedBox(width: 5),
+                          SmartReTranslator(
+                            text: businessType,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primaryGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
-
-                // Address
-                _buildInfoRow(
-                  icon: Icons.location_on,
-                  label: shopAddress,
-                  color: Colors.blue.shade700,
-                  maxLines: 2,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: 16,
+                      color: Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        shopAddress,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-
-                // License & GST (Compact row)
                 if (licenseNumber != null && licenseNumber.isNotEmpty ||
                     gstNumber != null && gstNumber.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Row(
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      // License
                       if (licenseNumber != null && licenseNumber.isNotEmpty)
-                        Expanded(
-                          child: _buildCompactBadge(
-                            icon: Icons.badge,
-                            label: 'License',
-                            value: licenseNumber,
-                            color: Colors.purple,
-                          ),
+                        _buildInfoChip(
+                          icon: Icons.badge,
+                          label: 'License: $licenseNumber',
+                          color: Colors.purple,
                         ),
-                      if (licenseNumber != null &&
-                          licenseNumber.isNotEmpty &&
-                          gstNumber != null &&
-                          gstNumber.isNotEmpty)
-                        const SizedBox(width: 8),
-                      // GST
                       if (gstNumber != null && gstNumber.isNotEmpty)
-                        Expanded(
-                          child: _buildCompactBadge(
-                            icon: Icons.receipt_long,
-                            label: 'GST',
-                            value: gstNumber,
-                            color: Colors.amber.shade700,
-                          ),
+                        _buildInfoChip(
+                          icon: Icons.receipt_long,
+                          label: 'GST: $gstNumber',
+                          color: Colors.amber.shade700,
                         ),
                     ],
                   ),
                 ],
-
-                // ✅ Status Warning (for unverified)
                 if (!isVerified) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
+                      horizontal: 10,
+                      vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: Colors.orange.shade300,
                         width: 1,
@@ -908,7 +973,7 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
                       children: [
                         Icon(
                           Icons.info_outline,
-                          size: 16,
+                          size: 14,
                           color: Colors.orange.shade700,
                         ),
                         const SizedBox(width: 8),
@@ -926,61 +991,79 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
                     ),
                   ),
                 ],
-
-                const SizedBox(height: 16),
-
-                // ✅ Action Buttons - Redesigned (Smaller & Cleaner)
+                const SizedBox(height: 12),
                 Row(
                   children: [
-                    // Products Button (Primary)
                     Expanded(
-                      flex: 2,
-                      child: ElevatedButton.icon(
+                      flex: 3,
+                      child: ElevatedButton(
                         onPressed: () => _handleProducts(shop),
-                        icon: Icon(
-                          isVerified ? Icons.inventory_2_outlined : Icons.lock,
-                          size: 16,
-                        ),
-                        label: const SmartReTranslator(
-                          text: 'Products',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isVerified
                               ? AppColors.primaryGreen
                               : Colors.grey.shade400,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          elevation: isVerified ? 1 : 0,
+                          elevation: isVerified ? 2 : 0,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isVerified ? Icons.inventory_2 : Icons.lock,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            const SmartReTranslator(
+                              text: 'Products',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-
-                    // Edit Button (Compact)
-                    _buildSmallActionButton(
-                      icon: isVerified
-                          ? Icons.edit_outlined
-                          : Icons.edit_outlined,
-                      color: AppColors.primaryGreen,
-                      onPressed: () => _handleEdit(shop),
-                      tooltip: isVerified ? 'Request Edit' : 'Edit',
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: AppColors.primaryGreen.withOpacity(0.4),
+                          width: 1.5,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: IconButton(
+                        onPressed: () => _handleEdit(shop),
+                        icon: const Icon(Icons.edit_outlined, size: 20),
+                        color: AppColors.primaryGreen,
+                        tooltip: isVerified ? 'Request Edit' : 'Edit',
+                        padding: const EdgeInsets.all(10),
+                        constraints: const BoxConstraints(),
+                      ),
                     ),
-
-                    // Delete Button (Compact) - Only for verified
                     if (isVerified) ...[
                       const SizedBox(width: 8),
-                      _buildSmallActionButton(
-                        icon: Icons.delete_outline,
-                        color: Colors.red.shade600,
-                        onPressed: () => _showDeleteVerifiedShopDialog(shop),
-                        tooltip: 'Delete Request',
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Colors.red.withOpacity(0.4),
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: IconButton(
+                          onPressed: () => _showDeleteVerifiedShopDialog(shop),
+                          icon: const Icon(Icons.delete_outline, size: 20),
+                          color: Colors.red.shade600,
+                          tooltip: 'Delete Request',
+                          padding: const EdgeInsets.all(10),
+                          constraints: const BoxConstraints(),
+                        ),
                       ),
                     ],
                   ],
@@ -993,113 +1076,32 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     );
   }
 
-  // ✅ Helper: Info Row
-  Widget _buildInfoRow({
+  Widget _buildInfoChip({
     required IconData icon,
     required String label,
-    required Color color,
-    int maxLines = 1,
-  }) {
-    return Row(
-      crossAxisAlignment: maxLines > 1
-          ? CrossAxisAlignment.start
-          : CrossAxisAlignment.center,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Icon(icon, size: 14, color: color),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: SmartReTranslator(
-            text: label,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[800],
-              fontWeight: FontWeight.w500,
-              height: 1.3,
-            ),
-            maxLines: maxLines,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ✅ Helper: Compact Badge (for License/GST)
-  Widget _buildCompactBadge({
-    required IconData icon,
-    required String label,
-    required String value,
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.2), width: 1),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3), width: 1),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[900],
-                    fontWeight: FontWeight.w700,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // ✅ Helper: Small Action Button
-  Widget _buildSmallActionButton({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onPressed,
-    required String tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withOpacity(0.3), width: 1.5),
-          ),
-          child: Icon(icon, size: 18, color: color),
-        ),
       ),
     );
   }

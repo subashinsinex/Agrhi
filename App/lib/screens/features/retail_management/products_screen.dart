@@ -195,7 +195,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                                 text: 'Products',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: AppColors.textSecondary,
+                                  color: AppColors.textPrimary,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -402,6 +402,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
             const SizedBox(height: 24),
             const SmartReTranslator(
               text: 'No products yet',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,

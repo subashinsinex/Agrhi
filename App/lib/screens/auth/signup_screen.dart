@@ -49,6 +49,16 @@ class _SignupScreenState extends State<SignupScreen> {
       'name': 'Expert',
       'key': 'expert',
     },
+    {
+      'id': 'c7f2d8e1-9a54-4a6c-8e37-5d2b1f8c4e12',
+      'name': 'Retailer',
+      'key': 'retailer',
+    },
+    {
+      'id': 'a3e9a9b4-4c2d-4b1f-9b3b-23f5c4a7d901',
+      'name': 'Consumer',
+      'key': 'consumer',
+    },
   ];
 
   @override
@@ -83,6 +93,8 @@ class _SignupScreenState extends State<SignupScreen> {
       'Sign Up',
       'Farmer',
       'Expert',
+      'Retailer',
+      'Consumer',
       'Please fill all required fields correctly',
       'Please select a category',
       'Please enter your email',
@@ -226,13 +238,12 @@ class _SignupScreenState extends State<SignupScreen> {
       String errorMessage = e.toString();
 
       // Clean up technical error messages
-      // Clean up technical error messages
       if (errorMessage.contains('SocketException')) {
         errorMessage = 'No internet connection';
       } else if (errorMessage.contains('TimeoutException')) {
         errorMessage = 'Request timeout. Please try again';
       } else {
-        // ✅ Remove all common error prefixes and JSON formatting
+        // Remove all common error prefixes and JSON formatting
         errorMessage = errorMessage
             .replaceFirst('Client error: ', '')
             .replaceAll('{"message":"', '')
@@ -873,7 +884,7 @@ class _PasswordField extends StatelessWidget {
   }
 }
 
-// ✅ Category dropdown widget
+// ✅ Category dropdown widget - FIXED VERSION
 class _CategoryDropdown extends StatelessWidget {
   final String? value;
   final List<Map<String, dynamic>> categories;
@@ -951,8 +962,8 @@ class _CategoryDropdown extends StatelessWidget {
               vertical: 16,
             ),
           ),
-          isExpanded: true, // ✅ Keeps dropdown items aligned properly
-          isDense: true, // ✅ Prevents extra spacing
+          isExpanded: true,
+          isDense: true,
           icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
           iconSize: 24,
           elevation: 8,
@@ -962,33 +973,29 @@ class _CategoryDropdown extends StatelessWidget {
           itemHeight: 56,
           borderRadius: BorderRadius.circular(12),
           items: categories.map((category) {
-            final categoryKey = category['key'] as String;
+            final displayName = category['name'] as String;
             return DropdownMenuItem<String>(
               value: category['id'] as String,
-              child: Text(
-                categoryKey == 'farmer' ? 'Farmer' : 'Expert',
+              child: SmartReTranslator(
+                text: displayName,
                 style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 16,
                 ),
-                overflow:
-                    TextOverflow.ellipsis, // ✅ Prevents text from expanding
               ),
             );
           }).toList(),
           onChanged: onChanged,
           validator: validator,
           selectedItemBuilder: (BuildContext context) {
-            // ✅ Controls how selected item appears in the field
             return categories.map((category) {
-              final categoryKey = category['key'] as String;
-              return Text(
-                categoryKey == 'farmer' ? 'Farmer' : 'Expert',
+              final displayName = category['name'] as String;
+              return SmartReTranslator(
+                text: displayName,
                 style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 16,
                 ),
-                overflow: TextOverflow.ellipsis,
               );
             }).toList();
           },
