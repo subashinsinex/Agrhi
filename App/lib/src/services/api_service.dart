@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'connectivity_service.dart';
 import 'auth_service.dart';
 import '../../utils/storage_helper.dart';
@@ -17,6 +18,13 @@ class ApiService {
   final _connectivityService = ConnectivityService();
   final _authService = AuthService();
   final _storageHelper = StorageHelper();
+  final _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+      synchronizable: false,
+    ),
+  );
 
   static const String baseUrl = AppConstants.baseUrl;
   static const Duration defaultTimeout = Duration(seconds: 30);
@@ -89,6 +97,93 @@ class ApiService {
       timeout: timeout,
       requiresAuth: requiresAuth,
     );
+  }
+
+  /// ✅ Upload profile picture with connectivity and auth checks
+  Future<ApiResponse> uploadProfilePicture(
+    File imageFile,
+    String imageId,
+  ) async {
+    try {
+      // ✅ STEP 1: Check connectivity
+      final isOnline = await _connectivityService.hasInternetConnection();
+      if (!isOnline) {
+        debugPrint('❌ Upload blocked - No internet connection');
+        return ApiResponse.offline();
+      }
+
+      // ✅ STEP 2: Check authentication
+      final authStatus = await _authService.checkAuthStatus();
+      if (authStatus == AuthStatus.unauthenticated) {
+        debugPrint('❌ Upload blocked - Not authenticated');
+        return ApiResponse.unauthenticated();
+      }
+
+      if (authStatus == AuthStatus.authenticatedOffline) {
+        debugPrint('❌ Upload blocked - Offline mode');
+        return ApiResponse.offline();
+      }
+
+      // ✅ STEP 3: Get user ID and token
+      final userId = await _storage.read(key: 'user_id');
+      if (userId == null) {
+        return ApiResponse.error('User ID not found');
+      }
+
+      final token = await _storage.read(key: 'access_token');
+      if (token == null) {
+        return ApiResponse.unauthenticated();
+      }
+
+      // ✅ STEP 4: Verify file exists
+      if (!await imageFile.exists()) {
+        return ApiResponse.error('Image file not found');
+      }
+
+      // ✅ STEP 5: Build multipart request
+      final uri = Uri.parse('$baseUrl/profile/upload-photo');
+      debugPrint('📤 Uploading profile picture to: $uri');
+
+      final request = http.MultipartRequest('POST', uri);
+
+      // Add authorization header
+      request.headers['Authorization'] = 'Bearer $token';
+
+      // ✅ Add image_id field
+      request.fields['image_id'] = imageId;
+
+      // Add image file
+      final multipartFile = await http.MultipartFile.fromPath(
+        'image',
+        imageFile.path,
+      );
+      request.files.add(multipartFile);
+
+      debugPrint('📦 File size: ${await imageFile.length()} bytes');
+      debugPrint('📤 Uploading with image_id: $imageId');
+
+      // ✅ STEP 6: Send request with timeout
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Upload timeout');
+        },
+      );
+
+      final response = await http.Response.fromStream(streamedResponse);
+
+      // ✅ STEP 7: Handle response
+      return _handleResponse(response);
+    } on SocketException catch (e) {
+      debugPrint('❌ Network error during upload: $e');
+      return ApiResponse.networkError(e.toString());
+    } on TimeoutException catch (e) {
+      debugPrint('❌ Upload timeout: $e');
+      return ApiResponse.timeout();
+    } catch (e) {
+      debugPrint('❌ Upload failed: $e');
+      return ApiResponse.error(e.toString());
+    }
   }
 
   /// Core request handler with all automatic checks
@@ -241,9 +336,11 @@ class ApiService {
       // Success
       try {
         final data = jsonDecode(response.body);
+        debugPrint('✅ Response data: $data');
         return ApiResponse.success(data, response.statusCode);
       } catch (e) {
         // Response is not JSON (might be plain text)
+        debugPrint('✅ Response body: ${response.body}');
         return ApiResponse.success(response.body, response.statusCode);
       }
     } else if (response.statusCode == 401) {
@@ -260,11 +357,11 @@ class ApiService {
       return ApiResponse.notFound();
     } else if (response.statusCode >= 500) {
       // Server error
-      debugPrint('❌ Server error (${response.statusCode})');
+      debugPrint('❌ Server error (${response.statusCode}): ${response.body}');
       return ApiResponse.serverError(response.statusCode, response.body);
     } else {
       // Other client errors
-      debugPrint('❌ Client error (${response.statusCode})');
+      debugPrint('❌ Client error (${response.statusCode}): ${response.body}');
       return ApiResponse.clientError(response.statusCode, response.body);
     }
   }
@@ -391,6 +488,8 @@ class ApiResponse {
   bool get isUnauthenticated => errorType == ApiErrorType.unauthenticated;
   bool get isTimeout => errorType == ApiErrorType.timeout;
   bool get isServerError => errorType == ApiErrorType.server;
+  bool get isForbidden => errorType == ApiErrorType.forbidden;
+  bool get isNotFound => errorType == ApiErrorType.notFound;
 }
 
 enum ApiErrorType {

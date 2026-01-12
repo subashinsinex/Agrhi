@@ -1,6 +1,3 @@
-// lib/src/services/auth_service.dart
-
-import 'dart:convert';
 import 'dart:async';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'connectivity_service.dart';
@@ -349,98 +346,6 @@ class AuthService {
     await _storageHelper.delete('user_profile');
     print('🗑️ All tokens cleared');
   }
-
-  /// Login method
-  Future<LoginResult> login({
-    required String phoneNumber,
-    required String password,
-  }) async {
-    try {
-      print('🔐 Attempting login...');
-
-      final response = await ApiService.instance.post(
-        '/login',
-        body: {
-          'phone_number': phoneNumber,
-          'password': password,
-          'platform': 'mobile',
-        },
-        timeout: const Duration(seconds: 30),
-        requiresAuth: false,
-      );
-
-      print('🔐 Login response status: ${response.statusCode}');
-
-      if (response.isSuccess) {
-        final data = response.data;
-        final accessToken = data['access_token'] as String;
-        final refreshToken = data['refresh_token'] as String;
-
-        print('💾 Storing tokens...');
-
-        await _storageHelper.write('access_token', accessToken);
-        await _storageHelper.write('refresh_token', refreshToken);
-
-        await Future.delayed(const Duration(milliseconds: 100));
-        final storedAccess = await _storageHelper.getAccessToken();
-        final storedRefresh = await _storageHelper.getRefreshToken();
-
-        print('✅ Access token stored: ${storedAccess != null}');
-        print('✅ Refresh token stored: ${storedRefresh != null}');
-
-        if (storedAccess == null || storedRefresh == null) {
-          print('❌ Token storage failed!');
-          return LoginResult.failure('Failed to save login credentials');
-        }
-
-        if (data['user'] != null) {
-          await _storageHelper.write('user_profile', jsonEncode(data['user']));
-          print('✅ User profile stored');
-        }
-
-        print('✅ Login successful');
-        return LoginResult.success();
-      } else if (response.isUnauthorized) {
-        print('❌ Invalid credentials');
-        return LoginResult.failure('Invalid phone number or password');
-      } else if (response.isOffline) {
-        print('❌ No internet connection');
-        return LoginResult.failure('No internet connection');
-      } else {
-        print('❌ Server error: ${response.statusCode}');
-        return LoginResult.failure(
-          response.error ?? 'Server error. Please try again later',
-        );
-      }
-    } catch (e) {
-      print('❌ Login error: $e');
-      return LoginResult.failure('An unexpected error occurred');
-    }
-  }
-
-  /// Logout method
-  Future<void> logout() async {
-    try {
-      print('🚪 Logging out...');
-      final accessToken = await _storageHelper.getAccessToken();
-
-      if (accessToken != null) {
-        try {
-          await ApiService.instance.post(
-            '/logout',
-            timeout: const Duration(seconds: 5),
-            requiresAuth: true,
-          );
-          print('✅ Logout API called successfully');
-        } catch (e) {
-          print('⚠️ Logout API call failed: $e');
-        }
-      }
-    } finally {
-      await clearTokens();
-      print('✅ Logout complete');
-    }
-  }
 }
 
 class RefreshResult {
@@ -478,10 +383,3 @@ enum RefreshErrorType { none, network, auth, server, unknown }
 
 enum AuthStatus { authenticated, authenticatedOffline, unauthenticated }
 
-class LoginResult {
-  final bool isSuccess;
-  final String? message;
-
-  LoginResult.success() : isSuccess = true, message = null;
-  LoginResult.failure(this.message) : isSuccess = false;
-}

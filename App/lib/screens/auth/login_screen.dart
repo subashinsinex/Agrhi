@@ -1,14 +1,19 @@
 // lib/screens/auth/login_screen.dart
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:sqflite/sqflite.dart';
 import '../shared/language_switcher.dart';
 import '../shared/smart_retranslator.dart';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
+import '../../utils/constants.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/api_service.dart';
 import '../../src/database/database_helper.dart';
@@ -97,6 +102,96 @@ class _LoginScreenState extends State<LoginScreen> {
     await storage.write(key: 'user_profile', value: jsonEncode(profileData));
   }
 
+  /// Store profile image metadata in images table
+  Future<void> _storeProfileImageInDB(String imageId, String imageUrl) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+
+      final imageData = {
+        'image_id': imageId,
+        'local_path': '', // Will be filled after download
+        'server_image_url': imageUrl == 'no-image' ? '' : imageUrl,
+        'is_uploaded': imageUrl == 'no-image' ? 0 : 1,
+        'created_at': DateTime.now().toIso8601String(),
+      };
+
+      await db.insert(
+        'images',
+        imageData,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // Store image_id in secure storage for easy access
+      const storage = FlutterSecureStorage();
+      await storage.write(key: 'profile_image_id', value: imageId);
+
+      debugPrint('✅ Profile image stored in DB: $imageId');
+    } catch (e) {
+      debugPrint('❌ Error storing profile image: $e');
+    }
+  }
+
+  /// Download and cache profile picture
+  Future<void> _downloadProfilePicture(
+    String imageId,
+    String serverUrl,
+    String accessToken,
+  ) async {
+    try {
+      // Construct full URL
+      String fullUrl;
+      if (serverUrl.startsWith('http')) {
+        fullUrl = serverUrl;
+      } else {
+        final imageBaseUrl = AppConstants.baseUrl.replaceAll('/api', '');
+        fullUrl = '$imageBaseUrl$serverUrl';
+      }
+
+      debugPrint('📥 Downloading profile picture: $fullUrl');
+
+      // Download image
+      final response = await http
+          .get(
+            Uri.parse(fullUrl),
+            headers: {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        debugPrint('❌ Download failed: ${response.statusCode}');
+        return;
+      }
+
+      // Get app directory
+      final directory = await getApplicationDocumentsDirectory();
+      final profileDir = Directory('${directory.path}/profile_pictures');
+      if (!await profileDir.exists()) {
+        await profileDir.create(recursive: true);
+      }
+
+      // Save file
+      final extension = serverUrl.split('.').last.split('?').first;
+      final localPath = '${profileDir.path}/profile_$imageId.$extension';
+      final file = File(localPath);
+      await file.writeAsBytes(response.bodyBytes);
+
+      debugPrint('💾 Profile picture saved: $localPath');
+
+      // ✅ Update images table with local path
+      final db = await DatabaseHelper.instance.database;
+      await db.update(
+        'images',
+        {'localpath': localPath},
+        where: 'imageid = ?',
+        whereArgs: [imageId],
+      );
+
+      debugPrint('✅ Profile picture downloaded and cached');
+    } catch (e) {
+      debugPrint('⚠️ Profile picture download failed: $e');
+    }
+  }
+
   Future<void> _handleLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -135,10 +230,41 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('❌ Token decode error: $e');
         }
 
+        // ✅ Fetch profile and handle profile picture
         if (userId != null) {
           final profileData = await _fetchUserProfile(accessToken, userId);
           if (profileData != null) {
             await _storeUserProfile(profileData);
+            debugPrint('📄 Profile data: $profileData');
+
+            // ✅ Handle profile picture
+            if (profileData['image_id'] != null) {
+              try {
+                final imageId = profileData['image_id'].toString();
+
+                // Get image URL from server
+                final imageUrlResponse = await ApiService.instance.get(
+                  '/profile/get-image-url/$imageId',
+                  requiresAuth: true,
+                );
+
+                if (imageUrlResponse.isSuccess) {
+                  final imageUrl = imageUrlResponse.data['image_url']?.toString() ?? 'no-image';
+
+                  // ✅ Store in images table
+                  await _storeProfileImageInDB(imageId, imageUrl);
+
+                  // ✅ Download if valid URL
+                  if (imageUrl != 'no-image' && imageUrl.isNotEmpty) {
+                    await _downloadProfilePicture(imageId, imageUrl, accessToken);
+                  } else {
+                    debugPrint('ℹ️ No profile picture available');
+                  }
+                }
+              } catch (e) {
+                debugPrint('⚠️ Failed to process profile picture: $e');
+              }
+            }
           }
         }
 
