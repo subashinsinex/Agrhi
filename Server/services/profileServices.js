@@ -28,27 +28,26 @@ async function getUserById(userId) {
       ud.address, 
       ud.pincode, 
       ud.category_id,
-      ud.updated_at
-      ud.image_id,
+      ud.updated_at,
+      ud.image_id
     FROM users_auth ua
     JOIN user_details ud ON ua.user_id = ud.user_id
     JOIN user_category uc ON ud.category_id = uc.category_id
-    WHERE ua.user_id = $1
-    ORDER BY ua.user_id;
+    WHERE ua.user_id = $1;
   `;
   const result = await pool.query(sql, [userId]);
   return result.rows[0];
 }
 
-async function getImageIdByUserId(userId) {
+async function getImageURL(imageId) {
   const result = await pool.query(
-    "SELECT image_id FROM user_details WHERE user_id = $1",
-    [userId]
+    "SELECT image_url FROM images WHERE image_id = $1",
+    [imageId]
   );
   if (result.rowCount === 0) {
     throw new Error("User not found");
   }
-  return result.rows[0].imageid;
+  return result.rows[0].image_url;
 }
 
 async function createUser(newUser) {
@@ -217,6 +216,6 @@ module.exports = {
   getUserById,
   createUser,
   updateUser,
-  getImageIdByUserId,
+  getImageURL,
   updateProfileImageUrl,
 };
