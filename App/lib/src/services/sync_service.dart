@@ -18,8 +18,9 @@ class SyncService {
   final DatabaseHelper _db = DatabaseHelper.instance;
   static const String baseUrl = AppConstants.baseUrl;
 
-  // ✅ Sync lock to prevent duplicate syncs
+  // ✅ Sync locks to prevent duplicate operations
   bool _isSyncing = false;
+  bool _isUploadingProfilePicture = false; // ✅ NEW: Profile picture upload lock
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -57,16 +58,20 @@ class SyncService {
       // Step 3: Sync profile based on updated_at
       await _syncProfileIfNeeded();
 
+      // Step 4: Sync pending profile updates (data + picture)
+      final profileSyncResult = await syncAllProfileUpdates(accessToken);
+
       final success = catalogResult['success'] && twoWayResult['success'];
 
       if (success) {
-        debugPrint('✅ Disease analysis sync completed');
+        debugPrint('✅ Full sync completed');
       }
 
       return {
         'success': success,
         'catalogs': catalogResult,
         'two_way_sync': twoWayResult,
+        'profile_sync': profileSyncResult,
         'timestamp': DateTime.now().toIso8601String(),
       };
     } catch (e) {
@@ -78,6 +83,208 @@ class SyncService {
   }
 
   // ================= PROFILE SYNC =================
+
+  /// Get count of pending profile updates (for UI display)
+  Future<int> getPendingProfileUpdatesCount() async {
+    try {
+      int count = 0;
+
+      // Check for pending profile data updates
+      final hasProfileDataPending = await _storage.read(
+        key: 'profile_data_pending',
+      );
+      if (hasProfileDataPending == 'true') {
+        count++;
+      }
+
+      // Check for pending profile picture upload
+      final hasPicturePending = await _storage.read(
+        key: 'profile_picture_pending_upload',
+      );
+      if (hasPicturePending == 'true') {
+        count++;
+      }
+
+      return count;
+    } catch (e) {
+      debugPrint('❌ Error getting pending profile updates count: $e');
+      return 0;
+    }
+  }
+
+  /// Sync all profile updates (data + picture)
+  Future<Map<String, dynamic>> syncAllProfileUpdates(String accessToken) async {
+    try {
+      debugPrint('🔄 Starting profile sync...');
+
+      int processed = 0;
+      final errors = <String>[];
+
+      // 1️⃣ Sync profile data updates
+      final dataResult = await _syncProfileData(accessToken);
+      if (dataResult['success']) {
+        processed++;
+      } else if (dataResult['skipped'] != true) {
+        errors.add('profile_data: ${dataResult['error']}');
+      }
+
+      // 2️⃣ Sync profile picture upload
+      final pictureResult = await _syncProfilePicture(accessToken);
+      if (pictureResult['success']) {
+        processed++;
+      } else if (pictureResult['skipped'] != true) {
+        errors.add('profile_picture: ${pictureResult['error']}');
+      }
+
+      return {
+        'success': errors.isEmpty,
+        'processed': processed,
+        'errors': errors,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+    } catch (e) {
+      debugPrint('❌ Profile sync error: $e');
+      return {'success': false, 'processed': 0, 'error': e.toString()};
+    }
+  }
+
+  /// Sync profile data (name, email, address, etc.)
+  Future<Map<String, dynamic>> _syncProfileData(String accessToken) async {
+    try {
+      // Check if there are pending profile data updates
+      final hasPending = await _storage.read(key: 'profile_data_pending');
+      if (hasPending != 'true') {
+        debugPrint('ℹ️ No pending profile data updates');
+        return {'success': true, 'skipped': true};
+      }
+
+      // Get pending updates
+      final updatesJson = await _storage.read(key: 'profile_pending_updates');
+      if (updatesJson == null || updatesJson.isEmpty) {
+        debugPrint('⚠️ No profile updates found');
+        return {'success': false, 'error': 'No updates found'};
+      }
+
+      final updates = jsonDecode(updatesJson) as Map<String, dynamic>;
+      final userId = await _storage.read(key: 'user_id');
+
+      if (userId == null) {
+        return {'success': false, 'error': 'User ID not found'};
+      }
+
+      // Send updates to server
+      final response = await ApiService.instance.put(
+        '/profile/updateUser/$userId',
+        body: updates,
+        requiresAuth: true,
+        timeout: const Duration(seconds: 30),
+      );
+
+      if (response.isSuccess || response.statusCode == 200) {
+        // Clear pending flags
+        await _storage.delete(key: 'profile_data_pending');
+        await _storage.delete(key: 'profile_pending_updates');
+
+        debugPrint('✅ Profile data synced successfully');
+        return {'success': true};
+      } else if (response.isOffline) {
+        debugPrint('⚠️ Profile data sync skipped - offline');
+        return {'success': false, 'error': 'offline', 'skipped': true};
+      } else {
+        debugPrint('❌ Profile data sync failed: ${response.error}');
+        return {'success': false, 'error': response.error};
+      }
+    } catch (e) {
+      debugPrint('❌ Profile data sync error: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// ✅ FIXED: Sync profile picture upload with lock to prevent duplicates
+  Future<Map<String, dynamic>> _syncProfilePicture(String accessToken) async {
+    // ✅ Check if already uploading
+    if (_isUploadingProfilePicture) {
+      debugPrint('⏭️ Profile picture upload already in progress - skipping');
+      return {
+        'success': false,
+        'error': 'Upload already in progress',
+        'skipped': true,
+      };
+    }
+
+    _isUploadingProfilePicture = true; // ✅ Lock upload
+
+    try {
+      // Check if there's a pending profile picture upload
+      final hasPending = await _storage.read(
+        key: 'profile_picture_pending_upload',
+      );
+
+      if (hasPending != 'true') {
+        debugPrint('ℹ️ No pending profile picture upload');
+        return {'success': true, 'skipped': true};
+      }
+
+      final imageLocalPath = await _storage.read(
+        key: 'profile_image_local_path',
+      );
+
+      if (imageLocalPath == null || imageLocalPath.isEmpty) {
+        debugPrint('⚠️ No profile picture path found');
+        await _storage.delete(key: 'profile_picture_pending_upload');
+        return {'success': false, 'error': 'No image path', 'skipped': true};
+      }
+
+      final file = File(imageLocalPath);
+      if (!await file.exists()) {
+        debugPrint('⚠️ Profile picture file not found: $imageLocalPath');
+        await _storage.delete(key: 'profile_picture_pending_upload');
+        await _storage.delete(key: 'profile_image_local_path');
+        return {'success': false, 'error': 'File not found', 'skipped': true};
+      }
+
+      debugPrint('📤 Uploading profile picture from $imageLocalPath');
+
+      // ✅ Upload using ApiService (no additionalFields - user_id from JWT)
+      final response = await ApiService.instance.uploadFile(
+        endpoint: '/profile/upload-photo',
+        file: file,
+        fieldName: 'image',
+      );
+
+      if (response.isSuccess) {
+        final data = response.data as Map<String, dynamic>;
+        final picUrl = data['pic_url'] as String?;
+
+        if (picUrl != null) {
+          // Update local profile data
+          final profileJson = await _storage.read(key: 'user_profile');
+          if (profileJson != null) {
+            final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
+            profileData['pic_url'] = picUrl;
+            await _storage.write(
+              key: 'user_profile',
+              value: jsonEncode(profileData),
+            );
+          }
+
+          // ✅ Clear pending upload flags IMMEDIATELY after success
+          await _storage.delete(key: 'profile_picture_pending_upload');
+
+          debugPrint('✅ Profile picture uploaded successfully: $picUrl');
+          return {'success': true, 'pic_url': picUrl};
+        }
+      }
+
+      debugPrint('❌ Profile picture upload failed: ${response.error}');
+      return {'success': false, 'error': response.error};
+    } catch (e) {
+      debugPrint('❌ Error uploading profile picture: $e');
+      return {'success': false, 'error': e.toString()};
+    } finally {
+      _isUploadingProfilePicture = false; // ✅ Unlock upload
+    }
+  }
 
   /// Sync profile if server updated_at is newer than local
   Future<void> _syncProfileIfNeeded() async {
@@ -483,7 +690,6 @@ class SyncService {
   }
 
   /// Upload single image file to server
-  /// Note: Multipart uploads still use raw http since ApiService doesn't support it yet
   Future<Map<String, dynamic>> _uploadImage(
     String imageId,
     String localPath,
@@ -592,7 +798,6 @@ class SyncService {
   }
 
   /// Download single image from server and save locally
-  /// Note: Binary downloads still use raw http for streaming
   Future<String?> _downloadImage(
     String imageId,
     String serverUrl,

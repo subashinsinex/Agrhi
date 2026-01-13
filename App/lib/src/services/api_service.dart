@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'connectivity_service.dart';
 import 'auth_service.dart';
 import '../../utils/storage_helper.dart';
@@ -18,13 +17,6 @@ class ApiService {
   final _connectivityService = ConnectivityService();
   final _authService = AuthService();
   final _storageHelper = StorageHelper();
-  final _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock,
-      synchronizable: false,
-    ),
-  );
 
   static const String baseUrl = AppConstants.baseUrl;
   static const Duration defaultTimeout = Duration(seconds: 30);
@@ -99,20 +91,25 @@ class ApiService {
     );
   }
 
-  /// ✅ Upload profile picture with connectivity and auth checks
-  Future<ApiResponse> uploadProfilePicture(
-    File imageFile,
-    String imageId,
-  ) async {
+  /// ✅ Upload file (multipart/form-data)
+  /// Used for profile pictures and other file uploads
+  Future<ApiResponse> uploadFile({
+    required String endpoint,
+    required File file,
+    required String fieldName,
+    Map<String, String>? additionalFields,
+    Map<String, String>? headers,
+    Duration? timeout,
+  }) async {
     try {
-      // ✅ STEP 1: Check connectivity
+      // Check connectivity
       final isOnline = await _connectivityService.hasInternetConnection();
       if (!isOnline) {
         debugPrint('❌ Upload blocked - No internet connection');
         return ApiResponse.offline();
       }
 
-      // ✅ STEP 2: Check authentication
+      // Check authentication
       final authStatus = await _authService.checkAuthStatus();
       if (authStatus == AuthStatus.unauthenticated) {
         debugPrint('❌ Upload blocked - Not authenticated');
@@ -124,47 +121,54 @@ class ApiService {
         return ApiResponse.offline();
       }
 
-      // ✅ STEP 3: Get user ID and token
-      final userId = await _storage.read(key: 'user_id');
-      if (userId == null) {
-        return ApiResponse.error('User ID not found');
-      }
-
-      final token = await _storage.read(key: 'access_token');
+      // Get token
+      final token = await _storageHelper.getAccessToken();
       if (token == null) {
         return ApiResponse.unauthenticated();
       }
 
-      // ✅ STEP 4: Verify file exists
-      if (!await imageFile.exists()) {
-        return ApiResponse.error('Image file not found');
+      // Verify file exists
+      if (!await file.exists()) {
+        return ApiResponse.error('File not found');
       }
 
-      // ✅ STEP 5: Build multipart request
-      final uri = Uri.parse('$baseUrl/profile/upload-photo');
-      debugPrint('📤 Uploading profile picture to: $uri');
+      // Build multipart request
+      final path = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+      final uri = Uri.parse('$baseUrl$path');
+      debugPrint('📤 Uploading file to: $uri');
 
       final request = http.MultipartRequest('POST', uri);
 
       // Add authorization header
       request.headers['Authorization'] = 'Bearer $token';
 
-      // ✅ Add image_id field
-      request.fields['image_id'] = imageId;
+      // Add custom headers (excluding Content-Type as it's set automatically)
+      if (headers != null) {
+        for (final entry in headers.entries) {
+          if (entry.key.toLowerCase() != 'content-type') {
+            request.headers[entry.key] = entry.value;
+          }
+        }
+      }
 
-      // Add image file
+      // Add additional fields
+      if (additionalFields != null) {
+        request.fields.addAll(additionalFields);
+      }
+
+      // Add file
       final multipartFile = await http.MultipartFile.fromPath(
-        'image',
-        imageFile.path,
+        fieldName,
+        file.path,
       );
       request.files.add(multipartFile);
 
-      debugPrint('📦 File size: ${await imageFile.length()} bytes');
-      debugPrint('📤 Uploading with image_id: $imageId');
+      debugPrint('📦 File size: ${await file.length()} bytes');
+      debugPrint('📋 Additional fields: $additionalFields');
 
-      // ✅ STEP 6: Send request with timeout
+      // Send request with timeout
       final streamedResponse = await request.send().timeout(
-        const Duration(seconds: 30),
+        timeout ?? const Duration(seconds: 30),
         onTimeout: () {
           throw TimeoutException('Upload timeout');
         },
@@ -172,7 +176,7 @@ class ApiService {
 
       final response = await http.Response.fromStream(streamedResponse);
 
-      // ✅ STEP 7: Handle response
+      // Handle response
       return _handleResponse(response);
     } on SocketException catch (e) {
       debugPrint('❌ Network error during upload: $e');

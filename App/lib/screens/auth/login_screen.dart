@@ -1,4 +1,5 @@
 // lib/screens/auth/login_screen.dart
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -7,7 +8,6 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
-import 'package:sqflite/sqflite.dart';
 import '../shared/language_switcher.dart';
 import '../shared/smart_retranslator.dart';
 import '../../utils/colors.dart';
@@ -35,6 +35,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+      synchronizable: false,
+    ),
+  );
 
   @override
   void initState() {
@@ -76,6 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  /// ✅ Fetch user profile from server
   Future<Map<String, dynamic>?> _fetchUserProfile(
     String accessToken,
     String userId,
@@ -97,57 +106,36 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// ✅ Store user profile in secure storage
   Future<void> _storeUserProfile(Map<String, dynamic> profileData) async {
-    const storage = FlutterSecureStorage();
-    await storage.write(key: 'user_profile', value: jsonEncode(profileData));
+    await _storage.write(key: 'user_profile', value: jsonEncode(profileData));
+    debugPrint('💾 Profile data stored in secure storage');
   }
 
-  /// Store profile image metadata in images table
-  Future<void> _storeProfileImageInDB(String imageId, String imageUrl) async {
-    try {
-      final db = await DatabaseHelper.instance.database;
-
-      final imageData = {
-        'image_id': imageId,
-        'local_path': '', // Will be filled after download
-        'server_image_url': imageUrl == 'no-image' ? '' : imageUrl,
-        'is_uploaded': imageUrl == 'no-image' ? 0 : 1,
-        'created_at': DateTime.now().toIso8601String(),
-      };
-
-      await db.insert(
-        'images',
-        imageData,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-
-      // Store image_id in secure storage for easy access
-      const storage = FlutterSecureStorage();
-      await storage.write(key: 'profile_image_id', value: imageId);
-
-      debugPrint('✅ Profile image stored in DB: $imageId');
-    } catch (e) {
-      debugPrint('❌ Error storing profile image: $e');
-    }
-  }
-
-  /// Download and cache profile picture
-  Future<void> _downloadProfilePicture(
-    String imageId,
-    String serverUrl,
+  /// ✅ Download and save profile picture to local storage
+  Future<void> _downloadAndSaveProfilePicture(
+    String picUrl,
     String accessToken,
   ) async {
     try {
-      // Construct full URL
-      String fullUrl;
-      if (serverUrl.startsWith('http')) {
-        fullUrl = serverUrl;
-      } else {
-        final imageBaseUrl = AppConstants.baseUrl.replaceAll('/api', '');
-        fullUrl = '$imageBaseUrl$serverUrl';
+      // Skip if no image or default image
+      if (picUrl == 'no-image' || picUrl.isEmpty) {
+        debugPrint('ℹ️ No profile picture to download');
+        return;
       }
 
-      debugPrint('📥 Downloading profile picture: $fullUrl');
+      debugPrint('📥 Downloading profile picture: $picUrl');
+
+      // Construct full URL
+      String fullUrl;
+      if (picUrl.startsWith('http')) {
+        fullUrl = picUrl;
+      } else {
+        final baseUrl = AppConstants.baseUrl.replaceAll('/api', '');
+        fullUrl = '$baseUrl$picUrl';
+      }
+
+      debugPrint('🌐 Full URL: $fullUrl');
 
       // Download image
       final response = await http
@@ -158,37 +146,58 @@ class _LoginScreenState extends State<LoginScreen> {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
-        debugPrint('❌ Download failed: ${response.statusCode}');
+        debugPrint('❌ Failed to download: ${response.statusCode}');
         return;
       }
 
-      // Get app directory
+      // Get app directory for storing images
       final directory = await getApplicationDocumentsDirectory();
       final profileDir = Directory('${directory.path}/profile_pictures');
+
       if (!await profileDir.exists()) {
         await profileDir.create(recursive: true);
       }
 
-      // Save file
-      final extension = serverUrl.split('.').last.split('?').first;
-      final localPath = '${profileDir.path}/profile_$imageId.$extension';
+      // Delete old profile pictures (keep only latest)
+      await _deleteOldProfilePictures(profileDir);
+
+      // Generate local filename based on current timestamp
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final extension = picUrl.split('.').last.split('?').first;
+      final localPath = '${profileDir.path}/profile_$timestamp.$extension';
+
+      // Save image to local file
       final file = File(localPath);
       await file.writeAsBytes(response.bodyBytes);
 
       debugPrint('💾 Profile picture saved: $localPath');
+      debugPrint('📊 File size: ${await file.length()} bytes');
 
-      // ✅ Update images table with local path
-      final db = await DatabaseHelper.instance.database;
-      await db.update(
-        'images',
-        {'localpath': localPath},
-        where: 'imageid = ?',
-        whereArgs: [imageId],
-      );
+      // Store local path and server URL in secure storage
+      await _storage.write(key: 'profile_image_local_path', value: localPath);
+      await _storage.write(key: 'profile_image_server_url', value: picUrl);
 
-      debugPrint('✅ Profile picture downloaded and cached');
+      debugPrint('✅ Profile picture downloaded and saved successfully');
     } catch (e) {
       debugPrint('⚠️ Profile picture download failed: $e');
+      // Don't fail login if profile picture download fails
+    }
+  }
+
+  /// ✅ Delete old profile pictures to save space
+  Future<void> _deleteOldProfilePictures(Directory profileDir) async {
+    try {
+      if (await profileDir.exists()) {
+        final files = profileDir.listSync();
+        for (var file in files) {
+          if (file is File && file.path.contains('profile_')) {
+            await file.delete();
+            debugPrint('🗑️ Deleted old profile picture: ${file.path}');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error deleting old profile pictures: $e');
     }
   }
 
@@ -217,60 +226,32 @@ class _LoginScreenState extends State<LoginScreen> {
         final accessToken = responseData['access_token'] as String;
         final refreshToken = responseData['refresh_token'] as String;
 
-        const storage = FlutterSecureStorage();
-        await storage.write(key: 'access_token', value: accessToken);
-        await storage.write(key: 'refresh_token', value: refreshToken);
+        // Store tokens
+        await _storage.write(key: 'access_token', value: accessToken);
+        await _storage.write(key: 'refresh_token', value: refreshToken);
 
+        // Decode JWT to get user_id
         String? userId;
         try {
           final decodedToken = JwtDecoder.decode(accessToken);
           userId = decodedToken['user_id']?.toString();
-          await storage.write(key: 'user_id', value: userId);
+          await _storage.write(key: 'user_id', value: userId);
+          await _storage.write(
+            key: 'phone_number',
+            value: decodedToken['phone_number']?.toString(),
+          );
+          await _storage.write(
+            key: 'email',
+            value: decodedToken['email']?.toString(),
+          );
         } catch (e) {
           debugPrint('❌ Token decode error: $e');
         }
 
-        // ✅ Fetch profile and handle profile picture
-        if (userId != null) {
-          final profileData = await _fetchUserProfile(accessToken, userId);
-          if (profileData != null) {
-            await _storeUserProfile(profileData);
-            debugPrint('📄 Profile data: $profileData');
-
-            // ✅ Handle profile picture
-            if (profileData['image_id'] != null) {
-              try {
-                final imageId = profileData['image_id'].toString();
-
-                // Get image URL from server
-                final imageUrlResponse = await ApiService.instance.get(
-                  '/profile/get-image-url/$imageId',
-                  requiresAuth: true,
-                );
-
-                if (imageUrlResponse.isSuccess) {
-                  final imageUrl = imageUrlResponse.data['image_url']?.toString() ?? 'no-image';
-
-                  // ✅ Store in images table
-                  await _storeProfileImageInDB(imageId, imageUrl);
-
-                  // ✅ Download if valid URL
-                  if (imageUrl != 'no-image' && imageUrl.isNotEmpty) {
-                    await _downloadProfilePicture(imageId, imageUrl, accessToken);
-                  } else {
-                    debugPrint('ℹ️ No profile picture available');
-                  }
-                }
-              } catch (e) {
-                debugPrint('⚠️ Failed to process profile picture: $e');
-              }
-            }
-          }
-        }
-
+        // Store token expiry
         try {
           final expiryDate = JwtDecoder.getExpirationDate(accessToken);
-          await storage.write(
+          await _storage.write(
             key: 'token_expiry',
             value: expiryDate.toIso8601String(),
           );
@@ -278,6 +259,25 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('❌ Token expiry decode error: $e');
         }
 
+        // ✅ Fetch and store user profile
+        if (userId != null) {
+          final profileData = await _fetchUserProfile(accessToken, userId);
+
+          if (profileData != null) {
+            // Store complete profile
+            await _storeUserProfile(profileData);
+
+            // ✅ Download profile picture if available
+            final picUrl = profileData['pic_url'] as String?;
+            if (picUrl != null && picUrl != 'no-image' && picUrl.isNotEmpty) {
+              await _downloadAndSaveProfilePicture(picUrl, accessToken);
+            } else {
+              debugPrint('ℹ️ No profile picture available');
+            }
+          }
+        }
+
+        // Sync catalogs
         final syncResult = await DatabaseHelper.instance.smartSyncCatalogs(
           accessToken,
         );

@@ -1,17 +1,20 @@
 // lib/screens/profile/profile_screen.dart
+
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:crop_image/crop_image.dart';
 import '../shared/smart_retranslator.dart';
 import '../auth/email_verify_screen.dart';
 import '../../utils/colors.dart';
 import '../../src/services/api_service.dart';
-import '../../src/database/database_helper.dart';
+import '../../src/services/sync_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,12 +33,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   );
 
   bool _isLoading = true;
+  bool _isSyncing = false;
   bool _emailVerified = false;
   bool _isEditing = false;
   bool _isSaving = false;
   bool _isUploadingImage = false;
+  int _pendingProfileUpdatesCount = 0;
 
-  // User data (display)
   String _name = '';
   String _email = '';
   String _phone = '';
@@ -45,7 +49,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _dob = '';
   String? _profileImagePath;
 
-  // Controllers for edit mode
+  Key _profileImageKey = UniqueKey();
+
   late TextEditingController _nameCtrl;
   late TextEditingController _emailCtrl;
   late TextEditingController _addressCtrl;
@@ -65,9 +70,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     _loadUserProfile();
 
-    // ✅ Check for pending uploads after profile loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _syncPendingProfilePicture();
+      _checkPendingUpdates();
     });
   }
 
@@ -81,57 +85,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  /// ✅ Load user profile from secure storage
+  Future<void> _checkPendingUpdates() async {
+    final count = await SyncService.instance.getPendingProfileUpdatesCount();
+    if (mounted) {
+      setState(() => _pendingProfileUpdatesCount = count);
+    }
+
+    if (count > 0) {
+      _triggerProfileSync();
+    }
+  }
+
+  Future<void> _triggerProfileSync() async {
+    if (_isSyncing) {
+      debugPrint('⏭️ Profile sync already in progress');
+      return;
+    }
+
+    setState(() => _isSyncing = true);
+
+    try {
+      final accessToken = await _storage.read(key: 'access_token');
+      if (accessToken != null) {
+        final result = await SyncService.instance.syncAllProfileUpdates(
+          accessToken,
+        );
+
+        await _checkPendingUpdates();
+
+        if (result['success'] == true && result['processed'] > 0) {
+          await _reloadUserProfileQuietly();
+
+          if (mounted) {
+            _showSuccess('Profile synced with server');
+          }
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
+  }
+
   Future<void> _loadUserProfile() async {
     setState(() => _isLoading = true);
 
     try {
-      final profileJson = await _storage.read(key: 'user_profile');
-      debugPrint('📦 user_profile from storage: $profileJson');
-
-      if (profileJson != null && profileJson.isNotEmpty) {
-        final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
-
-        setState(() {
-          _name = profileData['name'] ?? '';
-          _email = profileData['email'] ?? '';
-          _phone = profileData['phone_number'] ?? '';
-          _category = profileData['user_category'] ?? '';
-          _address = profileData['address'] ?? '';
-
-          final pincodeValue = profileData['pincode'];
-          _pincode = pincodeValue?.toString() ?? '';
-
-          final dobValue = profileData['dob'];
-          if (dobValue != null && dobValue.toString().isNotEmpty) {
-            try {
-              final dobDate = DateTime.parse(dobValue.toString());
-              _dob = DateFormat('dd MMM yyyy').format(dobDate);
-            } catch (_) {
-              _dob = dobValue.toString();
-            }
-          } else {
-            _dob = '';
-          }
-
-          _emailVerified = profileData['email_verified'] ?? false;
-
-          // sync controllers
-          _nameCtrl.text = _name;
-          _emailCtrl.text = _email;
-          _addressCtrl.text = _address;
-          _pincodeCtrl.text = _pincode;
-          _dobCtrl.text = _dob;
-        });
-
-        // ✅ Load profile picture
-        await _loadProfilePicture();
-      } else {
-        _showError('Profile data not found');
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading profile from storage: $e');
-      _showError('Failed to load profile');
+      await _reloadUserProfileQuietly();
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -139,53 +140,257 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// ✅ Load profile picture from database
+  Future<void> _reloadUserProfileQuietly() async {
+    try {
+      final profileJson = await _storage.read(key: 'user_profile');
+
+      if (profileJson != null && profileJson.isNotEmpty) {
+        final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
+
+        if (mounted) {
+          setState(() {
+            _name = profileData['name'] ?? '';
+            _email = profileData['email'] ?? '';
+            _phone = profileData['phone_number'] ?? '';
+            _category = profileData['user_category'] ?? '';
+            _address = profileData['address'] ?? '';
+
+            final pincodeValue = profileData['pincode'];
+            _pincode = pincodeValue?.toString() ?? '';
+
+            final dobValue = profileData['dob'];
+            if (dobValue != null && dobValue.toString().isNotEmpty) {
+              try {
+                final dobDate = DateTime.parse(dobValue.toString());
+                _dob = DateFormat('dd MMM yyyy').format(dobDate);
+              } catch (_) {
+                _dob = dobValue.toString();
+              }
+            } else {
+              _dob = '';
+            }
+
+            _emailVerified = profileData['email_verified'] ?? false;
+
+            _nameCtrl.text = _name;
+            _emailCtrl.text = _email;
+            _addressCtrl.text = _address;
+            _pincodeCtrl.text = _pincode;
+            _dobCtrl.text = _dob;
+          });
+        }
+
+        await _loadProfilePicture();
+      } else {
+        _showError('Profile data not found');
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading profile from storage: $e');
+      _showError('Failed to load profile');
+    }
+  }
+
   Future<void> _loadProfilePicture() async {
     try {
-      final imageId = await _storage.read(key: 'profile_image_id');
-      if (imageId == null || imageId.isEmpty) {
-        debugPrint('ℹ️ No profile image_id found');
+      final localPath = await _storage.read(key: 'profile_image_local_path');
+
+      if (localPath == null || localPath.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _profileImagePath = null;
+            _profileImageKey = UniqueKey();
+          });
+        }
         return;
       }
 
-      final db = await DatabaseHelper.instance.database;
-      final results = await db.query(
-        'images',
-        where: 'image_id = ?',
-        whereArgs: [imageId],
-        limit: 1,
-      );
-
-      if (results.isNotEmpty) {
-        final localPath = results.first['local_path'] as String?;
-        final isUploaded = results.first['is_uploaded'] as int? ?? 0;
-
-        if (localPath != null && localPath.isNotEmpty) {
-          final file = File(localPath);
-          if (await file.exists()) {
-            setState(() {
-              _profileImagePath = localPath;
-            });
-
-            if (isUploaded == 0) {
-              debugPrint('⚠️ Profile picture pending upload to server');
-            } else {
-              debugPrint('✅ Profile picture loaded: $localPath');
-            }
-          } else {
-            debugPrint('⚠️ Profile picture file not found: $localPath');
+      final file = File(localPath);
+      if (await file.exists()) {
+        if (_profileImagePath != null) {
+          try {
+            FileImage(File(_profileImagePath!)).evict();
+          } catch (e) {
+            debugPrint('⚠️ Failed to evict old image cache: $e');
           }
         }
+
+        try {
+          FileImage(file).evict();
+        } catch (e) {
+          debugPrint('⚠️ Failed to evict new image cache: $e');
+        }
+
+        if (mounted) {
+          setState(() {
+            _profileImagePath = localPath;
+            _profileImageKey = UniqueKey();
+          });
+        }
       } else {
-        debugPrint('ℹ️ No profile picture in database');
+        await _storage.delete(key: 'profile_image_local_path');
+        if (mounted) {
+          setState(() {
+            _profileImagePath = null;
+            _profileImageKey = UniqueKey();
+          });
+        }
       }
     } catch (e) {
       debugPrint('❌ Error loading profile picture: $e');
     }
   }
 
-  /// ✅ Show image picker bottom sheet (WhatsApp style)
-  void _showImagePickerOptions() {
+  void _viewProfilePictureDialog() {
+    if (_profileImagePath == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: Container(
+          constraints: const BoxConstraints(maxHeight: 600),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                    child: InteractiveViewer(
+                      minScale: 0.5,
+                      maxScale: 4.0,
+                      child: Image.file(
+                        File(_profileImagePath!),
+                        key: UniqueKey(),
+                        width: double.infinity,
+                        height: 400,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black.withOpacity(0.5),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _showProfilePictureOptions();
+                            },
+                            icon: const Icon(Icons.edit, size: 20),
+                            label: const SmartReTranslator(
+                              text: 'Change',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _removeProfilePicture();
+                            },
+                            icon: const Icon(Icons.delete, size: 20),
+                            label: const SmartReTranslator(
+                              text: 'Remove',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.errorColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildViewerButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        decoration: BoxDecoration(
+          color: (color ?? Colors.white).withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color ?? Colors.white, width: 2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color ?? Colors.white, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: color ?? Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showProfilePictureOptions() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -203,6 +408,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
+              if (_profileImagePath != null)
+                ListTile(
+                  leading: const Icon(
+                    Icons.visibility,
+                    color: AppColors.primaryGreen,
+                  ),
+                  title: const SmartReTranslator(text: 'View Photo'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _viewProfilePictureDialog();
+                  },
+                ),
               ListTile(
                 leading: const Icon(
                   Icons.camera_alt,
@@ -247,114 +464,247 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// ✅ Pick image from camera or gallery
   Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 90,
       );
 
       if (pickedFile == null) return;
 
-      final file = File(pickedFile.path);
-      await _updateProfilePicture(file);
+      final croppedFile = await _showCropDialog(File(pickedFile.path));
+
+      if (croppedFile != null) {
+        await _updateProfilePicture(croppedFile);
+      }
     } catch (e) {
       debugPrint('❌ Error picking image: $e');
       _showError('Failed to pick image');
     }
   }
 
-  /// ✅ Update profile picture - reuse existing image_id
+  Future<File?> _showCropDialog(File imageFile) async {
+    try {
+      final imageBytes = await imageFile.readAsBytes();
+      final controller = CropController(
+        aspectRatio: 1,
+        defaultCrop: const Rect.fromLTRB(0.1, 0.1, 0.9, 0.9),
+      );
+
+      final croppedImage = await showDialog<Uint8List?>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => Dialog(
+          backgroundColor: Colors.black,
+          insetPadding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              Container(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 8,
+                  bottom: 12,
+                  left: 16,
+                  right: 16,
+                ),
+                color: AppColors.primaryGreen,
+                child: const Row(
+                  children: [
+                    Expanded(
+                      child: SmartReTranslator(
+                        text: 'Crop Profile Picture',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: CropImage(
+                  controller: controller,
+                  image: Image.memory(imageBytes),
+                  gridColor: Colors.white,
+                  gridCornerSize: 50,
+                  gridThinWidth: 1,
+                  gridThickWidth: 3,
+                  scrimColor: Colors.black.withOpacity(0.7),
+                  alwaysShowThirdLines: true,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                color: Colors.black87,
+                child: const SmartReTranslator(
+                  text: 'Pinch to zoom • Drag to reposition',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + 16,
+                  top: 20,
+                  left: 20,
+                  right: 20,
+                ),
+                color: Colors.black,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.of(dialogContext).pop(null),
+                        icon: const Icon(Icons.close),
+                        label: const SmartReTranslator(
+                          text: 'Cancel',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[800],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          try {
+                            final bitmap = await controller.croppedBitmap();
+                            final byteData = await bitmap.toByteData(
+                              format: ui.ImageByteFormat.png,
+                            );
+
+                            if (byteData != null) {
+                              final bytes = byteData.buffer.asUint8List();
+                              if (dialogContext.mounted) {
+                                Navigator.of(dialogContext).pop(bytes);
+                              }
+                            } else {
+                              if (dialogContext.mounted) {
+                                Navigator.of(dialogContext).pop(null);
+                              }
+                            }
+                          } catch (e) {
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop(null);
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.check),
+                        label: const SmartReTranslator(
+                          text: 'Confirm',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (croppedImage == null) return null;
+
+      final directory = await getTemporaryDirectory();
+      final croppedFile = File(
+        '${directory.path}/cropped_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await croppedFile.writeAsBytes(croppedImage);
+
+      return croppedFile;
+    } catch (e) {
+      debugPrint('❌ Error cropping image: $e');
+      _showError('Failed to crop image');
+      return null;
+    }
+  }
+
   Future<void> _updateProfilePicture(File image) async {
     try {
       setState(() => _isUploadingImage = true);
 
-      // 1️⃣ Get existing profile data and image_id
       final profileJson = await _storage.read(key: 'user_profile');
-      if (profileJson == null) {
-        throw 'Profile data not found';
-      }
+      if (profileJson == null) throw 'Profile data not found';
 
       final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
       String imageId = profileData['image_id']?.toString() ?? '';
 
-      // If no existing image_id, create one (first-time upload)
       if (imageId.isEmpty) {
         imageId = 'img_${DateTime.now().millisecondsSinceEpoch}';
-        debugPrint('🆕 Creating new image_id: $imageId');
-      } else {
-        debugPrint('🔄 Reusing existing image_id: $imageId');
       }
 
-      // 2️⃣ Get app directory
+      final oldLocalPath = await _storage.read(key: 'profile_image_local_path');
+      if (oldLocalPath != null && oldLocalPath.isNotEmpty) {
+        try {
+          FileImage(File(oldLocalPath)).evict();
+        } catch (e) {
+          debugPrint('⚠️ Failed to evict old image: $e');
+        }
+
+        final oldFile = File(oldLocalPath);
+        if (await oldFile.exists()) {
+          await oldFile.delete();
+        }
+      }
+
       final directory = await getApplicationDocumentsDirectory();
       final profileDir = Directory('${directory.path}/profile_pictures');
       if (!await profileDir.exists()) {
         await profileDir.create(recursive: true);
       }
 
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final extension = image.path.split('.').last;
-      final localPath = '${profileDir.path}/profile_$imageId.$extension';
+      final localPath =
+          '${profileDir.path}/profile_${imageId}_$timestamp.$extension';
 
-      // 3️⃣ Delete old image file if exists
-      final db = await DatabaseHelper.instance.database;
-      final existingResults = await db.query(
-        'images',
-        where: 'image_id = ?',
-        whereArgs: [imageId],
-        limit: 1,
-      );
-
-      if (existingResults.isNotEmpty) {
-        final oldLocalPath = existingResults.first['local_path'] as String?;
-        if (oldLocalPath != null && oldLocalPath.isNotEmpty) {
-          final oldFile = File(oldLocalPath);
-          if (await oldFile.exists()) {
-            await oldFile.delete();
-            debugPrint('🗑️ Deleted old image: $oldLocalPath');
-          }
-        }
-      }
-
-      // 4️⃣ Save new image locally
       await image.copy(localPath);
-      debugPrint('💾 New image saved: $localPath');
 
-      // 5️⃣ Update database with pending sync flag
-      await db.insert('images', {
-        'image_id': imageId,
-        'local_path': localPath,
-        'server_image_url': '', // Will be updated after upload
-        'is_uploaded': 0, // Mark as NOT uploaded (pending sync)
-        'created_at': DateTime.now().toIso8601String(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-
-      // 6️⃣ Update secure storage
       await _storage.write(key: 'profile_image_id', value: imageId);
-
-      // Update profile data with image_id
-      profileData['image_id'] = imageId;
-      await _storage.write(key: 'user_profile', value: jsonEncode(profileData));
-
-      // 7️⃣ Set flag to indicate pending profile picture upload
+      await _storage.write(key: 'profile_image_local_path', value: localPath);
       await _storage.write(
         key: 'profile_picture_pending_upload',
         value: 'true',
       );
 
-      // 8️⃣ Update UI immediately
-      setState(() {
-        _profileImagePath = localPath;
-      });
+      profileData['image_id'] = imageId;
+      await _storage.write(key: 'user_profile', value: jsonEncode(profileData));
 
-      _showSuccess('Profile picture updated locally');
-      debugPrint('✅ Profile picture queued for upload');
+      imageCache.clear();
+      imageCache.clearLiveImages();
 
-      // 9️⃣ Try to upload to server (background)
-      _uploadPendingProfilePicture();
+      await _loadProfilePicture();
+
+      _showSuccess('Profile picture saved locally');
+
+      await _checkPendingUpdates();
+      _triggerProfileSync();
     } catch (e) {
       debugPrint('❌ Error updating profile picture: $e');
       _showError('Failed to update profile picture');
@@ -363,99 +713,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// ✅ Upload pending profile picture to server
-  Future<void> _uploadPendingProfilePicture() async {
-    try {
-      // Check if there's a pending upload
-      final isPending = await _storage.read(
-        key: 'profile_picture_pending_upload',
-      );
-      if (isPending != 'true') {
-        debugPrint('ℹ️ No pending profile picture upload');
-        return;
-      }
-
-      // Get image_id and local path
-      final imageId = await _storage.read(key: 'profile_image_id');
-      if (imageId == null) {
-        debugPrint('⚠️ No image_id found');
-        return;
-      }
-
-      final db = await DatabaseHelper.instance.database;
-      final results = await db.query(
-        'images',
-        where: 'image_id = ? AND is_uploaded = 0',
-        whereArgs: [imageId],
-        limit: 1,
-      );
-
-      if (results.isEmpty) {
-        debugPrint('ℹ️ Image already uploaded or not found');
-        await _storage.delete(key: 'profile_picture_pending_upload');
-        return;
-      }
-
-      final localPath = results.first['local_path'] as String;
-      final imageFile = File(localPath);
-
-      if (!await imageFile.exists()) {
-        debugPrint('❌ Image file not found: $localPath');
-        await _storage.delete(key: 'profile_picture_pending_upload');
-        return;
-      }
-
-      debugPrint('📤 Uploading profile picture to server...');
-
-      // Upload to server with existing image_id
-      // ✅ CORRECT ORDER
-      final response = await ApiService.instance.uploadProfilePicture(
-        imageFile,
-        imageId,
-      );
-
-      if (response.isSuccess) {
-        final data = response.data;
-        final serverImageUrl = data['image_url']?.toString() ?? '';
-
-        // Update database: mark as uploaded
-        await db.update(
-          'images',
-          {'server_image_url': serverImageUrl, 'is_uploaded': 1},
-          where: 'image_id = ?',
-          whereArgs: [imageId],
-        );
-
-        // Clear pending flag
-        await _storage.delete(key: 'profile_picture_pending_upload');
-
-        debugPrint('✅ Profile picture uploaded (image_id: $imageId)');
-
-        if (mounted) {
-          _showSuccess('Profile picture synced with server');
-        }
-      } else if (response.isOffline || response.isTimeout) {
-        debugPrint('⚠️ Upload failed: offline/timeout. Will retry later.');
-      } else {
-        debugPrint('❌ Upload failed: ${response.error}');
-      }
-    } catch (e) {
-      debugPrint('❌ Error uploading profile picture: $e');
-    }
-  }
-
-  /// ✅ Check and upload pending profile picture
-  Future<void> _syncPendingProfilePicture() async {
-    final isPending = await _storage.read(
-      key: 'profile_picture_pending_upload',
-    );
-    if (isPending == 'true') {
-      debugPrint('🔄 Found pending profile picture upload, syncing...');
-      await _uploadPendingProfilePicture();
-    }
-  }
-
-  /// ✅ Remove profile picture
   Future<void> _removeProfilePicture() async {
     try {
       setState(() => _isUploadingImage = true);
@@ -467,28 +724,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       if (response.isSuccess) {
-        // Remove from database
-        final imageId = await _storage.read(key: 'profile_image_id');
-        if (imageId != null) {
-          final db = await DatabaseHelper.instance.database;
-          await db.delete('images', where: 'image_id = ?', whereArgs: [imageId]);
-        }
-
-        // Delete local file
         if (_profileImagePath != null) {
+          try {
+            FileImage(File(_profileImagePath!)).evict();
+          } catch (e) {
+            debugPrint('⚠️ Failed to evict image: $e');
+          }
+
           final file = File(_profileImagePath!);
           if (await file.exists()) {
             await file.delete();
           }
         }
 
-        // Remove from secure storage
         await _storage.delete(key: 'profile_image_id');
+        await _storage.delete(key: 'profile_image_local_path');
         await _storage.delete(key: 'profile_picture_pending_upload');
 
-        setState(() {
-          _profileImagePath = null;
-        });
+        final profileJson = await _storage.read(key: 'user_profile');
+        if (profileJson != null) {
+          final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
+          profileData['image_id'] = null;
+          profileData['pic_url'] = 'no-image';
+          await _storage.write(
+            key: 'user_profile',
+            value: jsonEncode(profileData),
+          );
+        }
+
+        imageCache.clear();
+        imageCache.clearLiveImages();
+
+        await _loadProfilePicture();
 
         _showSuccess('Profile picture removed');
       } else {
@@ -549,24 +816,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
-    final Map<String, dynamic> body = {};
+    final Map<String, dynamic> updates = {};
 
     if (_nameCtrl.text.trim() != _name.trim()) {
-      body['name'] = _nameCtrl.text.trim();
+      updates['name'] = _nameCtrl.text.trim();
     }
 
     if (!_emailVerified &&
         _emailCtrl.text.trim().isNotEmpty &&
         _emailCtrl.text.trim() != _email.trim()) {
-      body['email'] = _emailCtrl.text.trim();
+      updates['email'] = _emailCtrl.text.trim();
     }
 
     if (_addressCtrl.text.trim() != _address.trim()) {
-      body['address'] = _addressCtrl.text.trim();
+      updates['address'] = _addressCtrl.text.trim();
     }
 
     if (_pincodeCtrl.text.trim() != _pincode.trim()) {
-      body['pincode'] = _pincodeCtrl.text.trim();
+      updates['pincode'] = _pincodeCtrl.text.trim();
     }
 
     if (_dobCtrl.text.trim() != _dob.trim()) {
@@ -579,10 +846,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           dobIso = _dobCtrl.text.trim();
         }
       }
-      body['dob'] = dobIso;
+      updates['dob'] = dobIso;
     }
 
-    if (body.isEmpty) {
+    if (updates.isEmpty) {
       setState(() => _isEditing = false);
       return;
     }
@@ -590,52 +857,100 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isSaving = true);
 
     try {
-      final userId = await _storage.read(key: 'user_id');
-      final response = await ApiService.instance.put(
-        '/profile/updateUser/$userId',
-        body: body,
-        requiresAuth: true,
-        timeout: const Duration(seconds: 30),
+      final currentJson = await _storage.read(key: 'user_profile');
+      Map<String, dynamic> profileData =
+          currentJson != null && currentJson.isNotEmpty
+          ? jsonDecode(currentJson) as Map<String, dynamic>
+          : <String, dynamic>{};
+
+      profileData.addAll(updates);
+      profileData['updated_at'] = DateTime.now().toIso8601String();
+
+      await _storage.write(key: 'user_profile', value: jsonEncode(profileData));
+
+      await _storage.write(key: 'profile_data_pending', value: 'true');
+      await _storage.write(
+        key: 'profile_pending_updates',
+        value: jsonEncode(updates),
       );
 
-      if (response.isSuccess || response.statusCode == 200) {
-        final currentJson = await _storage.read(key: 'user_profile');
-        Map<String, dynamic> current =
-            currentJson != null && currentJson.isNotEmpty
-            ? jsonDecode(currentJson) as Map<String, dynamic>
-            : <String, dynamic>{};
+      await _reloadUserProfileQuietly();
 
-        if (body.containsKey('name')) current['name'] = body['name'];
-        if (body.containsKey('email')) current['email'] = body['email'];
-        if (body.containsKey('address')) current['address'] = body['address'];
-        if (body.containsKey('pincode')) current['pincode'] = body['pincode'];
-        if (body.containsKey('dob')) current['dob'] = body['dob'];
+      setState(() => _isEditing = false);
 
-        await _storage.write(key: 'user_profile', value: jsonEncode(current));
+      _showSuccess('Profile updated (will sync when online)');
+      await _checkPendingUpdates();
 
-        await _loadUserProfile();
-
-        setState(() {
-          _isEditing = false;
-        });
-
-        _showSuccess('Profile updated successfully');
-      } else if (response.isOffline) {
-        _showError('No internet connection');
-      } else if (response.isTimeout) {
-        _showError('Request timeout. Please try again');
-      } else {
-        final data = response.data;
-        final msg = (data is Map && data['message'] != null)
-            ? data['message'].toString()
-            : (response.error ?? 'Failed to update profile');
-        _showError(msg);
-      }
+      _triggerProfileSync();
     } catch (e) {
+      debugPrint('❌ Error saving profile: $e');
       _showError('Error updating profile: $e');
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  Widget _buildProfileSyncBanner() {
+    if (_pendingProfileUpdatesCount == 0) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade300, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.orange.shade700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SmartReTranslator(
+              text: _pendingProfileUpdatesCount == 1
+                  ? 'Profile update pending sync'
+                  : '$_pendingProfileUpdatesCount profile updates pending sync',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.orange.shade900,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _isSyncing ? null : _triggerProfileSync,
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.orange.shade700,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: _isSyncing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const SmartReTranslator(
+                    text: 'Sync Now',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -701,12 +1016,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _loadUserProfile,
+              onRefresh: () async {
+                await _reloadUserProfileQuietly();
+                await _triggerProfileSync();
+                await _checkPendingUpdates();
+              },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   children: [
                     _buildProfileHeader(),
+                    _buildProfileSyncBanner(),
                     const SizedBox(height: 16),
                     if (!_emailVerified) _buildVerificationBanner(),
                     const SizedBox(height: 8),
@@ -734,7 +1054,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// ✅ Profile header with WhatsApp-style image editor
   Widget _buildProfileHeader() {
     return Container(
       width: double.infinity,
@@ -750,43 +1069,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Stack(
             children: [
-              // Profile Picture
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                  image: _profileImagePath != null
-                      ? DecorationImage(
-                          image: FileImage(File(_profileImagePath!)),
-                          fit: BoxFit.cover,
+              GestureDetector(
+                onTap: _profileImagePath != null
+                    ? _viewProfilePictureDialog
+                    : _showProfilePictureOptions,
+                child: Container(
+                  key: _profileImageKey,
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                    image: _profileImagePath != null
+                        ? DecorationImage(
+                            image: FileImage(File(_profileImagePath!)),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                  ),
+                  child: _profileImagePath == null
+                      ? Center(
+                          child: Text(
+                            _name.isNotEmpty ? _name[0].toUpperCase() : '?',
+                            style: const TextStyle(
+                              fontSize: 48,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primaryGreen,
+                            ),
+                          ),
                         )
                       : null,
                 ),
-                child: _profileImagePath == null
-                    ? Center(
-                        child: Text(
-                          _name.isNotEmpty ? _name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primaryGreen,
-                          ),
-                        ),
-                      )
-                    : null,
               ),
-
-              // Upload indicator overlay
               if (_isUploadingImage)
                 Positioned.fill(
                   child: Container(
@@ -802,13 +1124,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
-
-              // Camera button (WhatsApp style)
               Positioned(
                 bottom: 0,
                 right: 0,
                 child: GestureDetector(
-                  onTap: _isUploadingImage ? null : _showImagePickerOptions,
+                  onTap: _isUploadingImage ? null : _showProfilePictureOptions,
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
@@ -831,8 +1151,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-
-              // Verified badge
               if (_emailVerified)
                 Positioned(
                   top: 0,
@@ -854,14 +1172,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            _name.isNotEmpty ? _name : 'Guest User',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          if (_isEditing)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: TextField(
+                controller: _nameCtrl,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.transparent,
+                  border: UnderlineInputBorder(
+                    borderSide: BorderSide(
+                      color: Colors.white.withOpacity(0.5),
+                    ),
+                  ),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(
+                      color: Colors.white.withOpacity(0.5),
+                    ),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white, width: 2),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
+                ),
+                cursorColor: Colors.white,
+              ),
+            )
+          else
+            Text(
+              _name.isNotEmpty ? _name : 'Guest User',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
-          ),
           const SizedBox(height: 8),
           if (_category.isNotEmpty)
             Container(

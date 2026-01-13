@@ -29,7 +29,7 @@ async function getUserById(userId) {
       ud.pincode, 
       ud.category_id,
       ud.updated_at,
-      ud.image_id
+      ud.pic_url
     FROM users_auth ua
     JOIN user_details ud ON ua.user_id = ud.user_id
     JOIN user_category uc ON ud.category_id = uc.category_id
@@ -39,21 +39,27 @@ async function getUserById(userId) {
   return result.rows[0];
 }
 
-async function getImageURL(imageId) {
-  const result = await pool.query(
-    "SELECT image_url FROM images WHERE image_id = $1",
-    [imageId]
-  );
-  if (result.rowCount === 0) {
-    throw new Error("User not found");
+async function getProfilePictureUrl(userId) {
+  try {
+    const result = await pool.query(
+      `SELECT pic_url FROM user_details WHERE user_id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return result.rows[0].pic_url;
+  } catch (error) {
+    console.error("❌ Error getting profile picture URL:", error);
+    throw error;
   }
-  return result.rows[0].image_url;
 }
 
 async function createUser(newUser) {
   const client = await pool.connect();
   try {
-    // Check if phone number or email already exists
     const existingCheck = await client.query(
       `SELECT phone_number, email FROM users_auth WHERE phone_number = $1 OR email = $2`,
       [newUser.phone_number, newUser.email]
@@ -76,26 +82,17 @@ async function createUser(newUser) {
     await client.query("BEGIN");
     const user_id = await generateUniqueId(client, "users_auth", "user_id");
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(newUser.password, 10);
 
-    // Insert into users_auth
     await client.query(
       `INSERT INTO users_auth (user_id, password, phone_number, email)
        VALUES ($1, $2, $3, $4)`,
       [user_id, hashedPassword, newUser.phone_number, newUser.email]
     );
 
-    // Generate image_id upfront
-    const image_id = await generateUniqueId(client, "images", "image_id");
-
-    // Insert into images with null imageurl
-    await client.query("INSERT INTO images (image_id) VALUES ($1)", [image_id]);
-
-    // Insert into user_details
     await client.query(
-      `INSERT INTO user_details (user_id, name, dob, address, pincode, category_id, image_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+      `INSERT INTO user_details (user_id, name, dob, address, pincode, category_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
       [
         user_id,
         newUser.name,
@@ -103,12 +100,11 @@ async function createUser(newUser) {
         newUser.address,
         newUser.pincode,
         newUser.category_id,
-        image_id,
       ]
     );
 
     await client.query("COMMIT");
-    return { message: "User created successfully" };
+    return { message: "User created successfully", user_id };
   } catch (error) {
     console.error("Error creating user:", error);
     await client.query("ROLLBACK");
@@ -123,7 +119,6 @@ async function updateUser(user_id, updatedUser) {
   try {
     await client.query("BEGIN");
 
-    // 1) Get auth info (for email_verified)
     const authRes = await client.query(
       `SELECT email_verified FROM users_auth WHERE user_id = $1`,
       [user_id]
@@ -135,7 +130,6 @@ async function updateUser(user_id, updatedUser) {
 
     const { email_verified } = authRes.rows[0];
 
-    // 2) Dynamically update users_auth (ONLY email, never phone/password)
     if (!email_verified && updatedUser.email) {
       await client.query(
         "UPDATE users_auth SET email = $1, updated_at = NOW() WHERE user_id = $2",
@@ -143,10 +137,9 @@ async function updateUser(user_id, updatedUser) {
       );
     }
 
-    // 3) Dynamically update user_details (only provided fields)
     const detailSet = [];
     const detailValues = [];
-    idx = 1;
+    let idx = 1;
 
     if (Object.prototype.hasOwnProperty.call(updatedUser, "name")) {
       detailSet.push(`name = $${idx++}`);
@@ -190,21 +183,30 @@ async function updateUser(user_id, updatedUser) {
   }
 }
 
-async function updateProfileImageUrl(imageId, imageUrl) {
+async function updateProfilePictureUrl(userId, picUrl) {
   const client = await pool.connect();
   try {
+    console.log("📥 Updating profile picture:");
+    console.log("   - User ID:", userId);
+    console.log("   - Pic URL:", picUrl);
+
     await client.query("BEGIN");
+
     const result = await client.query(
-      "UPDATE images SET image_url = $1 WHERE image_id = $2 RETURNING image_id, image_url",
-      [imageUrl, imageId]
+      "UPDATE user_details SET pic_url = $1, updated_at = NOW() WHERE user_id = $2 RETURNING user_id, pic_url",
+      [picUrl, userId]
     );
+
     if (result.rowCount === 0) {
-      throw new Error("Image not found");
+      throw new Error("User not found");
     }
+
     await client.query("COMMIT");
+
+    console.log("✅ Profile picture updated successfully");
     return result.rows[0];
   } catch (error) {
-    console.error("Error updating image url:", error);
+    console.error("❌ Error updating profile picture:", error);
     await client.query("ROLLBACK");
     throw error;
   } finally {
@@ -214,8 +216,8 @@ async function updateProfileImageUrl(imageId, imageUrl) {
 
 module.exports = {
   getUserById,
+  getProfilePictureUrl,
   createUser,
   updateUser,
-  getImageURL,
-  updateProfileImageUrl,
+  updateProfilePictureUrl,
 };
