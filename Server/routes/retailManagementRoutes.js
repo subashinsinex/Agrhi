@@ -46,4 +46,7 @@ router.delete(
   retailService.deleteProduct
 );
 
+// NEW: Get store locations (retailer_id, shop_name, shop_address, business_type, latitude, longitude)
+router.get("/store-locations", jwtChecker, retailService.getStoreLocations);
+
 module.exports = router;

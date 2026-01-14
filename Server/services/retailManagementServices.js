@@ -500,3 +500,27 @@ exports.getRetailersWithProducts = async (req, res) => {
       .json({ message: "Error fetching retailers & products", error });
   }
 };
+
+exports.getStoreLocations = async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        retailer_id,
+        shop_name,
+        shop_address,
+        business_type,
+        latitude,
+        longitude
+      FROM retailers
+      WHERE latitude IS NOT NULL 
+        AND longitude IS NOT NULL
+      ORDER BY created_at DESC
+    `;
+
+    const result = await pool.query(sql);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getStoreLocations error:", error);
+    res.status(500).json({ message: "Error fetching store locations", error });
+  }
+};
