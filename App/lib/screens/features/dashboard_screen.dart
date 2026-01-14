@@ -129,6 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     try {
       final profileJson = await _readWithRetry('user_profile');
+      final profileImagePath = await _readWithRetry('profile_image_local_path');
 
       if (profileJson != null) {
         final profile = jsonDecode(profileJson) as Map<String, dynamic>;
@@ -141,6 +142,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'category': profile['user_category'],
               'address': profile['address'],
               'email_verified': profile['email_verified'] ?? false,
+              'profile_image_path': profileImagePath,
             };
             _isLoadingProfile = false;
           });
@@ -673,6 +675,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           email: userData?['email'],
                           category: userData?['category'],
                           emailVerified: userData?['email_verified'] ?? false,
+                          profileImagePath: userData?['profile_image_path'],
                           onTap: () {
                             Navigator.push(
                               context,

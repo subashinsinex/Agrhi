@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../utils/colors.dart';
 
@@ -6,6 +7,7 @@ class ProfileCard extends StatelessWidget {
   final String? email;
   final String? category;
   final bool emailVerified;
+  final String? profileImagePath;
   final VoidCallback? onTap;
 
   const ProfileCard({
@@ -14,6 +16,7 @@ class ProfileCard extends StatelessWidget {
     this.email,
     this.category,
     this.emailVerified = false,
+    this.profileImagePath,
     this.onTap,
   });
 
@@ -158,36 +161,26 @@ class ProfileCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.mediumGreenAccent,
             borderRadius: BorderRadius.circular(14),
+            image: profileImagePath != null
+                ? DecorationImage(
+                    image: FileImage(File(profileImagePath!)),
+                    fit: BoxFit.cover,
+                  )
+                : null,
           ),
-          child: Center(
-            child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: const TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryGreen,
-              ),
-            ),
-          ),
+          child: profileImagePath == null
+              ? Center(
+                  child: Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primaryGreen,
+                    ),
+                  ),
+                )
+              : null,
         ),
-        // Verification badge on avatar
-        if (emailVerified)
-          Positioned(
-            bottom: 2,
-            right: 2,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: AppColors.successColor,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.mediumGreenAccent,
-                  width: 2,
-                ),
-              ),
-              child: const Icon(Icons.check, color: Colors.white, size: 12),
-            ),
-          ),
       ],
     );
   }
