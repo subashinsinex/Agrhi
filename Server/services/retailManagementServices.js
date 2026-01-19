@@ -18,6 +18,7 @@ async function generateUniqueId(client, tableName, idColumn) {
 
 // ---- Retailer profile ----
 
+// services/retailManagementServices.js
 exports.createRetailer = async (req, res) => {
   const {
     user_id,
@@ -28,8 +29,7 @@ exports.createRetailer = async (req, res) => {
     license_number,
     latitude,
     longitude,
-    image_id,
-    shop_number, // <--- NEW: from images table
+    shop_number, // keep shop_number, drop image_id from body
   } = req.body;
 
   const client = await pool.connect();
@@ -52,8 +52,8 @@ exports.createRetailer = async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO retailers 
-        (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, image_id, shop_number)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $11)
+        (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, shop_number)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
       [
         retailer_id,
@@ -65,7 +65,6 @@ exports.createRetailer = async (req, res) => {
         license_number,
         latitude,
         longitude,
-        image_id || null,
         shop_number,
       ]
     );
@@ -75,7 +74,9 @@ exports.createRetailer = async (req, res) => {
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("createRetailer error:", error);
-    res.status(500).json({ message: "Error creating retailer", error });
+    res
+      .status(500)
+      .json({ message: "Error creating retailer", error: error.message });
   } finally {
     client.release();
   }

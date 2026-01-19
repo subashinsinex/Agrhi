@@ -51,51 +51,52 @@ const upload = multer({
  * 2) Insert into images
  * 3) Update retailers.image_id
  */
-router.post("/upload", jwtChecker, upload.single("image"), async (req, res) => {
-  try {
-    if (!req.user_id) {
-      return res.status(401).json({
+router.post(
+  "/upload",
+  jwtChecker,
+  upload.single("image"), // field name in form-data
+  async (req, res) => {
+    try {
+      if (!req.user_id) {
+        return res
+          .status(401)
+          .json({ success: false, error: "Authentication failed" });
+      }
+
+      const { retailer_id } = req.body;
+      const file = req.file;
+
+      if (!retailer_id) {
+        return res
+          .status(400)
+          .json({ success: false, error: "retailer_id is required" });
+      }
+      if (!file) {
+        return res
+          .status(400)
+          .json({ success: false, error: "No image file provided" });
+      }
+
+      const result = await shopImageService.saveShopImageForRetailer(
+        file,
+        retailer_id
+      );
+
+      return res.status(200).json({
+        success: true,
+        image_id: result.image_id,
+        image_url: result.image_url,
+        retailer: result.retailer,
+      });
+    } catch (error) {
+      console.error("shop-image upload error:", error);
+      res.status(500).json({
         success: false,
-        error: "Authentication failed",
+        error: "Internal server error",
+        message: error.message,
       });
     }
-
-    const { retailer_id } = req.body;
-    const file = req.file;
-
-    if (!retailer_id) {
-      return res.status(400).json({
-        success: false,
-        error: "retailer_id is required",
-      });
-    }
-
-    if (!file) {
-      return res.status(400).json({
-        success: false,
-        error: "No image file provided",
-      });
-    }
-
-    const result = await shopImageService.saveShopImageForRetailer(
-      file,
-      retailer_id
-    );
-
-    return res.status(200).json({
-      success: true,
-      image_id: result.image_id,
-      image_url: result.image_url,
-      retailer: result.retailer,
-    });
-  } catch (error) {
-    console.error("❌ shop-image upload error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Internal server error",
-      message: error.message,
-    });
   }
-});
+);
 
 module.exports = router;
