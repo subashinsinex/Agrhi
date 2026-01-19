@@ -29,6 +29,9 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
   final _gstNumberController = TextEditingController();
   final _licenseNumberController = TextEditingController();
 
+  // ✅ Create ImagePicker instance once (reuse it)
+  final ImagePicker _picker = ImagePicker();
+
   String? _businessType = 'fertilizer';
   bool _isLoading = false;
   bool _isEditing = false;
@@ -162,6 +165,7 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
     return true;
   }
 
+  // ✅ Optimized: Get location first (use last known for speed), then capture image
   Future<void> _captureImageWithLocation() async {
     final hasPermission = await _handleLocationPermission();
     if (!hasPermission) return;
@@ -169,22 +173,30 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      // ✅ Step 1: Get last known position first (instant)
+      Position? position = await Geolocator.getLastKnownPosition();
 
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(
+      // ✅ Step 2: Open camera immediately with last known position
+      final pickedFile = await _picker.pickImage(
         source: ImageSource.camera,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 85,
+        preferredCameraDevice: CameraDevice.rear, // ✅ Specify rear camera
       );
 
       if (pickedFile != null) {
+        // ✅ Step 3: Get accurate current position in background (if last known was null)
+        if (position == null) {
+          position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+            timeLimit: const Duration(seconds: 10),
+          );
+        }
+
         setState(() {
           _selectedImage = File(pickedFile.path);
-          _capturedLatitude = position.latitude;
+          _capturedLatitude = position!.latitude;
           _capturedLongitude = position.longitude;
           _locationCaptured = true;
           _shopImageUrl = null;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -6,9 +7,36 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../shared/custom_app_bar.dart';
 import '../../../utils/colors.dart';
 import '../../src/services/api_service.dart';
+
+/// Custom tile provider with caching support
+class CachedTileProvider extends TileProvider {
+  final CacheManager cacheManager;
+  final Map<String, String> headers;
+
+  CachedTileProvider({required this.cacheManager, this.headers = const {}});
+
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
+    final url = getTileUrl(coordinates, options);
+
+    return CachedNetworkImageProvider(
+      url,
+      cacheManager: cacheManager,
+      headers: headers,
+    );
+  }
+
+  String getTileUrl(TileCoordinates coordinates, TileLayer options) {
+    return options.urlTemplate!
+        .replaceAll('{z}', coordinates.z.toString())
+        .replaceAll('{x}', coordinates.x.toString())
+        .replaceAll('{y}', coordinates.y.toString());
+  }
+}
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -22,14 +50,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final ApiService _apiService = ApiService.instance;
 
   LatLng? _currentPosition;
-  bool _isLoading = true;
-  String? _errorMessage;
   List<Marker> _markers = [];
   bool _isMapReady = false;
   late AnimationController _pulseController;
-  double _currentZoom = 13.0;
+  double _currentZoom = 17.0;
   bool _isTracking = true;
   String? _profileImagePath;
+  Timer? _locationUpdateTimer;
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -39,11 +66,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ),
   );
 
+  // Optimized cache manager for map tiles
   static final customCacheManager = CacheManager(
     Config(
       'mapTileCache',
-      stalePeriod: const Duration(days: 30),
-      maxNrOfCacheObjects: 1000,
+      stalePeriod: const Duration(days: 90),
+      maxNrOfCacheObjects: 2000,
       repo: JsonCacheInfoRepository(databaseName: 'mapTileCache'),
       fileService: HttpFileService(),
     ),
@@ -54,7 +82,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _isLoadingLocations = false;
 
   // Distance filter
-  double _distanceFilter = 10.0; // Default 10km
+  double _distanceFilter = 10.0;
+
+  // Default center (Chennai)
+  static const LatLng _defaultCenter = LatLng(13.0827, 80.2707);
+
   List<LocationData> get _filteredLocations {
     if (_currentPosition == null) return _locations;
 
@@ -76,9 +108,107 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       vsync: this,
     )..repeat(reverse: true);
 
-    _loadProfileImage();
-    _getCurrentLocation();
-    _loadStoreLocations();
+    // ✅ Load everything immediately in parallel
+    _initializeMapData();
+  }
+
+  /// ✅ Load profile image and location instantly, then stores
+  Future<void> _initializeMapData() async {
+    // Start profile image and location loading immediately (non-blocking)
+    unawaited(_loadProfileImage());
+    unawaited(_getLocationFast());
+
+    // Load stores in background after a short delay
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) _loadStoreLocations();
+    });
+  }
+
+  /// ✅ Fast location strategy: last known position first, then accurate position
+  Future<void> _getLocationFast() async {
+    final hasPermission = await _handleLocationPermission();
+    if (!hasPermission) return;
+
+    try {
+      // ✅ Step 1: Get last known position INSTANTLY (cached, no GPS wait)
+      final lastKnown = await Geolocator.getLastKnownPosition();
+
+      if (lastKnown != null && mounted) {
+        final lastPos = LatLng(lastKnown.latitude, lastKnown.longitude);
+        setState(() {
+          _currentPosition = lastPos;
+          _markers = _buildAllMarkers();
+        });
+
+        // Move map to last known position immediately
+        if (_isMapReady) {
+          _mapController.move(lastPos, _currentZoom);
+        }
+
+        debugPrint(
+          '✅ Showing last known position: ${lastPos.latitude}, ${lastPos.longitude}',
+        );
+      }
+
+      // ✅ Step 2: Get accurate current position in background (may take 2-4 seconds)
+      final currentPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      if (mounted) {
+        final currentPos = LatLng(
+          currentPosition.latitude,
+          currentPosition.longitude,
+        );
+
+        // Only update if position changed significantly (> 10 meters)
+        if (_currentPosition == null ||
+            _calculateDistance(_currentPosition!, currentPos) > 10) {
+          setState(() {
+            _currentPosition = currentPos;
+            _markers = _buildAllMarkers();
+          });
+
+          // Smoothly move to accurate position
+          if (_isMapReady && _isTracking) {
+            _mapController.move(currentPos, _currentZoom);
+          }
+
+          debugPrint(
+            '✅ Updated to accurate position: ${currentPos.latitude}, ${currentPos.longitude}',
+          );
+        }
+      }
+
+      // Start listening for real-time updates
+      _listenToLocationUpdates();
+    } catch (e) {
+      debugPrint('⚠️ Error getting location: $e');
+
+      // Fallback: try last known position one more time
+      try {
+        final fallbackPos = await Geolocator.getLastKnownPosition();
+        if (fallbackPos != null && mounted) {
+          final pos = LatLng(fallbackPos.latitude, fallbackPos.longitude);
+          setState(() {
+            _currentPosition = pos;
+            _markers = _buildAllMarkers();
+          });
+          if (_isMapReady) {
+            _mapController.move(pos, _currentZoom);
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Fallback also failed: $e');
+      }
+    }
+  }
+
+  /// Calculate distance between two points in meters
+  double _calculateDistance(LatLng from, LatLng to) {
+    const Distance distance = Distance();
+    return distance.as(LengthUnit.Meter, from, to);
   }
 
   Future<void> _loadProfileImage() async {
@@ -127,37 +257,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           });
 
           debugPrint('✅ Loaded ${validLocations.length} store locations');
-
-          if (locations.length != validLocations.length) {
-            _showSnackBar(
-              '${locations.length - validLocations.length} store(s) have invalid coordinates',
-              isError: false,
-            );
-          }
-        }
-      } else if (response.isOffline) {
-        if (mounted) {
-          setState(() {
-            _isLoadingLocations = false;
-          });
-          _showSnackBar('No internet connection', isError: true);
-        }
-      } else if (response.isUnauthorized || response.isUnauthenticated) {
-        if (mounted) {
-          setState(() {
-            _isLoadingLocations = false;
-          });
-          _showSnackBar('Authentication required', isError: true);
         }
       } else {
         if (mounted) {
           setState(() {
             _isLoadingLocations = false;
           });
-          _showSnackBar(
-            response.error ?? 'Failed to load store locations',
-            isError: true,
-          );
+          debugPrint('⚠️ Failed to load stores: ${response.error}');
         }
       }
     } catch (e) {
@@ -166,28 +272,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         setState(() {
           _isLoadingLocations = false;
         });
-        _showSnackBar('Error loading stores: $e', isError: true);
       }
     }
-  }
-
-  void _showSnackBar(String message, {bool isError = false}) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.orange,
-        duration: Duration(seconds: isError ? 4 : 3),
-        action: isError
-            ? SnackBarAction(
-                label: 'Retry',
-                textColor: Colors.white,
-                onPressed: _loadStoreLocations,
-              )
-            : null,
-      ),
-    );
   }
 
   Future<void> _refreshLocations() async {
@@ -200,12 +286,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Location services are disabled. Please enable them.';
-          _isLoading = false;
-        });
-      }
+      debugPrint('⚠️ Location services disabled');
       return false;
     }
 
@@ -213,59 +294,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'Location permission denied';
-            _isLoading = false;
-          });
-        }
+        debugPrint('⚠️ Location permission denied');
         return false;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Location permissions are permanently denied';
-          _isLoading = false;
-        });
-      }
+      debugPrint('⚠️ Location permission permanently denied');
       return false;
     }
 
     return true;
-  }
-
-  Future<void> _getCurrentLocation() async {
-    final hasPermission = await _handleLocationPermission();
-    if (!hasPermission) return;
-
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      if (mounted) {
-        setState(() {
-          _currentPosition = LatLng(position.latitude, position.longitude);
-          _markers = _buildAllMarkers();
-          _isLoading = false;
-        });
-
-        if (_isMapReady && _currentPosition != null) {
-          _mapController.move(_currentPosition!, _currentZoom);
-        }
-      }
-
-      _listenToLocationUpdates();
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Error getting location: $e';
-          _isLoading = false;
-        });
-      }
-    }
   }
 
   void _listenToLocationUpdates() {
@@ -279,14 +318,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
       final newPos = LatLng(position.latitude, position.longitude);
 
-      setState(() {
-        _currentPosition = newPos;
-        _markers = _buildAllMarkers();
-      });
+      _locationUpdateTimer?.cancel();
+      _locationUpdateTimer = Timer(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
 
-      if (_isTracking && _isMapReady) {
-        _mapController.move(newPos, _currentZoom);
-      }
+        setState(() {
+          _currentPosition = newPos;
+          _markers = _buildAllMarkers();
+        });
+
+        if (_isTracking && _isMapReady) {
+          _mapController.move(newPos, _currentZoom);
+        }
+      });
     });
   }
 
@@ -303,7 +347,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   List<Marker> _buildLocationMarkers() {
-    // Only show markers within the distance filter
     return _filteredLocations.map((location) {
       return Marker(
         point: location.position,
@@ -391,14 +434,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// Show store list bottom sheet with distance filter
   void _showStoreListBottomSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      isDismissible: true, // Allow tap outside to dismiss
-      enableDrag: true, // Allow dragging to dismiss
+      isDismissible: true,
+      enableDrag: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
           return DraggableScrollableSheet(
@@ -413,7 +455,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
                 child: Column(
                   children: [
-                    // Handle bar
                     Container(
                       margin: const EdgeInsets.only(top: 12, bottom: 8),
                       width: 40,
@@ -424,7 +465,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       ),
                     ),
 
-                    // Header (without close button)
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -466,7 +506,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
                     const Divider(height: 1),
 
-                    // Distance slider with specific intervals
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -524,6 +563,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               overlayShape: const RoundSliderOverlayShape(
                                 overlayRadius: 24,
                               ),
+                              showValueIndicator: ShowValueIndicator.never,
                             ),
                             child: Slider(
                               value: _getSliderValue(_distanceFilter),
@@ -543,13 +583,38 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               },
                             ),
                           ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '1 km',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              Text(
+                                '10 km',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              Text(
+                                '50 km',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
 
                     const Divider(height: 1),
 
-                    // Store list
                     Expanded(
                       child: _filteredLocations.isEmpty
                           ? Center(
@@ -572,12 +637,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   const SizedBox(height: 8),
                                   TextButton(
                                     onPressed: () {
-                                      setModalState(() {
-                                        _distanceFilter = 50;
-                                      });
-                                      setState(() {
-                                        _markers = _buildAllMarkers();
-                                      });
+                                      setModalState(() => _distanceFilter = 50);
+                                      setState(
+                                        () => _markers = _buildAllMarkers(),
+                                      );
                                     },
                                     child: const Text(
                                       'Increase distance filter',
@@ -701,13 +764,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Helper methods for distance intervals
   double _getSliderValue(double distance) {
     const intervals = [1.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0];
     for (int i = 0; i < intervals.length; i++) {
-      if (distance <= intervals[i]) {
-        return i.toDouble();
-      }
+      if (distance <= intervals[i]) return i.toDouble();
     }
     return 6.0;
   }
@@ -911,15 +971,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return distance.as(LengthUnit.Kilometer, _currentPosition!, destination);
   }
 
-  String _calculateDistance(LatLng destination) {
-    return _calculateDistanceInKm(destination).toStringAsFixed(2);
-  }
-
   void _navigateToLocation(LatLng position) {
     if (_isMapReady) {
-      setState(() {
-        _isTracking = false;
-      });
+      setState(() => _isTracking = false);
       _mapController.move(position, 16.0);
     }
   }
@@ -929,9 +983,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final url = Uri.parse(
         'https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}',
       );
-      if (await canLaunchUrl(url)) {
+      if (await canLaunchUrl(url))
         await launchUrl(url, mode: LaunchMode.externalApplication);
-      }
       return;
     }
 
@@ -943,9 +996,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
 
     try {
-      if (await canLaunchUrl(url)) {
+      if (await canLaunchUrl(url))
         await launchUrl(url, mode: LaunchMode.externalApplication);
-      }
     } catch (e) {
       debugPrint('Error launching maps: $e');
     }
@@ -1030,18 +1082,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _recenterMap() {
     if (_currentPosition != null && _isMapReady) {
-      setState(() {
-        _isTracking = true;
-      });
+      setState(() => _isTracking = true);
       _mapController.move(_currentPosition!, _currentZoom);
     }
   }
 
   void _zoomIn() {
     if (_isMapReady && _currentZoom < 19.0) {
-      setState(() {
-        _currentZoom = (_currentZoom + 1).clamp(5.0, 19.0);
-      });
+      setState(() => _currentZoom = (_currentZoom + 1).clamp(5.0, 19.0));
       final center = _mapController.camera.center;
       _mapController.move(center, _currentZoom);
     }
@@ -1049,9 +1097,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _zoomOut() {
     if (_isMapReady && _currentZoom > 5.0) {
-      setState(() {
-        _currentZoom = (_currentZoom - 1).clamp(5.0, 19.0);
-      });
+      setState(() => _currentZoom = (_currentZoom - 1).clamp(5.0, 19.0));
       final center = _mapController.camera.center;
       _mapController.move(center, _currentZoom);
     }
@@ -1059,408 +1105,301 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _launchCopyright() async {
     final uri = Uri.parse('https://www.openstreetmap.org/copyright');
-    if (await canLaunchUrl(uri)) {
+    if (await canLaunchUrl(uri))
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  Future<void> _clearMapCache() async {
-    await customCacheManager.emptyCache();
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Map cache cleared')));
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: _isLoading ? AppColors.backgroundColor : null,
+      backgroundColor: AppColors.backgroundColor,
       appBar: BackAppBar(
         title: 'Map Service',
         actions: [
-          IconButton(
-            icon: _isLoadingLocations
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : const Icon(Icons.refresh),
-            onPressed: _isLoadingLocations ? null : _refreshLocations,
-            tooltip: 'Refresh store locations',
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          if (_isLoading)
-            const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    color: AppColors.primaryGreen,
-                    strokeWidth: 3,
+          if (_isLoadingLocations)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Getting your location...',
-                    style: TextStyle(
-                      color: AppColors.primaryGreen,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (_errorMessage != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 60,
-                      color: AppColors.primaryGreen,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: AppColors.primaryGreen,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        await Geolocator.openLocationSettings();
-                      },
-                      icon: const Icon(Icons.settings),
-                      label: const Text('Open Settings'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryGreen,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
             )
           else
-            Stack(
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _refreshLocations,
+              tooltip: 'Refresh store locations',
+            ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+            child: Container(
+              margin: const EdgeInsets.only(top: 90),
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _currentPosition ?? _defaultCenter,
+                  initialZoom: _currentZoom,
+                  minZoom: 5.0,
+                  maxZoom: 19.0,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all,
+                    pinchZoomThreshold: 0.5,
+                    pinchZoomWinGestures: MultiFingerGesture.pinchZoom,
+                    pinchMoveThreshold: 40.0,
+                    enableMultiFingerGestureRace: true,
+                  ),
+                  onMapReady: () {
+                    setState(() => _isMapReady = true);
+                    if (_currentPosition != null) {
+                      _mapController.move(_currentPosition!, _currentZoom);
+                    }
+                  },
+                  onPositionChanged: (position, hasGesture) {
+                    if (hasGesture && _isTracking) {
+                      setState(() => _isTracking = false);
+                    }
+                    if (hasGesture) {
+                      setState(() => _currentZoom = position.zoom);
+                    }
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'app.agrhi.com',
+                    maxZoom: 19,
+                    tileProvider: CachedTileProvider(
+                      cacheManager: customCacheManager,
+                      headers: {'User-Agent': 'app.agrhi.com'},
+                    ),
+                    keepBuffer: 2,
+                    tileSize: 256,
+                    retinaMode: false,
+                  ),
+                  MarkerLayer(markers: _markers),
+                ],
+              ),
+            ),
+          ),
+
+          // Controls on the right side
+          Positioned(
+            bottom: 24,
+            right: 16,
+            child: Column(
               children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(24),
-                    topRight: Radius.circular(24),
-                  ),
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 90),
-                    child: FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter:
-                            _currentPosition ?? const LatLng(13.0827, 80.2707),
-                        initialZoom: _currentZoom,
-                        minZoom: 5.0,
-                        maxZoom: 19.0,
-                        interactionOptions: const InteractionOptions(
-                          flags: InteractiveFlag.all,
-                          pinchZoomThreshold: 0.5,
-                          pinchZoomWinGestures: MultiFingerGesture.pinchZoom,
-                          pinchMoveThreshold: 40.0,
-                          enableMultiFingerGestureRace: true,
-                        ),
-                        onMapReady: () {
-                          setState(() {
-                            _isMapReady = true;
-                          });
-                          if (_currentPosition != null) {
-                            _mapController.move(
-                              _currentPosition!,
-                              _currentZoom,
-                            );
-                          }
-                        },
-                        onPositionChanged: (position, hasGesture) {
-                          if (hasGesture && _isTracking) {
-                            setState(() {
-                              _isTracking = false;
-                            });
-                          }
-                          if (hasGesture) {
-                            setState(() {
-                              _currentZoom = position.zoom;
-                            });
-                          }
-                        },
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'app.agrhi.com',
-                          maxZoom: 19,
-                          tileProvider: NetworkTileProvider(
-                            headers: {'User-Agent': 'app.agrhi.com'},
-                          ),
-                        ),
-                        MarkerLayer(markers: _markers),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Clickable store count badge
+                // Store badge
                 if (_locations.isNotEmpty)
-                  Positioned(
-                    top: 100,
-                    left: 16,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _showStoreListBottomSheet,
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryGreen,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _showStoreListBottomSheet,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryGreen,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.25),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            const Icon(
+                              Icons.store,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                            if (_filteredLocations.length != _locations.length)
+                              Positioned(
+                                top: 6,
+                                right: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    '${_filteredLocations.length}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
                               ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.store,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                              const SizedBox(width: 4),
-                              const Icon(
-                                Icons.arrow_drop_down,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                            ],
-                          ),
+                          ],
                         ),
                       ),
                     ),
                   ),
 
-                // Zoom controls
-                Positioned(
-                  bottom: 24,
-                  right: 16,
-                  child: Column(
-                    children: [
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _zoomIn,
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(10),
-                            topRight: Radius.circular(10),
-                          ),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryGreen,
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(10),
-                                topRight: Radius.circular(10),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.25),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.add,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Container(
-                        height: 1,
-                        width: 44,
-                        color: AppColors.tertiaryGreen,
-                      ),
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _zoomOut,
-                          borderRadius: const BorderRadius.only(
-                            bottomLeft: Radius.circular(10),
-                            bottomRight: Radius.circular(10),
-                          ),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryGreen,
-                              borderRadius: const BorderRadius.only(
-                                bottomLeft: Radius.circular(10),
-                                bottomRight: Radius.circular(10),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.25),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.remove,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _recenterMap,
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: _isTracking
-                                  ? AppColors.secondaryGreen
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.25),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              Icons.my_location,
-                              color: _isTracking
-                                  ? Colors.white
-                                  : AppColors.primaryGreen,
-                              size: 22,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                if (_locations.isNotEmpty) const SizedBox(height: 12),
 
-                // Bottom left badges
-                Positioned(
-                  bottom: 12,
-                  left: 12,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_currentPosition != null)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: Colors.black.withOpacity(0.1),
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            '${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      GestureDetector(
-                        onTap: _launchCopyright,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: Colors.black.withOpacity(0.1),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Text(
-                            '© OpenStreetMap',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                _buildControlButton(Icons.add, _zoomIn, isTop: true),
+                Container(height: 1, width: 44, color: AppColors.tertiaryGreen),
+                _buildControlButton(Icons.remove, _zoomOut, isBottom: true),
+                const SizedBox(height: 12),
+                _buildRecenterButton(),
+              ],
+            ),
+          ),
+
+          // Bottom left badges
+          Positioned(
+            bottom: 12,
+            left: 12,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_currentPosition != null)
+                  _buildInfoBadge(
+                    '${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}',
+                    margin: const EdgeInsets.only(bottom: 6),
                   ),
+                GestureDetector(
+                  onTap: _launchCopyright,
+                  child: _buildInfoBadge('© OpenStreetMap'),
                 ),
               ],
             ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildControlButton(
+    IconData icon,
+    VoidCallback onTap, {
+    bool isTop = false,
+    bool isBottom = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.only(
+          topLeft: isTop ? const Radius.circular(10) : Radius.zero,
+          topRight: isTop ? const Radius.circular(10) : Radius.zero,
+          bottomLeft: isBottom ? const Radius.circular(10) : Radius.zero,
+          bottomRight: isBottom ? const Radius.circular(10) : Radius.zero,
+        ),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: AppColors.primaryGreen,
+            borderRadius: BorderRadius.only(
+              topLeft: isTop ? const Radius.circular(10) : Radius.zero,
+              topRight: isTop ? const Radius.circular(10) : Radius.zero,
+              bottomLeft: isBottom ? const Radius.circular(10) : Radius.zero,
+              bottomRight: isBottom ? const Radius.circular(10) : Radius.zero,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.25),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecenterButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _recenterMap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _isTracking ? AppColors.secondaryGreen : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.25),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.my_location,
+            color: _isTracking ? Colors.white : AppColors.primaryGreen,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoBadge(String text, {EdgeInsets? margin}) {
+    return Container(
+      margin: margin,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.black.withOpacity(0.1), width: 1),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 10,
+          color: Colors.black87,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
 
   @override
   void dispose() {
+    _locationUpdateTimer?.cancel();
     _pulseController.dispose();
     _mapController.dispose();
     super.dispose();
   }
 }
+
+// Helper for unawaited futures
+void unawaited(Future<void> future) {}
 
 class LocationData {
   final String id;
@@ -1499,9 +1438,7 @@ class LocationData {
     if (value is int) return value.toDouble();
     if (value is String) {
       final parsed = double.tryParse(value);
-      if (parsed != null && parsed.abs() <= 180) {
-        return parsed;
-      }
+      if (parsed != null && parsed.abs() <= 180) return parsed;
       return 0.0;
     }
     return 0.0;
@@ -1528,18 +1465,6 @@ class LocationData {
         position.longitude.abs() <= 180 &&
         position.latitude != 0.0 &&
         position.longitude != 0.0;
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'latitude': position.latitude,
-      'longitude': position.longitude,
-      'description': description,
-      'type': type.toString().split('.').last,
-      'address': address,
-    };
   }
 }
 

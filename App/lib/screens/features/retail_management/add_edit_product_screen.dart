@@ -30,6 +30,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   final _priceController = TextEditingController();
   final _stockQtyController = TextEditingController();
 
+  // ✅ Create ImagePicker instance once (reuse it)
+  final ImagePicker _picker = ImagePicker();
+
   String? _category = 'fertilizer';
   String? _unit = 'kg';
   bool _isActive = true;
@@ -60,11 +63,54 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     _productImageUrl = product['product_image_url'];
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
+  // ✅ Optimized image picking with direct camera/gallery launch
+  Future<void> _pickImageFromCamera() async {
+    try {
+      final pickedFile = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+        preferredCameraDevice: CameraDevice.rear, // ✅ Specify rear camera
+      );
 
-    // Show option to choose camera or gallery
-    final source = await showDialog<ImageSource>(
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+          _productImageUrl = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking from camera: $e');
+      _showErrorSnackBar('Failed to open camera: $e');
+    }
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    try {
+      final pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+          _productImageUrl = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking from gallery: $e');
+      _showErrorSnackBar('Failed to open gallery: $e');
+    }
+  }
+
+  // ✅ Show optimized image picker dialog
+  Future<void> _showImageSourceDialog() async {
+    // Close dialog immediately when option is tapped
+    await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -72,6 +118,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           text: 'Choose Image Source',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 10),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -88,8 +135,19 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                 ),
               ),
               title: const SmartReTranslator(text: 'Camera'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
+              subtitle: const SmartReTranslator(
+                text: 'Take a new photo',
+                style: TextStyle(fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(context); // ✅ Close dialog first
+                // ✅ Open camera immediately after dialog closes
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  _pickImageFromCamera();
+                });
+              },
             ),
+            const Divider(height: 1),
             ListTile(
               leading: Container(
                 padding: const EdgeInsets.all(10),
@@ -103,28 +161,32 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                 ),
               ),
               title: const SmartReTranslator(text: 'Gallery'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
+              subtitle: const SmartReTranslator(
+                text: 'Choose from existing photos',
+                style: TextStyle(fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(context); // ✅ Close dialog first
+                // ✅ Open gallery immediately after dialog closes
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  _pickImageFromGallery();
+                });
+              },
             ),
           ],
         ),
       ),
     );
+  }
 
-    if (source == null) return;
-
-    final pickedFile = await picker.pickImage(
-      source: source,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: SmartReTranslator(text: message),
+        backgroundColor: AppColors.errorColor,
+      ),
     );
-
-    if (pickedFile != null) {
-      setState(() {
-        _selectedImage = File(pickedFile.path);
-        _productImageUrl = null; // Clear old image
-      });
-    }
   }
 
   Future<void> _saveProduct() async {
@@ -555,7 +617,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
   Widget _buildImagePicker() {
     return GestureDetector(
-      onTap: _pickImage,
+      onTap: _showImageSourceDialog, // ✅ Open dialog
       child: Container(
         alignment: Alignment.center,
         height: 240,

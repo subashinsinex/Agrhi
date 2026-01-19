@@ -2,7 +2,7 @@ class AppConstants {
   // App Information
   static const String appName = 'AGRHI';
   static const String appFullName = 'AGRHI - Smart Farming Solutions';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.2.0';
   static const String appDescription =
       'Revolutionizing agriculture with smart IoT solutions';
   // development url = http://10.21.69.186:5000/api
