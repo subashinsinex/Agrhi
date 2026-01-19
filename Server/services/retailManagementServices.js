@@ -83,8 +83,7 @@ exports.createRetailer = async (req, res) => {
     await client.query("COMMIT");
     res.json({
       message: "Retailer created",
-      retailer: result.rows[0],
-      image_id: image_id, // Return the pre-generated image_id
+      retailer_id: result.rows[0].retailer_id,
     });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -286,7 +285,10 @@ exports.createProduct = async (req, res) => {
     );
 
     await client.query("COMMIT");
-    res.json({ message: "Product added", product: result.rows[0] });
+    res.json({
+      message: "Product added",
+      product_id: result.rows[0].product_id,
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("createProduct error:", error);
