@@ -186,10 +186,6 @@ async function updateUser(user_id, updatedUser) {
 async function updateProfilePictureUrl(userId, picUrl) {
   const client = await pool.connect();
   try {
-    console.log("📥 Updating profile picture:");
-    console.log("   - User ID:", userId);
-    console.log("   - Pic URL:", picUrl);
-
     await client.query("BEGIN");
 
     const result = await client.query(

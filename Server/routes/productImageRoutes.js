@@ -4,7 +4,6 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-
 const jwtChecker = require("../middleware/jwtChecker");
 const productImageService = require("../services/productImageServices");
 
@@ -12,7 +11,7 @@ const productImageService = require("../services/productImageServices");
 const uploadsDir = path.join(__dirname, "..", "uploads", "product_image");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log(`✅ Created uploads directory: ${uploadsDir}`);
+  console.log("Created uploads directory:", uploadsDir);
 }
 
 // Multer storage for product images
@@ -37,45 +36,36 @@ const upload = multer({
       /\.(jpg|jpeg|png)$/i.test(file.originalname.toLowerCase());
 
     if (ok) return cb(null, true);
-    console.log("❌ Invalid product image:", file.mimetype, file.originalname);
+
+    console.log("Invalid product image:", file.mimetype, file.originalname);
     return cb(null, false);
   },
 });
 
-/**
- * POST /api/product-images/upload
- * form-data:
- *   - product_id (text)
- *   - image (file)
- *
- * 1) Save file to uploads/product_image
- * 2) Insert into images
- * 3) Update retailer_products.image_id
- */
+// POST /api/product-images/upload
+// form-data:
+//   - product_id: text
+//   - image: file
 router.post("/upload", jwtChecker, upload.single("image"), async (req, res) => {
   try {
     if (!req.user_id) {
-      return res.status(401).json({
-        success: false,
-        error: "Authentication failed",
-      });
+      return res
+        .status(401)
+        .json({ success: false, error: "Authentication failed" });
     }
 
     const { product_id } = req.body;
     const file = req.file;
 
     if (!product_id) {
-      return res.status(400).json({
-        success: false,
-        error: "product_id is required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, error: "product_id is required" });
     }
-
     if (!file) {
-      return res.status(400).json({
-        success: false,
-        error: "No image file provided",
-      });
+      return res
+        .status(400)
+        .json({ success: false, error: "No image file provided" });
     }
 
     const result = await productImageService.saveProductImage(file, product_id);
@@ -87,7 +77,7 @@ router.post("/upload", jwtChecker, upload.single("image"), async (req, res) => {
       product: result.product,
     });
   } catch (error) {
-    console.error("❌ product-image upload error:", error);
+    console.error("product-image upload error:", error);
     res.status(500).json({
       success: false,
       error: "Internal server error",

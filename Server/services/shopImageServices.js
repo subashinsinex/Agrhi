@@ -1,14 +1,9 @@
 // services/shopImageServices.js
+const fs = require("fs");
 const path = require("path");
 const pool = require("../db/database");
 const { v4: uuidv4 } = require("uuid");
 
-/**
- * Save shop image: insert into images + update retailers.image_id
- * Input:
- *   file      -> multer file object
- *   retailerId -> retailer_id (UUID)
- */
 exports.saveShopImageForRetailer = async (file, retailerId) => {
   if (!file) {
     throw new Error("No file provided");
@@ -21,31 +16,49 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
   try {
     await client.query("BEGIN");
 
-    const image_id = uuidv4();
-    const image_url = `/uploads/shop_images/${file.filename}`;
-
-    // 1) Insert into images table
-    await client.query(
-      "INSERT INTO images (image_id, image_url) VALUES ($1, $2)",
-      [image_id, image_url]
+    // Get the existing image_id and old image_url
+    const retailerRes = await client.query(
+      `SELECT r.image_id, i.image_url
+       FROM retailers r
+       LEFT JOIN images i ON r.image_id = i.image_id
+       WHERE r.retailer_id = $1`,
+      [retailerId]
     );
 
-    // 2) Update retailers table with this image_id
-    const updateRes = await client.query(
-      "UPDATE retailers SET image_id = $2 WHERE retailer_id = $1 RETURNING *",
-      [retailerId, image_id]
-    );
-
-    if (updateRes.rowCount === 0) {
+    if (retailerRes.rowCount === 0) {
       throw new Error("Retailer not found for given retailer_id");
     }
+
+    const { image_id, image_url: oldImageUrl } = retailerRes.rows[0];
+
+    if (!image_id) {
+      throw new Error("No image_id found for this retailer");
+    }
+
+    const newImageUrl = `/uploads/shop_images/${file.filename}`;
+
+    // Delete old file from disk if it exists
+    if (oldImageUrl && oldImageUrl !== "no-image") {
+      const absolutePath = path.join(__dirname, "..", oldImageUrl);
+      fs.unlink(absolutePath, (err) => {
+        if (err) {
+          console.error("Error deleting old shop image:", err);
+        }
+      });
+    }
+
+    // Update the existing image row with the new image_url
+    const imageUpdateRes = await client.query(
+      "UPDATE images SET image_url = $2 WHERE image_id = $1 RETURNING *",
+      [image_id, newImageUrl]
+    );
 
     await client.query("COMMIT");
 
     return {
       image_id,
-      image_url,
-      retailer: updateRes.rows[0],
+      image_url: newImageUrl,
+      retailer: retailerRes.rows[0],
     };
   } catch (error) {
     await client.query("ROLLBACK");

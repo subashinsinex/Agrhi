@@ -454,7 +454,7 @@ const RetailManager = ({ isSidebarOpen }) => {
           const image_id = await uploadShopImage(form.retailer_id);
           if (image_id) {
             await axiosInstance.put(
-              `${apiBase}/retailers/${form.retailer_id}`,
+              `${apiBase}/updateretailers/${form.retailer_id}`,
               { image_id },
               authHeader
             );
@@ -464,7 +464,7 @@ const RetailManager = ({ isSidebarOpen }) => {
         setStatusMsg("Retailer updated successfully.");
       } else {
         const res = await axiosInstance.post(
-          `${apiBase}/retailers`,
+          `${apiBase}/createretailers`,
           {
             user_id: form.user_id,
             shop_name: form.shop_name,
@@ -484,7 +484,7 @@ const RetailManager = ({ isSidebarOpen }) => {
           const image_id = await uploadShopImage(createdId);
           if (image_id) {
             await axiosInstance.put(
-              `${apiBase}/retailers/${createdId}`,
+              `${apiBase}/updateretailers/${createdId}`,
               { image_id },
               authHeader
             );

@@ -1,20 +1,16 @@
 // services/productImageServices.js
+const fs = require("fs");
+const path = require("path");
 const pool = require("../db/database");
 const { v4: uuidv4 } = require("uuid");
 
-/**
- * Save product image:
- *  - insert into images
- *  - update retailer_products.image_id
- * Input:
- *   file      -> multer file object
- *   productId -> product_id (UUID)
- */
+// Save or update product image for a product
+// - file: multer file object
+// - productId: retailer_products.product_id (UUID)
 exports.saveProductImage = async (file, productId) => {
   if (!file) {
     throw new Error("No file provided");
   }
-
   if (!productId) {
     throw new Error("product_id is required");
   }
@@ -23,34 +19,69 @@ exports.saveProductImage = async (file, productId) => {
   try {
     await client.query("BEGIN");
 
-    const image_id = uuidv4();
-    const image_url = `/uploads/product_image/${file.filename}`;
-
-    // 1) insert into images
-    await client.query(
-      "INSERT INTO images (image_id, image_url) VALUES ($1, $2)",
-      [image_id, image_url]
+    // Get current image_id and image_url for this product
+    const productRes = await client.query(
+      `SELECT rp.image_id, i.image_url
+       FROM retailer_products rp
+       LEFT JOIN images i ON rp.image_id = i.image_id
+       WHERE rp.product_id = $1`,
+      [productId]
     );
 
-    // 2) update retailer_products.image_id
-    const result = await client.query(
-      `UPDATE retailer_products
-       SET image_id = $2
-       WHERE product_id = $1
-       RETURNING *`,
-      [productId, image_id]
-    );
-
-    if (result.rowCount === 0) {
+    if (productRes.rowCount === 0) {
       throw new Error("Product not found for given product_id");
     }
 
-    await client.query("COMMIT");
+    const { image_id: existingImageId, image_url: oldImageUrl } =
+      productRes.rows[0];
+    const newImageUrl = `/uploads/product_image/${file.filename}`;
 
+    let image_id;
+
+    if (!existingImageId) {
+      // No image yet: create new image row and set retailer_products.image_id
+      image_id = uuidv4();
+
+      await client.query(
+        "INSERT INTO images (image_id, image_url) VALUES ($1, $2)",
+        [image_id, newImageUrl]
+      );
+
+      const result = await client.query(
+        "UPDATE retailer_products SET image_id = $2 WHERE product_id = $1 RETURNING *",
+        [productId, image_id]
+      );
+
+      await client.query("COMMIT");
+      return {
+        image_id,
+        image_url: newImageUrl,
+        product: result.rows[0],
+      };
+    }
+
+    // Product already has image: delete old file and update same image_id
+    image_id = existingImageId;
+
+    if (oldImageUrl && oldImageUrl !== "no-image") {
+      const absolutePath = path.join(__dirname, "..", oldImageUrl);
+      fs.unlink(absolutePath, (err) => {
+        if (err) {
+          console.error("Error deleting old product image:", err);
+        }
+      });
+    }
+
+    const imageUpdateRes = await client.query(
+      "UPDATE images SET image_url = $2 WHERE image_id = $1 RETURNING *",
+      [image_id, newImageUrl]
+    );
+
+    await client.query("COMMIT");
     return {
       image_id,
-      image_url,
-      product: result.rows[0],
+      image_url: imageUpdateRes.rows[0].image_url,
+      product: productRes.rows[0],
     };
   } catch (error) {
     await client.query("ROLLBACK");
