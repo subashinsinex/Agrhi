@@ -29,13 +29,14 @@ exports.createRetailer = async (req, res) => {
     license_number,
     latitude,
     longitude,
-    shop_number, // keep shop_number, drop image_id from body
+    shop_number,
   } = req.body;
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
+    // Validate user exists
     const userRes = await client.query(
       "SELECT user_id FROM users_auth WHERE user_id = $1 LIMIT 1",
       [user_id]
@@ -44,16 +45,25 @@ exports.createRetailer = async (req, res) => {
       throw new Error("Invalid user_id. User not found.");
     }
 
+    // Generate retailer_id
     const retailer_id = await generateUniqueId(
       client,
       "retailers",
       "retailer_id"
     );
 
+    // Generate image_id and insert into images table with NULL image_url
+    const image_id = uuidv4();
+    await client.query(
+      "INSERT INTO images (image_id, image_url) VALUES ($1, NULL)",
+      [image_id]
+    );
+
+    // Create retailer with the pre-generated image_id
     const result = await client.query(
       `INSERT INTO retailers 
-        (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, shop_number)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, shop_number, image_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
       [
         retailer_id,
@@ -66,11 +76,16 @@ exports.createRetailer = async (req, res) => {
         latitude,
         longitude,
         shop_number,
+        image_id,
       ]
     );
 
     await client.query("COMMIT");
-    res.json({ message: "Retailer created", retailer: result.rows[0] });
+    res.json({
+      message: "Retailer created",
+      retailer: result.rows[0],
+      image_id: image_id, // Return the pre-generated image_id
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("createRetailer error:", error);

@@ -16,7 +16,7 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
   try {
     await client.query("BEGIN");
 
-    // Get current image_id and image_url (if any)
+    // Get the existing image_id and old image_url
     const retailerRes = await client.query(
       `SELECT r.image_id, i.image_url
        FROM retailers r
@@ -29,37 +29,15 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
       throw new Error("Retailer not found for given retailer_id");
     }
 
-    const { image_id: existingImageId, image_url: oldImageUrl } =
-      retailerRes.rows[0];
-    const newImageUrl = `/uploads/shop_images/${file.filename}`;
+    const { image_id, image_url: oldImageUrl } = retailerRes.rows[0];
 
-    let image_id;
-
-    if (!existingImageId) {
-      // No image yet: create image row and set retailers.image_id
-      image_id = uuidv4();
-
-      await client.query(
-        "INSERT INTO images (image_id, image_url) VALUES ($1, $2)",
-        [image_id, newImageUrl]
-      );
-
-      const updateRes = await client.query(
-        "UPDATE retailers SET image_id = $2 WHERE retailer_id = $1 RETURNING *",
-        [retailerId, image_id]
-      );
-
-      await client.query("COMMIT");
-      return {
-        image_id,
-        image_url: newImageUrl,
-        retailer: updateRes.rows[0],
-      };
+    if (!image_id) {
+      throw new Error("No image_id found for this retailer");
     }
 
-    // Retailer already has image: delete old file and update same image_id
-    image_id = existingImageId;
+    const newImageUrl = `/uploads/shop_images/${file.filename}`;
 
+    // Delete old file from disk if it exists
     if (oldImageUrl && oldImageUrl !== "no-image") {
       const absolutePath = path.join(__dirname, "..", oldImageUrl);
       fs.unlink(absolutePath, (err) => {
@@ -69,15 +47,17 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
       });
     }
 
+    // Update the existing image row with the new image_url
     const imageUpdateRes = await client.query(
       "UPDATE images SET image_url = $2 WHERE image_id = $1 RETURNING *",
       [image_id, newImageUrl]
     );
 
     await client.query("COMMIT");
+
     return {
       image_id,
-      image_url: imageUpdateRes.rows[0].image_url,
+      image_url: newImageUrl,
       retailer: retailerRes.rows[0],
     };
   } catch (error) {
