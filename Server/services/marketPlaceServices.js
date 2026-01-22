@@ -8,7 +8,7 @@ async function generateUniqueId(client, tableName, idColumn) {
     id = uuidv4();
     const check = await client.query(
       `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
-      [id]
+      [id],
     );
     exists = check.rowCount > 0;
   } while (exists);
@@ -41,7 +41,7 @@ exports.createListing = async (req, res) => {
     // Lookup farmer user_id from users_auth by phone_number
     const userResult = await client.query(
       "SELECT user_id FROM users_auth WHERE phone_number = $1",
-      [phone_number]
+      [phone_number],
     );
 
     if (userResult.rowCount === 0) {
@@ -54,7 +54,7 @@ exports.createListing = async (req, res) => {
     const listing_id = await generateUniqueId(
       client,
       "farmer_market_listings",
-      "listing_id"
+      "listing_id",
     );
 
     const insertSql = `
@@ -299,7 +299,7 @@ exports.deleteListing = async (req, res) => {
   try {
     await pool.query(
       "DELETE FROM farmer_market_listings WHERE listing_id = $1",
-      [id]
+      [id],
     );
     res.json({ message: "Listing deleted" });
   } catch (error) {
@@ -374,6 +374,123 @@ exports.getNearbyListings = async (req, res) => {
   }
 };
 
+// Create farmer shop place (farmer only)
+exports.createFarmerShopPlace = async (req, res) => {
+  const { latitude, longitude } = req.body;
+  if (!latitude || !longitude) {
+    return res.status(400).json({ message: "latitude and longitude required" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const farmerId = req.user_id;
+    const result = await client.query(
+      `INSERT INTO farmer_shop_place (farmer_id, latitude, longitude) 
+       VALUES ($1, $2, $3) RETURNING *`,
+      [farmerId, latitude, longitude],
+    );
+    await client.query("COMMIT");
+    res.json({ message: "Shop place created", shopPlace: result.rows[0] });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("createFarmerShopPlace error:", error);
+    res
+      .status(500)
+      .json({ message: "Error creating shop place", error: error.message });
+  } finally {
+    client.release();
+  }
+};
+
+// Get all (admin dashboard)
+exports.getAllFarmerShopPlaces = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT fsp.*, ud.name AS farmer_name, ua.phone_number 
+      FROM farmer_shop_place fsp 
+      JOIN user_details ud ON fsp.farmer_id = ud.user_id 
+      JOIN users_auth ua ON fsp.farmer_id = ua.user_id 
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getAllFarmerShopPlaces error:", error);
+    res.status(500).json({
+      message: "Error fetching all shop places",
+      error: error.message,
+    });
+  }
+};
+
+// Get by farmer ID
+exports.getFarmerShopPlaces = async (req, res) => {
+  const { farmerid } = req.params;
+  try {
+    const result = await pool.query(
+      `
+      SELECT fsp.*, ud.name AS farmer_name 
+      FROM farmer_shop_place fsp 
+      JOIN user_details ud ON fsp.farmer_id = ud.user_id 
+      WHERE fsp.farmer_id = $1 
+    `,
+      [farmerid],
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getFarmerShopPlaces error:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching shop places", error: error.message });
+  }
+};
+
+// Get single by ID (with ownership check via RLS)
+exports.getFarmerShopPlaceById = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `
+      SELECT fsp.*, ud.name AS farmer_name 
+      FROM farmer_shop_place fsp 
+      JOIN user_details ud ON fsp.farmer_id = ud.user_id 
+      WHERE fsp.id = $1
+    `,
+      [id],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Shop place not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("getFarmerShopPlaceById error:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching shop place", error: error.message });
+  }
+};
+
+// Delete own
+exports.deleteFarmerShopPlace = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `DELETE FROM farmer_shop_place 
+       WHERE farmer_id = $1 RETURNING *`,
+      [req.user_id],
+    );
+    if (result.rowCount === 0) {
+      return res
+        .status(404)
+        .json({ message: "Shop place not found or access denied" });
+    }
+    res.json({ message: "Shop place deleted" });
+  } catch (error) {
+    console.error("deleteFarmerShopPlace error:", error);
+    res
+      .status(500)
+      .json({ message: "Error deleting shop place", error: error.message });
+  }
+};
+
 // ---- Reference data helpers ----
 
 exports.getFarmers = async (req, res) => {
@@ -397,7 +514,7 @@ exports.getFarmers = async (req, res) => {
 exports.getCropTypes = async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT crop_type_id, name FROM crop_types ORDER BY name"
+      "SELECT crop_type_id, name FROM crop_types ORDER BY name",
     );
     res.json(result.rows);
   } catch (error) {
@@ -411,7 +528,7 @@ exports.getCropTypes = async (req, res) => {
 exports.getPlants = async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT plant_id, plant_name FROM plants ORDER BY plant_name"
+      "SELECT plant_id, plant_name FROM plants ORDER BY plant_name",
     );
     res.json(result.rows);
   } catch (error) {

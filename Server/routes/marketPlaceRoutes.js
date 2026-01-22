@@ -13,7 +13,7 @@ router.get("/getlistings/:id", jwtChecker, marketService.getListingById);
 router.get(
   "/getlistings/farmer/:id",
   jwtChecker,
-  marketService.getFarmerListings
+  marketService.getFarmerListings,
 );
 
 router.get("/alllistings", jwtChecker, marketService.getAllListings);
@@ -25,14 +25,41 @@ router.put("/updatelistings/:id", jwtChecker, marketService.updateListing);
 router.put(
   "/togglelistings/:id/isactive",
   jwtChecker,
-  marketService.toggleListing
+  marketService.toggleListing,
 );
 
 router.delete(
   "/deletelistings/:id",
   jwtChecker,
   adminChecker,
-  marketService.deleteListing
+  marketService.deleteListing,
+);
+// Farmer shop places
+router.post(
+  "/add-farmer-shop-places",
+  jwtChecker,
+  marketService.createFarmerShopPlace,
+);
+router.get(
+  "/admin/farmer-shop-places",
+  jwtChecker,
+  adminChecker,
+  marketService.getAllFarmerShopPlaces,
+);
+router.get(
+  "/farmer-shop-places/:farmerid",
+  jwtChecker,
+  marketService.getFarmerShopPlaces,
+);
+router.get(
+  "/farmer-shop-places/:id",
+  jwtChecker,
+  marketService.getFarmerShopPlaceById,
+);
+router.delete(
+  "/delete-farmer-shop-places/:id",
+  jwtChecker,
+  marketService.deleteFarmerShopPlace,
 );
 
 // Reference data
