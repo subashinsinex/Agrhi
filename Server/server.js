@@ -27,8 +27,10 @@ const syncRoutes = require("./routes/syncRoutes");
 const forgotPasswordRoutes = require("./routes/forgotPasswordRoutes");
 const emailVerificationRoutes = require("./routes/emailVerificationRoutes");
 const developerRoutes = require("./routes/developerRoutes");
-const marketPlaceRoutes = require("./routes/marketPlaceRoutes");
+const farmStoreRoutes = require("./routes/farmStoreRoutes");
 const retailManagementRoutes = require("./routes/retailManagementRoutes");
+const marketPlaceRoutes = require("./routes/marketPlaceRoutes");
+
 app.use("/api/shop-images", require("./routes/shopImageRoutes"));
 app.use("/api/product-images", require("./routes/productImageRoutes"));
 
@@ -45,8 +47,9 @@ app.use("/api/sync", syncRoutes);
 app.use("/api/forgot-password", forgotPasswordRoutes);
 app.use("/api/email-verification", emailVerificationRoutes);
 app.use("/api/developer", developerRoutes);
-app.use("/api/marketplace", marketPlaceRoutes);
+app.use("/api/farmstore", farmStoreRoutes);
 app.use("/api/retail", retailManagementRoutes);
+app.use("/api/marketplace", marketPlaceRoutes);
 
 const PORT = process.env.PORT;
 

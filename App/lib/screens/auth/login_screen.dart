@@ -1,5 +1,3 @@
-// lib/screens/auth/login_screen.dart
-
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -16,6 +14,7 @@ import '../../utils/validators.dart';
 import '../../utils/constants.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/api_service.dart';
+import '../../src/services/farm_store_service.dart';
 import '../../src/database/database_helper.dart';
 import 'forgot_password_screen.dart';
 
@@ -201,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _handleLogin() async {
+Future<void> _handleLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() => _isLoading = true);
@@ -226,12 +225,12 @@ class _LoginScreenState extends State<LoginScreen> {
         final accessToken = responseData['access_token'] as String;
         final refreshToken = responseData['refresh_token'] as String;
 
-        // Store tokens
         await _storage.write(key: 'access_token', value: accessToken);
         await _storage.write(key: 'refresh_token', value: refreshToken);
 
-        // Decode JWT to get user_id
         String? userId;
+        String? userCategory;
+
         try {
           final decodedToken = JwtDecoder.decode(accessToken);
           userId = decodedToken['user_id']?.toString();
@@ -248,7 +247,6 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('❌ Token decode error: $e');
         }
 
-        // Store token expiry
         try {
           final expiryDate = JwtDecoder.getExpirationDate(accessToken);
           await _storage.write(
@@ -259,15 +257,16 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('❌ Token expiry decode error: $e');
         }
 
-        // ✅ Fetch and store user profile
         if (userId != null) {
           final profileData = await _fetchUserProfile(accessToken, userId);
 
           if (profileData != null) {
-            // Store complete profile
             await _storeUserProfile(profileData);
 
-            // ✅ Download profile picture if available
+            userCategory = profileData['user_category']
+                ?.toString()
+                .toLowerCase();
+
             final picUrl = profileData['pic_url'] as String?;
             if (picUrl != null && picUrl != 'no-image' && picUrl.isNotEmpty) {
               await _downloadAndSaveProfilePicture(picUrl, accessToken);
@@ -277,7 +276,6 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         }
 
-        // Sync catalogs
         final syncResult = await DatabaseHelper.instance.smartSyncCatalogs(
           accessToken,
         );
@@ -286,6 +284,10 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('✅ Synced ${syncResult['updated']} tables');
         } else {
           debugPrint('⚠️ ${syncResult['message']}');
+        }
+
+        if (userCategory == 'farmer' || userCategory == 'admin') {
+          await _checkAndStoreFarmerShopStatus();
         }
 
         if (!mounted) return;
@@ -308,13 +310,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       String errorMessage = e.toString();
 
-      // Clean up technical error messages
       if (errorMessage.contains('SocketException')) {
         errorMessage = 'No internet connection';
       } else if (errorMessage.contains('TimeoutException')) {
         errorMessage = 'Request timeout. Please try again';
       } else {
-        // Remove all common error prefixes and JSON formatting
         errorMessage = errorMessage
             .replaceFirst('Client error: ', '')
             .replaceAll('{"message":"', '')
@@ -329,6 +329,29 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _checkAndStoreFarmerShopStatus() async {
+    try {
+      debugPrint('🔍 Checking farmer shop place status...');
+
+      final result = await FarmStoreService.getMyShopPlace();
+
+      if (result['success'] == true && result['hasLocation'] == true) {
+        await _storage.write(key: 'has_shop_place', value: 'true');
+        await _storage.write(
+          key: 'shop_place_data',
+          value: jsonEncode(result['shopPlace']),
+        );
+        debugPrint('✅ Farmer has shop place set');
+      } else {
+        await _storage.write(key: 'has_shop_place', value: 'false');
+        debugPrint('ℹ️ Farmer needs to set shop place');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error checking shop place: $e');
+      await _storage.write(key: 'has_shop_place', value: 'false');
+    }
+  }
+  
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

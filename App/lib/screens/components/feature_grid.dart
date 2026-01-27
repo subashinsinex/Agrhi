@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../utils/colors.dart';
+import '../shared/smart_retranslator.dart';
 
 class FeatureGrid extends StatelessWidget {
   final List<FeatureItem> features;
@@ -11,14 +12,14 @@ class FeatureGrid extends StatelessWidget {
     super.key,
     required this.features,
     this.crossAxisCount = 3,
-    this.childAspectRatio = 0.85,
+    this.childAspectRatio = 0.9,
     this.spacing = 12.0,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.symmetric(horizontal: spacing),
       child: GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -59,41 +60,69 @@ class FeatureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Expanded(
-            child: Card(
-              color: backgroundColor ?? AppColors.cardPrimary,
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              margin: const EdgeInsets.all(4),
-              child: Center(
-                child: Icon(icon, size: 36, color: AppColors.primaryWhite),
-              ),
+    final cardColor = backgroundColor ?? AppColors.primaryGreen;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [cardColor.withOpacity(0.9), cardColor],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.2),
+              width: 1.5,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: cardColor.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Icon container with glass effect
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Icon(icon, size: 32, color: Colors.white),
+              ),
+              const SizedBox(height: 10),
+
+              // Feature title
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: SmartReTranslator(
+                  text: title,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: 0.2,
+                  ),
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

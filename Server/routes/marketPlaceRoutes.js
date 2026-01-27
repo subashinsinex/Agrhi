@@ -1,70 +1,23 @@
 const express = require("express");
 const router = express.Router();
 
-const marketService = require("../services/marketPlaceServices");
+const marketplaceService = require("../services/marketPlaceServices");
 const jwtChecker = require("../middleware/jwtChecker");
-const adminChecker = require("../middleware/adminChecker");
 
-// Farmer listings (B2C)
-router.post("/createlistings", jwtChecker, marketService.createListing);
+// Get unified marketplace products (farm + retail)
+router.get("/products", jwtChecker, marketplaceService.getMarketplaceProducts);
 
-router.get("/getlistings/:id", jwtChecker, marketService.getListingById);
-
+// Get single product details
 router.get(
-  "/getlistings/farmer/:id",
+  "/products/:productId",
   jwtChecker,
-  marketService.getFarmerListings,
+  marketplaceService.getProductDetails,
 );
 
-router.get("/alllistings", jwtChecker, marketService.getAllListings);
+// Get marketplace statistics
+router.get("/stats", jwtChecker, marketplaceService.getMarketplaceStats);
 
-router.get("/listings/nearby", jwtChecker, marketService.getNearbyListings);
-
-router.put("/updatelistings/:id", jwtChecker, marketService.updateListing);
-
-router.put(
-  "/togglelistings/:id/isactive",
-  jwtChecker,
-  marketService.toggleListing,
-);
-
-router.delete(
-  "/deletelistings/:id",
-  jwtChecker,
-  adminChecker,
-  marketService.deleteListing,
-);
-// Farmer shop places
-router.post(
-  "/add-farmer-shop-places",
-  jwtChecker,
-  marketService.createFarmerShopPlace,
-);
-router.get(
-  "/admin/farmer-shop-places",
-  jwtChecker,
-  adminChecker,
-  marketService.getAllFarmerShopPlaces,
-);
-router.get(
-  "/farmer-shop-places/:farmerid",
-  jwtChecker,
-  marketService.getFarmerShopPlaces,
-);
-router.get(
-  "/farmer-shop-places/:id",
-  jwtChecker,
-  marketService.getFarmerShopPlaceById,
-);
-router.delete(
-  "/delete-farmer-shop-places/:id",
-  jwtChecker,
-  marketService.deleteFarmerShopPlace,
-);
-
-// Reference data
-router.get("/farmers", jwtChecker, marketService.getFarmers);
-router.get("/croptypes", jwtChecker, marketService.getCropTypes);
-router.get("/plants", jwtChecker, marketService.getPlants);
+// Search sellers (farmers and retailers)
+router.get("/sellers", jwtChecker, marketplaceService.searchSellers);
 
 module.exports = router;

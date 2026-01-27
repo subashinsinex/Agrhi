@@ -1,41 +1,46 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
 import '../../../utils/colors.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
-import '../../../src/services/retail_service.dart';
+import '../../../src/services/farm_store_service.dart';
 import '../../../src/services/language_service.dart';
-import 'add_edit_product_screen.dart';
+import 'add_edit_farm_product_screen.dart';
 import '../../../utils/constants.dart';
 
-class ManageProductsScreen extends StatefulWidget {
-  final String retailerId;
-  final String? shopName;
-
-  const ManageProductsScreen({
-    super.key,
-    required this.retailerId,
-    this.shopName,
-  });
+class FarmProductsScreen extends StatefulWidget {
+  const FarmProductsScreen({super.key});
 
   @override
-  State<ManageProductsScreen> createState() => _ManageProductsScreenState();
+  State<FarmProductsScreen> createState() => _FarmProductsScreenState();
 }
 
-class _ManageProductsScreenState extends State<ManageProductsScreen> {
+class _FarmProductsScreenState extends State<FarmProductsScreen> {
   List<Map<String, dynamic>> _products = [];
   bool _isLoading = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  String? _farmerId;
+  // ignore: unused_field
+  Map<String, dynamic>? _shopPlace;
 
-  // ✅ Cache for translated product names
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+      synchronizable: false,
+    ),
+  );
+
   final Map<String, String> _translatedProductNames = {};
-  final Map<String, String> _translatedBrands = {};
+  final Map<String, String> _translatedVarieties = {};
 
   @override
   void initState() {
     super.initState();
-    _loadProducts();
+    _loadFarmerData();
   }
 
   @override
@@ -44,54 +49,66 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
     super.dispose();
   }
 
+  Future<void> _loadFarmerData() async {
+    try {
+      final profileJson = await _storage.read(key: 'user_profile');
+      if (profileJson != null) {
+        final profile = jsonDecode(profileJson);
+        _farmerId = profile['user_id'] ?? profile['id'];
+      }
+
+      final shopPlaceJson = await _storage.read(key: 'shop_place_data');
+      if (shopPlaceJson != null) {
+        _shopPlace = jsonDecode(shopPlaceJson);
+      }
+
+      if (_farmerId != null) {
+        _loadProducts();
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading farmer data: $e');
+    }
+  }
+
   Future<void> _loadProducts() async {
+    if (_farmerId == null) return;
+
     setState(() => _isLoading = true);
 
     try {
-      final products = await RetailService.getProductsByRetailer(
-        widget.retailerId,
-      );
+      final products = await FarmStoreService.getAllFarmProducts();
 
       setState(() {
         _products = products;
       });
 
-      // ✅ Preload translations for current language
       _preloadProductTranslations();
     } catch (e) {
-      debugPrint('Error loading products: $e');
+      debugPrint('❌ Error loading products: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SmartReTranslator(text: 'Error: $e'),
-            backgroundColor: AppColors.errorColor,
-          ),
-        );
+        _showSnackBar('Error loading products: $e', isError: true);
       }
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // ✅ Preload all product name translations
   Future<void> _preloadProductTranslations() async {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
 
-    // Only translate if not English
     if (languageService.currentLocale.languageCode == 'en') {
       return;
     }
 
-    // Clear existing translations
     _translatedProductNames.clear();
-    _translatedBrands.clear();
+    _translatedVarieties.clear();
 
     for (var product in _products) {
       final productName = product['product_name'] ?? '';
-      final brand = product['brand'] ?? '';
+      final variety = product['variety'] ?? '';
 
       if (productName.isNotEmpty &&
           !_translatedProductNames.containsKey(productName)) {
@@ -103,65 +120,51 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
         }
       }
 
-      if (brand.isNotEmpty && !_translatedBrands.containsKey(brand)) {
+      if (variety.isNotEmpty && !_translatedVarieties.containsKey(variety)) {
         try {
-          final translated = await languageService.translate(brand);
-          _translatedBrands[brand] = translated;
+          final translated = await languageService.translate(variety);
+          _translatedVarieties[variety] = translated;
         } catch (e) {
-          debugPrint('Translation error for $brand: $e');
+          debugPrint('Translation error for $variety: $e');
         }
       }
     }
 
-    if (mounted) {
-      setState(() {}); // Refresh UI with translations
-    }
+    if (mounted) setState(() {});
   }
 
-  // ✅ Toggle product active/inactive status
   Future<void> _toggleProductStatus(
     String productId,
     bool currentStatus,
   ) async {
     try {
-      final response = await RetailService.toggleProductStatus(productId);
+      final result = await FarmStoreService.toggleFarmProductStatus(productId);
 
-      if (mounted) {
-        // Update local state
+      if (result['success'] == true && mounted) {
         setState(() {
           final productIndex = _products.indexWhere(
             (p) => p['product_id'] == productId,
           );
           if (productIndex != -1) {
-            _products[productIndex]['is_active'] = response['is_active'];
+            _products[productIndex]['is_available'] = result['is_available'];
           }
         });
 
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SmartReTranslator(
-              text: response['message'] ?? 'Status updated successfully',
-            ),
-            backgroundColor: AppColors.primaryGreen,
-            duration: const Duration(seconds: 2),
-          ),
+        _showSnackBar(
+          result['message'] ?? 'Status updated successfully',
+          isError: false,
         );
+      } else {
+        throw result['message'] ?? 'Failed to update status';
       }
     } catch (e) {
-      debugPrint('Error toggling product status: $e');
+      debugPrint('❌ Error toggling product status: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SmartReTranslator(text: 'Error: $e'),
-            backgroundColor: AppColors.errorColor,
-          ),
-        );
+        _showSnackBar('Error: $e', isError: true);
       }
     }
   }
 
-  // ✅ Multilingual search using cached translations
   List<Map<String, dynamic>> get _filteredProducts {
     if (_searchQuery.isEmpty) return _products;
 
@@ -169,34 +172,50 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
 
     return _products.where((product) {
       final productName = (product['product_name'] ?? '').toLowerCase();
-      final brand = (product['brand'] ?? '').toLowerCase();
+      final variety = (product['variety'] ?? '').toLowerCase();
 
-      // Get translated versions
       final translatedProductName =
           (_translatedProductNames[product['product_name']] ?? '')
               .toLowerCase();
-      final translatedBrand = (_translatedBrands[product['brand']] ?? '')
+      final translatedVariety = (_translatedVarieties[product['variety']] ?? '')
           .toLowerCase();
 
-      // Search in both original English and translated text
       return productName.contains(query) ||
-          brand.contains(query) ||
+          variety.contains(query) ||
           translatedProductName.contains(query) ||
-          translatedBrand.contains(query);
+          translatedVariety.contains(query);
     }).toList();
+  }
+
+  void _showSnackBar(String message, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: SmartReTranslator(
+          text: message,
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: isError
+            ? AppColors.errorColor
+            : AppColors.successColor,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: Duration(seconds: isError ? 4 : 2),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(
+      appBar: const CustomAppBar(
         showOnlineStatus: true,
-        title: widget.shopName ?? 'Manage Products',
+        title: 'My Farm Products',
       ),
       backgroundColor: AppColors.backgroundColor,
       body: Column(
         children: [
-          // ✅ Header section with count and add button
+          // Header section
           Container(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             decoration: BoxDecoration(
@@ -224,8 +243,8 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                               color: AppColors.primaryGreen.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(
-                              Icons.inventory_2_outlined,
+                            child: const Icon(
+                              Icons.agriculture,
                               color: AppColors.primaryGreen,
                               size: 20,
                             ),
@@ -264,8 +283,8 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => AddEditProductScreen(
-                                retailerId: widget.retailerId,
+                              builder: (context) => AddEditFarmProductScreen(
+                                farmerId: _farmerId!,
                               ),
                             ),
                           );
@@ -334,7 +353,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                             color: Colors.grey[400],
                             fontSize: 14,
                           ),
-                          prefixIcon: Icon(
+                          prefixIcon: const Icon(
                             Icons.search,
                             color: AppColors.primaryGreen,
                             size: 22,
@@ -368,10 +387,10 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
             ),
           ),
 
-          // ✅ Products list
+          // Products list
           Expanded(
             child: _isLoading
-                ? Center(
+                ? const Center(
                     child: CircularProgressIndicator(
                       color: AppColors.primaryGreen,
                     ),
@@ -401,7 +420,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (context) =>
-                        AddEditProductScreen(retailerId: widget.retailerId),
+                        AddEditFarmProductScreen(farmerId: _farmerId!),
                   ),
                 );
 
@@ -436,8 +455,8 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                 color: AppColors.primaryGreen.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.inventory_2_outlined,
+              child: const Icon(
+                Icons.agriculture,
                 size: 80,
                 color: AppColors.primaryGreen,
               ),
@@ -456,8 +475,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: SmartReTranslator(
-                text:
-                    'Start building your inventory by adding your first product',
+                text: 'Start selling by adding your farm products',
                 style: TextStyle(
                   fontSize: 15,
                   color: Colors.grey[600],
@@ -498,14 +516,13 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
   }
 
   Widget _buildProductCard(Map<String, dynamic> product) {
-    // ✅ Safely parse stock_qty as a number
-    final stockQtyRaw = product['stock_qty'];
+    final stockQtyRaw = product['quantity_available'];
     final stockQty = stockQtyRaw is String
         ? double.tryParse(stockQtyRaw)?.toInt() ?? 0
         : (stockQtyRaw is num ? stockQtyRaw.toInt() : 0);
 
     final isLowStock = stockQty < 10;
-    final isActive = product['is_active'] ?? true;
+    final isAvailable = product['is_available'] ?? true;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -513,17 +530,14 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: isActive
-              ? [
-                  const Color(0xFFE8F5E9), // Light green
-                  const Color(0xFFF1F8E9), // Very light green-yellow
-                ]
+          colors: isAvailable
+              ? [const Color(0xFFE8F5E9), const Color(0xFFF1F8E9)]
               : [Colors.grey.shade200, Colors.grey.shade100],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: isActive
+            color: isAvailable
                 ? AppColors.primaryGreen.withOpacity(0.1)
                 : Colors.grey.withOpacity(0.1),
             blurRadius: 8,
@@ -538,8 +552,8 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
             final result = await Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => AddEditProductScreen(
-                  retailerId: widget.retailerId,
+                builder: (context) => AddEditFarmProductScreen(
+                  farmerId: _farmerId!,
                   product: product,
                 ),
               ),
@@ -554,9 +568,9 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                // ✅ Product Image with conditional styling
+                // Product Image
                 Opacity(
-                  opacity: isActive ? 1.0 : 0.5,
+                  opacity: isAvailable ? 1.0 : 0.5,
                   child: Container(
                     width: 80,
                     height: 80,
@@ -564,17 +578,17 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isActive
+                        color: isAvailable
                             ? AppColors.primaryGreen.withOpacity(0.3)
                             : Colors.grey.withOpacity(0.3),
                         width: 2,
                       ),
                     ),
-                    child: product['product_image_url'] != null
+                    child: product['image_url'] != null
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: Image.network(
-                              '${AppConstants.baseUrl.replaceAll('/api', '')}${product['product_image_url']}',
+                              '${AppConstants.baseUrl.replaceAll('/api', '')}${product['image_url']}',
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) {
                                 return Icon(
@@ -586,8 +600,8 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                             ),
                           )
                         : Icon(
-                            Icons.inventory_2_outlined,
-                            color: isActive
+                            Icons.agriculture,
+                            color: isAvailable
                                 ? AppColors.primaryGreen.withOpacity(0.5)
                                 : Colors.grey.withOpacity(0.5),
                             size: 32,
@@ -596,10 +610,10 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                 ),
                 const SizedBox(width: 12),
 
-                // ✅ Product Details
+                // Product Details
                 Expanded(
                   child: Opacity(
-                    opacity: isActive ? 1.0 : 0.6,
+                    opacity: isAvailable ? 1.0 : 0.6,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -614,10 +628,11 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        if (product['brand'] != null) ...[
+                        if (product['variety'] != null &&
+                            product['variety'].toString().isNotEmpty) ...[
                           const SizedBox(height: 4),
                           SmartReTranslator(
-                            text: product['brand'],
+                            text: product['variety'],
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey[700],
@@ -626,20 +641,20 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                         ],
                         const SizedBox(height: 8),
 
-                        // ✅ Price and Stock Row
+                        // Price and Stock Row
                         Row(
                           children: [
                             // Price
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.currency_rupee,
                                   size: 14,
                                   color: AppColors.primaryGreen,
                                 ),
                                 SmartReTranslator(
-                                  text: '${product['price']}',
+                                  text: '${product['price_per_unit']}',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -704,13 +719,13 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
 
                 const SizedBox(width: 8),
 
-                // ✅ Toggle Switch for Active/Inactive
+                // Toggle Switch
                 Transform.scale(
                   scale: 0.85,
                   child: Switch(
-                    value: isActive,
+                    value: isAvailable,
                     onChanged: (value) {
-                      _toggleProductStatus(product['product_id'], isActive);
+                      _toggleProductStatus(product['product_id'], isAvailable);
                     },
                     activeColor: AppColors.primaryGreen,
                     activeTrackColor: AppColors.primaryGreen.withOpacity(0.5),

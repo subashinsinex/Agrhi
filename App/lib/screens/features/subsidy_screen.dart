@@ -405,7 +405,6 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
       appBar: CustomAppBar(
         title: 'Subsidy',
         showOnlineStatus: true,
-        showLanguageSwitcher: false,
         actions: [
           // ✅ Show refresh indicator when background refresh is active
           if (_isRefreshing)
@@ -770,7 +769,6 @@ class SubsidyDetailScreen extends StatelessWidget {
       appBar: CustomAppBar(
         title: subsidy.title,
         showOnlineStatus: true,
-        showLanguageSwitcher: false,
       ),
       backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(

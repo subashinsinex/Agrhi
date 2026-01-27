@@ -1,4 +1,3 @@
-// routes/productImageRoutes.js
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -43,6 +42,7 @@ const upload = multer({
 });
 
 // POST /api/product-images/upload
+// For retail products
 // form-data:
 //   - product_id: text
 //   - image: file
@@ -85,5 +85,58 @@ router.post("/upload", jwtChecker, upload.single("image"), async (req, res) => {
     });
   }
 });
+
+// POST /api/product-images/upload-farm
+// For farm products
+// form-data:
+//   - product_id: text
+//   - image: file
+router.post(
+  "/upload-farm",
+  jwtChecker,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      if (!req.user_id) {
+        return res
+          .status(401)
+          .json({ success: false, error: "Authentication failed" });
+      }
+
+      const { product_id } = req.body;
+      const file = req.file;
+
+      if (!product_id) {
+        return res
+          .status(400)
+          .json({ success: false, error: "product_id is required" });
+      }
+      if (!file) {
+        return res
+          .status(400)
+          .json({ success: false, error: "No image file provided" });
+      }
+
+      const result = await productImageService.saveFarmProductImage(
+        file,
+        product_id,
+      );
+
+      return res.status(200).json({
+        success: true,
+        image_id: result.image_id,
+        image_url: result.image_url,
+        product: result.product,
+      });
+    } catch (error) {
+      console.error("farm-product-image upload error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+        message: error.message,
+      });
+    }
+  },
+);
 
 module.exports = router;

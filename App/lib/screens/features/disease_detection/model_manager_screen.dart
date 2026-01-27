@@ -185,7 +185,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             appBar: CustomAppBar(
               title: 'Model Library',
               showOnlineStatus: true,
-              showLanguageSwitcher: false,
               onBackPressed: () => _handleBackNavigation(provider),
             ),
             backgroundColor: AppColors.backgroundColor,

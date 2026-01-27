@@ -93,6 +93,14 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
       }
     } catch (e) {
       debugPrint('❌ Error loading shop data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: SmartReTranslator(text: 'Error loading shop data: $e'),
+            backgroundColor: AppColors.errorColor,
+          ),
+        );
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -187,12 +195,10 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
 
       if (pickedFile != null) {
         // ✅ Step 3: Get accurate current position in background (if last known was null)
-        if (position == null) {
-          position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 10),
-          );
-        }
+        position ??= await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
 
         setState(() {
           _selectedImage = File(pickedFile.path);
@@ -216,11 +222,11 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Error capturing image: $e');
+      debugPrint('❌ Error capturing image: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: SmartReTranslator(text: 'Error: $e'),
+            content: SmartReTranslator(text: 'Error capturing image: $e'),
             backgroundColor: AppColors.errorColor,
           ),
         );
@@ -230,6 +236,7 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
     }
   }
 
+  // ✅ Two-step shop creation: 1) Create retailer, 2) Upload image
   Future<void> _saveShop() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -279,31 +286,48 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
       };
 
       if (_isEditing && _retailerId != null) {
+        // ✅ Editing existing shop
         debugPrint('🔄 Updating existing shop: $_retailerId');
         await RetailService.updateRetailer(_retailerId!, shopData);
 
+        // ✅ Upload new image only if selected
         if (_selectedImage != null) {
           debugPrint('📤 Uploading new shop image...');
           await RetailService.uploadShopImage(_retailerId!, _selectedImage!);
         }
       } else {
-        debugPrint('➕ Creating new shop...');
+        // ✅ Creating new shop - TWO SEQUENTIAL API CALLS
+        debugPrint('➕ Creating new shop with two-step process...');
+
+        // ✅ STEP 1: Create retailer and get retailer_id
+        debugPrint('📤 Step 1: Creating retailer details...');
         final response = await RetailService.createRetailer(shopData);
         final newRetailerId = response['retailer_id'];
+
+        if (newRetailerId == null) {
+          throw Exception('Failed to create shop: No retailer_id returned');
+        }
+
+        debugPrint('✅ Shop created with ID: $newRetailerId');
 
         setState(() {
           _retailerId = newRetailerId;
           _isEditing = true;
         });
 
-        debugPrint('✅ Shop created with ID: $_retailerId');
-
-        if (_selectedImage != null && _retailerId != null) {
-          debugPrint('📤 Uploading shop image...');
-          await RetailService.uploadShopImage(_retailerId!, _selectedImage!);
+        // ✅ STEP 2: Upload shop image using the returned retailer_id
+        if (_selectedImage != null) {
+          debugPrint(
+            '📤 Step 2: Uploading shop image for retailer: $newRetailerId',
+          );
+          await RetailService.uploadShopImage(newRetailerId, _selectedImage!);
+          debugPrint('✅ Shop image uploaded successfully');
+        } else {
+          debugPrint('⚠️ No image to upload');
         }
       }
 
+      // ✅ Reload shop data to get updated image URL
       debugPrint('🔄 Reloading shop data...');
       await _loadShopData();
 
@@ -327,6 +351,7 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
           SnackBar(
             content: SmartReTranslator(text: 'Error: $e'),
             backgroundColor: AppColors.errorColor,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -345,7 +370,17 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
       backgroundColor: AppColors.backgroundColor,
       body: _isLoading
           ? Center(
-              child: CircularProgressIndicator(color: AppColors.primaryGreen),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: AppColors.primaryGreen),
+                  const SizedBox(height: 16),
+                  SmartReTranslator(
+                    text: _isEditing ? 'Updating shop...' : 'Creating shop...',
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
             )
           : SingleChildScrollView(
               child: Padding(
@@ -558,7 +593,7 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
 
   Widget _buildImageCapture() {
     return GestureDetector(
-      onTap: _captureImageWithLocation,
+      onTap: _isLoading ? null : _captureImageWithLocation,
       child: Container(
         height: 240,
         decoration: BoxDecoration(
@@ -921,6 +956,7 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
           keyboardType: keyboardType,
           maxLines: maxLines,
           validator: validator,
+          enabled: !_isLoading,
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
           decoration: InputDecoration(
             hintText: hint,
@@ -957,6 +993,10 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
                 color: AppColors.errorColor,
                 width: 2,
               ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade200),
             ),
           ),
         ),
@@ -1043,7 +1083,9 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
               child: SmartReTranslator(text: 'All Products'),
             ),
           ],
-          onChanged: (value) => setState(() => _businessType = value),
+          onChanged: _isLoading
+              ? null
+              : (value) => setState(() => _businessType = value),
         ),
       ],
     );

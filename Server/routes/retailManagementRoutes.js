@@ -33,10 +33,11 @@ router.get(
 );
 
 router.put("/updateproducts/:id", jwtChecker, retailService.updateProduct);
-router.put(
-  "/toggleproducts/:id/isactive",
+
+router.post(
+  "/products/:id/toggle-status",
   jwtChecker,
-  retailService.toggleProduct
+  retailService.toggleProductStatus,
 );
 
 router.delete(

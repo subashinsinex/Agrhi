@@ -10,6 +10,7 @@ import '../../utils/colors.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/connectivity_manager.dart';
 import '../shared/smart_retranslator.dart';
+import '../shared/language_switcher.dart';
 import '../components/weather_card.dart';
 import '../components/profile_card.dart';
 import '../components/feature_grid.dart';
@@ -25,6 +26,9 @@ import '../auth/login_screen.dart';
 import 'profile_screen.dart';
 import './retail_management/shops_screen.dart';
 import '../../src/services/retail_service.dart';
+import '../../screens/features/farm_store/setup_screen.dart';
+import '../../screens/features/farm_store/farm_product_screen.dart';
+import '../../screens/features/market_place/market_place_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -69,7 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'Subsidy',
       'Crop History',
       'Help & Support',
-      'Model Manager',
+      'Model Library',
       'Detection History',
       'Notifications',
       'Notifications feature coming soon!',
@@ -99,7 +103,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'Cancel',
       'No internet connection',
       'My Shops',
-      'This feature requires internet connection', // ✅ ADD
+      'My Produce',
+      'Map',
+      'This feature requires internet connection',
+      'Language', // ✅ ADD THIS
     ], highPriority: true);
   }
 
@@ -157,7 +164,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ NEW: Show offline warning
   void _showOfflineWarning() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -169,6 +175,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: AppColors.errorColor,
         duration: const Duration(seconds: 3),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
         action: SnackBarAction(
           label: 'OK',
           textColor: Colors.white,
@@ -178,7 +185,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ✅ NEW: Navigate with online check
   void _navigateWithOnlineCheck(Widget screen) {
     final connectivityManager = context.read<ConnectivityManager>();
 
@@ -189,165 +195,272 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _navigateToFarmStore() async {
+    final connectivityManager = context.read<ConnectivityManager>();
+
+    if (!connectivityManager.isOnline) {
+      _showOfflineWarning();
+      return;
+    }
+
+    try {
+      final hasShopPlace = await _storage.read(key: 'has_shop_place');
+
+      if (hasShopPlace == 'true') {
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const FarmProductsScreen()),
+          );
+        }
+      } else {
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const SetupScreen()),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error reading shop place flag: $e');
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const SetupScreen()),
+        );
+      }
+    }
+  }
+
+  List<FeatureItem> _buildFeatures() {
+    if (userData == null) return [];
+
+    final category = userData!['category']?.toString().toLowerCase() ?? '';
+    final isRetailer = category == 'retailer';
+    final isAdmin = category == 'admin';
+    final isFarmer = category == 'farmer';
+    final isConsumer = category == 'consumer';
+
+    return [
+      FeatureItem(
+        title: 'Plant Doctor',
+        icon: Icons.biotech,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const DetectDiseaseScreen()),
+        ),
+      ),
+      FeatureItem(
+        title: 'Detection History',
+        icon: Icons.history,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const DiseaseHistoryScreen()),
+        ),
+      ),
+      FeatureItem(
+        icon: Icons.download,
+        title: 'Model Library',
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const ModelManagerScreen()),
+        ),
+      ),
+      FeatureItem(
+        title: 'Marketplace',
+        icon: Icons.shopping_cart,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const MarketplaceScreen()),
+        ),
+      ),
+      if (!isConsumer)
+        FeatureItem(
+          title: 'Crop Care',
+          icon: Icons.agriculture,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CropCareScreen()),
+          ),
+        ),
+      if (!isConsumer)
+        FeatureItem(
+          title: 'Crop History',
+          icon: Icons.history_edu,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CropHistoryScreen()),
+          ),
+        ),
+      if (isFarmer || isAdmin)
+        FeatureItem(
+          title: 'Farm Store',
+          icon: Icons.inventory_2,
+          onTap: () => _navigateToFarmStore(),
+        ),
+      FeatureItem(
+        icon: Icons.map,
+        title: 'Map',
+        onTap: () => _navigateWithOnlineCheck(const MapScreen()),
+      ),
+      if (isRetailer || isAdmin)
+        FeatureItem(
+          title: 'My Shops',
+          icon: Icons.store,
+          onTap: () => _navigateWithOnlineCheck(const ShopsListScreen()),
+        ),
+      FeatureItem(
+        title: 'Subsidy',
+        icon: Icons.monetization_on,
+        onTap: () => _navigateWithOnlineCheck(const SubsidyScreen()),
+      ),
+    ];
+  }
+
   Future<void> _performManualSync() async {
     final connectivityManager = context.read<ConnectivityManager>();
 
     if (!connectivityManager.isOnline) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const SmartReTranslator(
-            text: 'No internet connection',
-            style: TextStyle(color: Colors.white),
-          ),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.errorColor,
-          duration: const Duration(seconds: 3),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
+      _showSnackBar(
+        'No internet connection',
+        AppColors.errorColor,
+        duration: 3,
       );
       return;
     }
 
     if (connectivityManager.isSyncing) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const SmartReTranslator(
-            text: 'Sync in progress...',
-            style: TextStyle(color: Colors.white),
-          ),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.infoColor,
-          duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _showSnackBar('Sync in progress...', AppColors.infoColor, duration: 2);
       return;
     }
 
-    final messenger = ScaffoldMessenger.of(context);
-
-    messenger.showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(width: 10),
-            Expanded(
-              child: SmartReTranslator(
-                text: 'Syncing data...',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.infoColor,
-        duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
+    _showSnackBar(
+      'Syncing data...',
+      AppColors.infoColor,
+      duration: 2,
+      showProgress: true,
     );
 
     final result = await connectivityManager.performManualSync();
 
     if (result['success']) {
-      final diseaseSync = result['disease_sync'] as Map<String, dynamic>?;
-      final cropCareSync = result['crop_care_sync'] as Map<String, dynamic>?;
-
-      int catalogsUpdated = 0;
-      int uploaded = 0;
-      int downloaded = 0;
-      int imagesUploaded = 0;
-      int farmsUploaded = 0;
-      int cropsUploaded = 0;
-      int historyDownloaded = 0;
-
-      if (diseaseSync != null && (diseaseSync['success'] ?? false)) {
-        final catalogsResult = diseaseSync['catalogs'] as Map<String, dynamic>?;
-        final twoWayResult =
-            diseaseSync['two_way_sync'] as Map<String, dynamic>?;
-
-        catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
-        uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
-        downloaded = (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
-        imagesUploaded = (twoWayResult?['images']?['upload'] as int?) ?? 0;
-      }
-
-      if (cropCareSync != null && (cropCareSync['success'] ?? false)) {
-        final sync = cropCareSync['sync'] as Map<String, dynamic>?;
-        if (sync != null) {
-          farmsUploaded = sync['farmUpload']?['uploaded'] ?? 0;
-          cropsUploaded = sync['cropUpload']?['uploaded'] ?? 0;
-          historyDownloaded = sync['historyDownload']?['downloaded'] ?? 0;
-        }
-      }
-
-      messenger.showSnackBar(
-        SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SmartReTranslator(
-                text: '✅ Sync complete!',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
-              ),
-              const SizedBox(height: 6),
-              if (result['disease_success'] == true)
-                SmartReTranslator(
-                  text:
-                      'Upload $uploaded, Downloaded $downloaded, Images $imagesUploaded, Catalogs $catalogsUpdated',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              if (result['disease_success'] == true &&
-                  result['crop_care_success'] == true)
-                const SizedBox(height: 3),
-              if (result['crop_care_success'] == true)
-                SmartReTranslator(
-                  text:
-                      'Farms $farmsUploaded, Crops $cropsUploaded, History $historyDownloaded',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-            ],
-          ),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.successColor,
-          duration: const Duration(seconds: 4),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _showSyncSuccessSnackBar(result);
     } else {
-      messenger.showSnackBar(
-        SnackBar(
-          content: SmartReTranslator(
-            text: result['error'] ?? 'Sync failed. Please try again.',
-            style: const TextStyle(color: Colors.white),
-          ),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.errorColor,
-          duration: const Duration(seconds: 3),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
+      _showSnackBar(
+        result['error'] ?? 'Sync failed. Please try again.',
+        AppColors.errorColor,
+        duration: 3,
       );
     }
+  }
+
+  void _showSnackBar(
+    String message,
+    Color backgroundColor, {
+    int duration = 3,
+    bool showProgress = false,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            if (showProgress)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
+            if (showProgress) const SizedBox(width: 10),
+            Expanded(
+              child: SmartReTranslator(
+                text: message,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: backgroundColor,
+        duration: Duration(seconds: duration),
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  void _showSyncSuccessSnackBar(Map<String, dynamic> result) {
+    final diseaseSync = result['disease_sync'] as Map<String, dynamic>?;
+    final cropCareSync = result['crop_care_sync'] as Map<String, dynamic>?;
+
+    int catalogsUpdated = 0;
+    int uploaded = 0;
+    int downloaded = 0;
+    int imagesUploaded = 0;
+    int farmsUploaded = 0;
+    int cropsUploaded = 0;
+    int historyDownloaded = 0;
+
+    if (diseaseSync != null && (diseaseSync['success'] ?? false)) {
+      final catalogsResult = diseaseSync['catalogs'] as Map<String, dynamic>?;
+      final twoWayResult = diseaseSync['two_way_sync'] as Map<String, dynamic>?;
+
+      catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
+      uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
+      downloaded = (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
+      imagesUploaded = (twoWayResult?['images']?['upload'] as int?) ?? 0;
+    }
+
+    if (cropCareSync != null && (cropCareSync['success'] ?? false)) {
+      final sync = cropCareSync['sync'] as Map<String, dynamic>?;
+      if (sync != null) {
+        farmsUploaded = sync['farmUpload']?['uploaded'] ?? 0;
+        cropsUploaded = sync['cropUpload']?['uploaded'] ?? 0;
+        historyDownloaded = sync['historyDownload']?['downloaded'] ?? 0;
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SmartReTranslator(
+              text: '✅ Sync complete!',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (result['disease_success'] == true)
+              SmartReTranslator(
+                text:
+                    'Upload $uploaded, Downloaded $downloaded, Images $imagesUploaded, Catalogs $catalogsUpdated',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            if (result['disease_success'] == true &&
+                result['crop_care_success'] == true)
+              const SizedBox(height: 3),
+            if (result['crop_care_success'] == true)
+              SmartReTranslator(
+                text:
+                    'Farms $farmsUploaded, Crops $cropsUploaded, History $historyDownloaded',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+          ],
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.successColor,
+        duration: const Duration(seconds: 4),
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   Future<void> _performBackgroundCleanup() async {
@@ -356,9 +469,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       debugPrint('🗑️ Clearing secure storage...');
       await _storage.deleteAll();
-
       await RetailService.clearCache();
-
       debugPrint('✅ Secure storage cleared');
 
       debugPrint('🗑️ Clearing database tables...');
@@ -377,53 +488,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
       debugPrint('✅ Database tables cleared');
 
       debugPrint('🗑️ Deleting disease images...');
-      try {
-        final appDocDir = await getApplicationDocumentsDirectory();
-        final docImagesDir = Directory('${appDocDir.path}/disease_images');
-
-        if (await docImagesDir.exists()) {
-          await docImagesDir.delete(recursive: true);
-          debugPrint('✅ Documents disease images deleted');
-        }
-
-        final appSupportDir = await getApplicationSupportDirectory();
-        final supportImagesDir = Directory(
-          '${appSupportDir.path}/disease_images',
-        );
-
-        if (await supportImagesDir.exists()) {
-          await supportImagesDir.delete(recursive: true);
-          debugPrint('✅ Support disease images deleted');
-        }
-      } catch (e) {
-        debugPrint('⚠️ Error deleting disease images: $e');
-      }
+      await _deleteDirectoryIfExists(
+        await getApplicationDocumentsDirectory(),
+        'disease_images',
+      );
+      await _deleteDirectoryIfExists(
+        await getApplicationSupportDirectory(),
+        'disease_images',
+      );
 
       debugPrint('🗑️ Clearing app cache...');
-      try {
-        final cacheDir = await getTemporaryDirectory();
-        if (await cacheDir.exists()) {
-          await for (var entity in cacheDir.list()) {
-            try {
-              if (entity is File) {
-                await entity.delete();
-              } else if (entity is Directory) {
-                await entity.delete(recursive: true);
-              }
-            } catch (e) {
-              debugPrint('⚠️ Failed to delete: ${entity.path}');
-            }
-          }
-          debugPrint('✅ App cache cleared');
-        }
-      } catch (e) {
-        debugPrint('⚠️ Error clearing cache: $e');
-      }
+      await _clearCacheDirectory();
 
       debugPrint('🎉 Background cleanup complete');
     } catch (e, stackTrace) {
       debugPrint('❌ Error during background cleanup: $e');
       debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _deleteDirectoryIfExists(
+    Directory baseDir,
+    String subPath,
+  ) async {
+    try {
+      final dir = Directory('${baseDir.path}/$subPath');
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+        debugPrint('✅ Deleted: ${dir.path}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error deleting $subPath: $e');
+    }
+  }
+
+  Future<void> _clearCacheDirectory() async {
+    try {
+      final cacheDir = await getTemporaryDirectory();
+      if (await cacheDir.exists()) {
+        await for (var entity in cacheDir.list()) {
+          try {
+            if (entity is File) {
+              await entity.delete();
+            } else if (entity is Directory) {
+              await entity.delete(recursive: true);
+            }
+          } catch (e) {
+            debugPrint('⚠️ Failed to delete: ${entity.path}');
+          }
+        }
+        debugPrint('✅ App cache cleared');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error clearing cache: $e');
     }
   }
 
@@ -558,73 +675,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _showLanguageSelectionDialog() {
+    LanguageSwitcher.showBottomSheet(context);
+  }
+
   @override
   Widget build(BuildContext context) {
-    bool isRetailer =
-        (userData?['category']?.toString().toLowerCase() == 'retailer');
-
-    final features = [
-      FeatureItem(
-        title: 'Crop Care',
-        icon: Icons.agriculture,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CropCareScreen()),
-        ),
-      ),
-      FeatureItem(
-        title: 'Plant Doctor',
-        icon: Icons.biotech,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const DetectDiseaseScreen()),
-        ),
-      ),
-      FeatureItem(
-        title: 'Subsidy',
-        icon: Icons.monetization_on,
-        onTap: () => _navigateWithOnlineCheck(const SubsidyScreen()),
-      ),
-      FeatureItem(
-        title: 'Crop History',
-        icon: Icons.history_edu,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CropHistoryScreen()),
-        ),
-      ),
-      FeatureItem(
-        title: 'Detection History',
-        icon: Icons.history,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const DiseaseHistoryScreen()),
-        ),
-      ),
-      FeatureItem(
-        icon: Icons.download,
-        title: 'Model Library',
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const ModelManagerScreen()),
-        ),
-      ),
-      FeatureItem(
-        icon: Icons.map,
-        title: 'Map',
-        onTap: () => _navigateWithOnlineCheck(const MapScreen()),
-      ),
-      if (isRetailer)
-        FeatureItem(
-          title: 'My Shops',
-          icon: Icons.store,
-          onTap: () => _navigateWithOnlineCheck(const ShopsListScreen()),
-        ),
-    ];
-
     return Scaffold(
       appBar: DashboardAppBar.withSettings(
-        onSyncPressed: () => _performManualSync(),
+        onSyncPressed: _performManualSync,
         onHelpPressed: () {
           Navigator.push(
             context,
@@ -632,92 +691,111 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         },
         onLogoutPressed: _showLogoutConfirmation,
+        onLanguagePressed: _showLanguageSelectionDialog, // ✅ FIXED
         isSyncing: context.watch<ConnectivityManager>().isSyncing,
       ),
       backgroundColor: AppColors.backgroundColor,
       body: RefreshIndicator(
         onRefresh: _loadUserData,
+        color: AppColors.primaryGreen,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 25.0),
-            child: Column(
-              children: [
-                WeatherCard(
-                  key: ValueKey(
-                    'weather_${Provider.of<LanguageService>(context).currentLocale.languageCode}',
-                  ),
-                  useDeviceLocation: true,
+          child: Column(
+            children: [
+              const SizedBox(height: 20),
+              WeatherCard(
+                key: ValueKey(
+                  'weather_${Provider.of<LanguageService>(context).currentLocale.languageCode}',
                 ),
-                const SizedBox(height: 10),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.0),
-                    child: SmartReTranslator(
-                      text: 'Profile',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w400,
-                        color: AppColors.textPrimary,
+                useDeviceLocation: true,
+              ),
+              const SizedBox(height: 24),
+              _buildSectionHeader('Profile', Icons.person_outline),
+              const SizedBox(height: 12),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _isLoadingProfile
+                    ? _buildProfileSkeleton()
+                    : ProfileCard(
+                        key: const ValueKey('profile_card'),
+                        name: userData?['name'] ?? 'Guest User',
+                        email: userData?['email'],
+                        category: userData?['category'],
+                        emailVerified: userData?['email_verified'] ?? false,
+                        profileImagePath: userData?['profile_image_path'],
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ProfileScreen(),
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: _isLoadingProfile
-                      ? _buildProfileSkeleton()
-                      : ProfileCard(
-                          key: const ValueKey('profile_card'),
-                          name: userData?['name'] ?? 'Guest User',
-                          email: userData?['email'],
-                          category: userData?['category'],
-                          emailVerified: userData?['email_verified'] ?? false,
-                          profileImagePath: userData?['profile_image_path'],
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ProfileScreen(),
-                              ),
-                            );
-                          },
+              ),
+              const SizedBox(height: 28),
+              _buildSectionHeader('Features', Icons.grid_view_rounded),
+              const SizedBox(height: 12),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _isLoadingProfile
+                    ? _buildFeaturesSkeleton()
+                    : DirectFeatureGrid(
+                        key: ValueKey(
+                          '${Provider.of<LanguageService>(context).currentLocale.languageCode}_${userData?['category'] ?? "none"}',
                         ),
-                ),
-                const SizedBox(height: 20),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.0),
-                    child: SmartReTranslator(
-                      text: 'Features',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w400,
-                        color: AppColors.textPrimary,
+                        features: _buildFeatures(),
+                        crossAxisCount: 3,
+                        childAspectRatio: 0.9,
+                        spacing: 12,
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                DirectFeatureGrid(
-                  key: ValueKey(
-                    Provider.of<LanguageService>(
-                      context,
-                    ).currentLocale.languageCode,
-                  ),
-                  features: features,
-                  crossAxisCount: 3,
-                  childAspectRatio: 0.85,
-                  spacing: 12,
-                ),
-                const SizedBox(height: 50),
-              ],
-            ),
+              ),
+              const SizedBox(height: 50),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 20, color: AppColors.primaryGreen),
+          ),
+          const SizedBox(width: 10),
+          SmartReTranslator(
+            text: title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              height: 2,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primaryGreen.withOpacity(0.3),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -727,76 +805,130 @@ class _DashboardScreenState extends State<DashboardScreen> {
       key: const ValueKey('profile_skeleton'),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primaryGreen.withOpacity(0.8),
-            AppColors.primaryGreen,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryGreen.withOpacity(0.2),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 2,
+          ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        child: Row(
-          children: [
-            Container(
-              width: 75,
-              height: 75,
-              decoration: BoxDecoration(
-                color: AppColors.mediumGreenAccent.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(14),
-              ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.primaryGreen.withOpacity(0.7),
+                AppColors.primaryGreen.withOpacity(0.8),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryWhite.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.2),
+              width: 1.5,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 2,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: 180,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryWhite.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(4),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: 180,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: 100,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.15),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: 80,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryWhite.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ],
-              ),
+                  child: const SizedBox(width: 16, height: 16),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.primaryWhite.withOpacity(0.2),
-              ),
-              child: const SizedBox(width: 18, height: 18),
-            ),
-          ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFeaturesSkeleton() {
+    return Padding(
+      key: const ValueKey('features_skeleton'),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.9,
+        ),
+        itemCount: 6,
+        itemBuilder: (context, index) {
+          return Container(
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+          );
+        },
       ),
     );
   }
@@ -812,7 +944,7 @@ class DirectFeatureGrid extends StatelessWidget {
     super.key,
     required this.features,
     this.crossAxisCount = 3,
-    this.childAspectRatio = 0.85,
+    this.childAspectRatio = 0.9,
     this.spacing = 12,
   });
 
@@ -832,45 +964,64 @@ class DirectFeatureGrid extends StatelessWidget {
         itemCount: features.length,
         itemBuilder: (context, index) {
           final feature = features[index];
-          return InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: feature.onTap,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Expanded(
-                  child: Card(
-                    color: AppColors.primaryGreen,
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: feature.onTap,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primaryGreen.withOpacity(0.9),
+                      AppColors.primaryGreen,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryGreen.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
-                    margin: const EdgeInsets.all(4),
-                    child: Center(
-                      child: Icon(
-                        feature.icon,
-                        size: 36,
-                        color: AppColors.primaryWhite,
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(feature.icon, size: 32, color: Colors.white),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: SmartReTranslator(
+                        key: ValueKey('feature_${feature.title}_$index'),
+                        text: feature.title,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          letterSpacing: 0.2,
+                        ),
+                        maxLines: 2,
+                        textAlign: TextAlign.center,
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: SmartReTranslator(
-                    key: ValueKey('feature_${feature.title}_$index'),
-                    text: feature.title,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
+              ),
             ),
           );
         },

@@ -5,35 +5,34 @@ import 'package:image_picker/image_picker.dart';
 import '../../../utils/colors.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
-import '../../../src/services/retail_service.dart';
+import '../../../src/services/farm_store_service.dart';
 import '../../../utils/constants.dart';
 
-class AddEditProductScreen extends StatefulWidget {
-  final String retailerId;
+class AddEditFarmProductScreen extends StatefulWidget {
+  final String farmerId;
   final Map<String, dynamic>? product;
 
-  const AddEditProductScreen({
+  const AddEditFarmProductScreen({
     super.key,
-    required this.retailerId,
+    required this.farmerId,
     this.product,
   });
 
   @override
-  State<AddEditProductScreen> createState() => _AddEditProductScreenState();
+  State<AddEditFarmProductScreen> createState() =>
+      _AddEditFarmProductScreenState();
 }
 
-class _AddEditProductScreenState extends State<AddEditProductScreen> {
+class _AddEditFarmProductScreenState extends State<AddEditFarmProductScreen> {
   final _formKey = GlobalKey<FormState>();
   final _productNameController = TextEditingController();
-  final _brandController = TextEditingController();
+  final _varietyController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
-  final _stockQtyController = TextEditingController();
+  final _quantityController = TextEditingController();
 
-  // ✅ Create ImagePicker instance once (reuse it)
   final ImagePicker _picker = ImagePicker();
 
-  String? _category = 'fertilizer';
   String? _unit = 'kg';
   bool _isLoading = false;
   bool _isEditing = false;
@@ -54,22 +53,17 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     final product = widget.product!;
     _productId = product['product_id'];
     _productNameController.text = product['product_name'] ?? '';
-    _brandController.text = product['brand'] ?? '';
+    _varietyController.text = product['variety'] ?? '';
     _descriptionController.text = product['description'] ?? '';
-    _priceController.text = product['price']?.toString() ?? '';
-    _stockQtyController.text = product['stock_qty']?.toString() ?? '';
-    _category = product['category'] ?? 'fertilizer';
+    _priceController.text = product['price_per_unit']?.toString() ?? '';
+    _quantityController.text = product['quantity_available']?.toString() ?? '';
     _unit = product['unit'] ?? 'kg';
-    _productImageUrl =
-        product['product_image_url'] ??
-        product['image_url'] ??
-        product['product_image'];
+    _productImageUrl = product['image_url'];
 
-    debugPrint('📥 Loading product data: $_productId');
+    debugPrint('📥 Loading farm product data: $_productId');
     debugPrint('✅ Product image URL: $_productImageUrl');
   }
 
-  // ✅ Optimized image picking with direct camera launch
   Future<void> _pickImageFromCamera() async {
     try {
       final pickedFile = await _picker.pickImage(
@@ -77,7 +71,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 85,
-        preferredCameraDevice: CameraDevice.rear, // ✅ Specify rear camera
+        preferredCameraDevice: CameraDevice.rear,
       );
 
       if (pickedFile != null) {
@@ -133,7 +127,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     }
   }
 
-  // ✅ Show optimized image picker dialog
   Future<void> _showImageSourceDialog() async {
     await showDialog(
       context: context,
@@ -165,8 +158,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                 style: TextStyle(fontSize: 12),
               ),
               onTap: () {
-                Navigator.pop(context); // ✅ Close dialog first
-                // ✅ Open camera immediately after dialog closes
+                Navigator.pop(context);
                 Future.delayed(const Duration(milliseconds: 100), () {
                   _pickImageFromCamera();
                 });
@@ -191,8 +183,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                 style: TextStyle(fontSize: 12),
               ),
               onTap: () {
-                Navigator.pop(context); // ✅ Close dialog first
-                // ✅ Open gallery immediately after dialog closes
+                Navigator.pop(context);
                 Future.delayed(const Duration(milliseconds: 100), () {
                   _pickImageFromGallery();
                 });
@@ -215,7 +206,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
   }
 
-  // ✅ Two-step product creation: 1) Create product, 2) Upload image
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -223,73 +213,73 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
     try {
       final productData = {
-        'retailer_id': widget.retailerId,
-        'category': _category,
         'product_name': _productNameController.text.trim(),
-        'brand': _brandController.text.trim(),
+        'variety': _varietyController.text.trim(),
         'description': _descriptionController.text.trim(),
-        'price': double.parse(_priceController.text.trim()),
+        'price_per_unit': double.parse(_priceController.text.trim()),
         'unit': _unit,
-        'stock_qty': double.parse(_stockQtyController.text.trim()),
+        'quantity_available': double.parse(_quantityController.text.trim()),
       };
 
       if (_isEditing && _productId != null) {
-        // ✅ Editing existing product
-        debugPrint('🔄 Updating existing product: $_productId');
-        await RetailService.updateProduct(_productId!, productData);
+        debugPrint('🔄 Updating existing farm product: $_productId');
+        await FarmStoreService.updateFarmProduct(_productId!, productData);
 
-        // ✅ Upload new image only if selected
         if (_selectedImage != null) {
           debugPrint('📤 Uploading new product image...');
-          await RetailService.uploadProductImage(_productId!, _selectedImage!);
+          await FarmStoreService.uploadFarmProductImage(
+            _productId!,
+            _selectedImage!,
+          );
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: SmartReTranslator(text: 'Product updated successfully'),
+              backgroundColor: AppColors.successColor,
+            ),
+          );
+          Navigator.pop(context, true);
         }
       } else {
-        // ✅ Creating new product - TWO SEQUENTIAL API CALLS
-        debugPrint('➕ Creating new product with two-step process...');
+        debugPrint('➕ Creating new farm product...');
 
-        // ✅ STEP 1: Create product and get product_id
-        debugPrint('📤 Step 1: Creating product details...');
-        final response = await RetailService.createProduct(productData);
+        final response = await FarmStoreService.createFarmProduct(productData);
         final newProductId = response['product_id'];
 
         if (newProductId == null) {
           throw Exception('Failed to create product: No product_id returned');
         }
 
-        debugPrint('✅ Product created with ID: $newProductId');
+        debugPrint('✅ Farm product created with ID: $newProductId');
 
         setState(() {
           _productId = newProductId;
           _isEditing = true;
         });
 
-        // ✅ STEP 2: Upload product image using the returned product_id
         if (_selectedImage != null) {
-          debugPrint(
-            '📤 Step 2: Uploading product image for product: $newProductId',
+          debugPrint('📤 Uploading product image for: $newProductId');
+          await FarmStoreService.uploadFarmProductImage(
+            newProductId,
+            _selectedImage!,
           );
-          await RetailService.uploadProductImage(newProductId, _selectedImage!);
           debugPrint('✅ Product image uploaded successfully');
-        } else {
-          debugPrint('⚠️ No image to upload');
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: SmartReTranslator(text: 'Product created successfully'),
+              backgroundColor: AppColors.successColor,
+            ),
+          );
+          Navigator.pop(context, true);
         }
       }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SmartReTranslator(
-              text: _isEditing
-                  ? 'Product updated successfully'
-                  : 'Product created successfully',
-            ),
-            backgroundColor: AppColors.successColor,
-          ),
-        );
-        Navigator.pop(context, true);
-      }
     } catch (e) {
-      debugPrint('❌ Error saving product: $e');
+      debugPrint('❌ Error saving farm product: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -300,7 +290,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -317,7 +309,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(color: AppColors.primaryGreen),
+                  const CircularProgressIndicator(
+                    color: AppColors.primaryGreen,
+                  ),
                   const SizedBox(height: 16),
                   SmartReTranslator(
                     text: _isEditing
@@ -336,21 +330,19 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Product Image Section
                       _buildSectionHeader(
                         icon: Icons.image,
                         title: 'Product Image',
-                        subtitle: 'Add a clear photo of your product',
+                        subtitle: 'Add a clear photo of your produce',
                       ),
                       const SizedBox(height: 16),
                       _buildImagePicker(),
 
                       const SizedBox(height: 32),
 
-                      // Basic Information
                       _buildSectionHeader(
-                        icon: Icons.inventory_2,
-                        title: 'Basic Information',
+                        icon: Icons.agriculture,
+                        title: 'Product Information',
                         subtitle: 'Enter product details',
                       ),
                       const SizedBox(height: 16),
@@ -358,8 +350,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                       _buildLabeledTextField(
                         label: 'Product Name',
                         controller: _productNameController,
-                        icon: Icons.shopping_bag_outlined,
-                        hint: 'Enter product name',
+                        icon: Icons.eco,
+                        hint: 'e.g., Tomato, Rice, Mango',
                         isRequired: true,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
@@ -371,37 +363,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                       const SizedBox(height: 20),
 
                       _buildLabeledTextField(
-                        label: 'Brand',
-                        controller: _brandController,
-                        icon: Icons.label_outlined,
-                        hint: 'Enter brand name',
+                        label: 'Variety',
+                        controller: _varietyController,
+                        icon: Icons.local_florist_outlined,
+                        hint: 'e.g., Cherry, Basmati (Optional)',
                         isRequired: false,
-                      ),
-                      const SizedBox(height: 20),
-
-                      _buildLabeledDropdown(
-                        label: 'Category',
-                        value: _category,
-                        icon: Icons.category_outlined,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'fertilizer',
-                            child: SmartReTranslator(text: 'Fertilizer'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'seeds',
-                            child: SmartReTranslator(text: 'Seeds'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'tools',
-                            child: SmartReTranslator(text: 'Tools'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'pesticides',
-                            child: SmartReTranslator(text: 'Pesticides'),
-                          ),
-                        ],
-                        onChanged: (value) => setState(() => _category = value),
                       ),
                       const SizedBox(height: 20),
 
@@ -409,18 +375,17 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                         label: 'Description',
                         controller: _descriptionController,
                         icon: Icons.description_outlined,
-                        hint: 'Enter product description (Optional)',
+                        hint: 'Describe your product (Optional)',
                         maxLines: 3,
                         isRequired: false,
                       ),
 
                       const SizedBox(height: 32),
 
-                      // Pricing & Stock
                       _buildSectionHeader(
-                        icon: Icons.attach_money,
-                        title: 'Pricing & Stock',
-                        subtitle: 'Set price and availability',
+                        icon: Icons.monetization_on,
+                        title: 'Pricing & Quantity',
+                        subtitle: 'Set your selling price and quantity',
                       ),
                       const SizedBox(height: 16),
 
@@ -468,20 +433,20 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                   child: Text('kg'),
                                 ),
                                 DropdownMenuItem(
+                                  value: 'gram',
+                                  child: Text('gram'),
+                                ),
+                                DropdownMenuItem(
                                   value: 'liter',
                                   child: Text('liter'),
                                 ),
                                 DropdownMenuItem(
+                                  value: 'dozen',
+                                  child: Text('dozen'),
+                                ),
+                                DropdownMenuItem(
                                   value: 'piece',
                                   child: Text('piece'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'bag',
-                                  child: Text('bag'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'box',
-                                  child: Text('box'),
                                 ),
                               ],
                               onChanged: (value) =>
@@ -493,10 +458,10 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                       const SizedBox(height: 20),
 
                       _buildLabeledTextField(
-                        label: 'Stock Quantity',
-                        controller: _stockQtyController,
+                        label: 'Quantity Available',
+                        controller: _quantityController,
                         icon: Icons.inventory_outlined,
-                        hint: 'Enter available stock',
+                        hint: 'Enter available quantity',
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -508,7 +473,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                         isRequired: true,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Stock quantity is required';
+                            return 'Quantity is required';
                           }
                           final qty = double.tryParse(value);
                           if (qty == null || qty < 0) {
@@ -520,7 +485,6 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
                       const SizedBox(height: 40),
 
-                      // Save Button
                       SizedBox(
                         width: double.infinity,
                         height: 56,
@@ -620,9 +584,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
   Widget _buildImagePicker() {
     return GestureDetector(
-      onTap: _isLoading
-          ? null
-          : _showImageSourceDialog, // ✅ Disable during loading
+      onTap: _isLoading ? null : _showImageSourceDialog,
       child: Container(
         alignment: Alignment.center,
         height: 240,
@@ -698,7 +660,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         ? _productImageUrl!
         : '${AppConstants.baseUrl.replaceAll('/api', '')}$_productImageUrl';
 
-    debugPrint('🖼️ Loading product image from: $imageUrl');
+    debugPrint('🖼️ Loading farm product image from: $imageUrl');
 
     return Stack(
       fit: StackFit.expand,
@@ -968,10 +930,10 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   @override
   void dispose() {
     _productNameController.dispose();
-    _brandController.dispose();
+    _varietyController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
-    _stockQtyController.dispose();
+    _quantityController.dispose();
     super.dispose();
   }
 }

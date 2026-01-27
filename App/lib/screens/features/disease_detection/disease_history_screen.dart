@@ -220,7 +220,6 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
       appBar: const CustomAppBar(
         title: 'Detection History',
         showOnlineStatus: true,
-        showLanguageSwitcher: false,
       ),
       body: _hasError
           ? Center(

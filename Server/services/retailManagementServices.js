@@ -7,18 +7,13 @@ async function generateUniqueId(client, tableName, idColumn) {
     id = uuidv4();
     const check = await client.query(
       `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
-      [id]
+      [id],
     );
     exists = check.rowCount > 0;
   } while (exists);
   return id;
 }
 
-// ---- Retailer profile ----
-
-// ---- Retailer profile ----
-
-// services/retailManagementServices.js
 exports.createRetailer = async (req, res) => {
   const {
     user_id,
@@ -39,7 +34,7 @@ exports.createRetailer = async (req, res) => {
     // Validate user exists
     const userRes = await client.query(
       "SELECT user_id FROM users_auth WHERE user_id = $1 LIMIT 1",
-      [user_id]
+      [user_id],
     );
     if (userRes.rowCount === 0) {
       throw new Error("Invalid user_id. User not found.");
@@ -49,14 +44,14 @@ exports.createRetailer = async (req, res) => {
     const retailer_id = await generateUniqueId(
       client,
       "retailers",
-      "retailer_id"
+      "retailer_id",
     );
 
     // Generate image_id and insert into images table with NULL image_url
     const image_id = uuidv4();
     await client.query(
       "INSERT INTO images (image_id, image_url) VALUES ($1, NULL)",
-      [image_id]
+      [image_id],
     );
 
     // Create retailer with the pre-generated image_id
@@ -77,7 +72,7 @@ exports.createRetailer = async (req, res) => {
         longitude,
         shop_number,
         image_id,
-      ]
+      ],
     );
 
     await client.query("COMMIT");
@@ -262,7 +257,7 @@ exports.createProduct = async (req, res) => {
     const product_id = await generateUniqueId(
       client,
       "retailer_products",
-      "product_id"
+      "product_id",
     );
 
     const result = await client.query(
@@ -281,7 +276,7 @@ exports.createProduct = async (req, res) => {
         stock_qty || 0,
         description,
         image_id || null,
-      ]
+      ],
     );
 
     await client.query("COMMIT");
@@ -368,27 +363,30 @@ exports.updateProduct = async (req, res) => {
   }
 };
 
-exports.toggleProduct = async (req, res) => {
+exports.toggleProductStatus = async (req, res) => {
   const { id } = req.params;
-  const { is_active } = req.body;
 
   try {
     const sql = `
       UPDATE retailer_products
-      SET is_active = $2
+      SET is_active = NOT is_active
       WHERE product_id = $1
-      RETURNING *
+      RETURNING product_id, product_name, is_active
     `;
-    const result = await pool.query(sql, [id, !!is_active]);
+    const result = await pool.query(sql, [id]);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    res.json({ message: "Product status updated", product: result.rows[0] });
+    const product = result.rows[0];
+    res.json({
+      message: `Product ${product.is_active ? "activated" : "deactivated"} successfully`,
+      is_active: product.is_active,
+    });
   } catch (error) {
-    console.error("toggleProduct error:", error);
-    res.status(500).json({ message: "Error updating status", error });
+    console.error("toggleProductStatus error:", error);
+    res.status(500).json({ message: "Error toggling product status", error });
   }
 };
 

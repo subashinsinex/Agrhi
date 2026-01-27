@@ -94,7 +94,6 @@ Future<void> _syncCropCareOnChange() async {
       appBar: CustomAppBar(
         title: 'Crop Care Manager',
         showOnlineStatus: true,
-        showLanguageSwitcher: false,
       ),
       backgroundColor: AppColors.backgroundColor,
       floatingActionButton: FloatingActionButton(
