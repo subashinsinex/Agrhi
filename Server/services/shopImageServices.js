@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const pool = require("../db/database");
 const { v4: uuidv4 } = require("uuid");
+const { compressImageInPlace } = require("../utils/imageCompressor");
 
 exports.saveShopImageForRetailer = async (file, retailerId) => {
   if (!file) {
@@ -22,7 +23,7 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
        FROM retailers r
        LEFT JOIN images i ON r.image_id = i.image_id
        WHERE r.retailer_id = $1`,
-      [retailerId]
+      [retailerId],
     );
 
     if (retailerRes.rowCount === 0) {
@@ -37,6 +38,9 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
 
     const newImageUrl = `/uploads/shop_images/${file.filename}`;
 
+    const fullPath = path.join(__dirname, "..", newImageUrl);
+    await compressImageInPlace(fullPath);
+
     // Delete old file from disk if it exists
     if (oldImageUrl && oldImageUrl !== "no-image") {
       const absolutePath = path.join(__dirname, "..", oldImageUrl);
@@ -50,7 +54,7 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
     // Update the existing image row with the new image_url
     const imageUpdateRes = await client.query(
       "UPDATE images SET image_url = $2 WHERE image_id = $1 RETURNING *",
-      [image_id, newImageUrl]
+      [image_id, newImageUrl],
     );
 
     await client.query("COMMIT");

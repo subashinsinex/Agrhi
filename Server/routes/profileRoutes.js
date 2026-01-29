@@ -5,12 +5,13 @@ const jwtChecker = require("../middleware/jwtChecker");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { compressImageInPlace } = require("../utils/imageCompressor");
 
 const profileImagesDir = path.join(
   __dirname,
   "..",
   "uploads",
-  "profile_images"
+  "profile_images",
 );
 if (!fs.existsSync(profileImagesDir)) {
   fs.mkdirSync(profileImagesDir, { recursive: true });
@@ -28,7 +29,7 @@ const profileStorage = multer.diskStorage({
 
 const profileUpload = multer({
   storage: profileStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     const ok =
@@ -90,7 +91,7 @@ router.post(
           const oldFilePath = path.join(
             __dirname,
             "../uploads/profile_images",
-            oldFilename
+            oldFilename,
           );
 
           if (fs.existsSync(oldFilePath)) {
@@ -105,10 +106,13 @@ router.post(
       }
 
       const picUrl = `/uploads/profile_images/${file.filename}`;
+      const fullPath = path.join(__dirname, "..", picUrl);
+      await compressImageInPlace(fullPath, { width: 512, quality: 70 });
+      console.log("✅ Image compressed:", fullPath);
 
       const result = await profileServices.updateProfilePictureUrl(
         userId,
-        picUrl
+        picUrl,
       );
 
       console.log("✅ Profile picture uploaded successfully");
@@ -134,7 +138,7 @@ router.post(
 
       res.status(500).json({ success: false, message: error.message });
     }
-  }
+  },
 );
 
 router.get("/getUserDetails/:user_id", jwtChecker, async (req, res) => {
@@ -264,7 +268,7 @@ router.delete(
         message: error.message,
       });
     }
-  }
+  },
 );
 
 module.exports = router;

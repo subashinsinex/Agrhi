@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const pool = require("../db/database");
 const { v4: uuidv4 } = require("uuid");
+const { compressImageInPlace } = require("../utils/imageCompressor");
 
 // Save or update product image for a retail product
 // - file: multer file object
@@ -36,6 +37,9 @@ exports.saveProductImage = async (file, productId) => {
     const newImageUrl = `/uploads/product_image/${file.filename}`;
 
     let image_id;
+
+    const fullPath = path.join(__dirname, "..", newImageUrl);
+    await compressImageInPlace(fullPath);
 
     if (!existingImageId) {
       // No image yet: create new image row and set retailer_products.image_id
