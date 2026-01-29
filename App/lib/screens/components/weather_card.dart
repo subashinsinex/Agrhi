@@ -79,13 +79,19 @@ class _WeatherCardState extends State<WeatherCard>
   }
 
   Future<void> _loadCachedDataThenSync() async {
-    await _loadTranslations();
+    // ✅ Load translations and cache in parallel for faster startup
+    await Future.wait([_loadTranslations(), _loadAndDisplayCache()]);
+
+    // ✅ Fetch fresh data silently in background
+    _fetchWeatherSilently();
+  }
+
+  Future<void> _loadAndDisplayCache() async {
     final cachedData = await _loadCachedWeather();
     if (cachedData != null) {
       debugPrint('✅ Loaded cached weather data');
       _displayWeatherData(cachedData, fromCache: true);
     }
-    await _fetchWeatherSilently();
   }
 
   Future<Map<String, dynamic>?> _loadCachedWeather() async {
@@ -138,8 +144,6 @@ class _WeatherCardState extends State<WeatherCard>
   }) {
     if (!mounted) return;
 
-    final langService = Provider.of<LanguageService>(context, listen: false);
-
     setState(() {
       originalLocationName = data['locationName'];
       temperature =
@@ -148,16 +152,18 @@ class _WeatherCardState extends State<WeatherCard>
       wind = "${data['windSpeed']} km/h";
       weatherIcon = _mapWeatherToIcon(data['weatherCode']);
 
-      if (fromCache) {
-        isLoading = false;
-      } else {
-        isLoading = false;
+      // ✅ Hide loading immediately when cache is displayed
+      isLoading = false;
+
+      if (!fromCache) {
         isSyncing = false;
         lastSyncTime = DateTime.now();
       }
     });
 
+    // ✅ Translate location name asynchronously (don't block UI)
     if (originalLocationName != null) {
+      final langService = Provider.of<LanguageService>(context, listen: false);
       langService.translate(originalLocationName!).then((translated) {
         if (mounted) {
           setState(() {
@@ -170,9 +176,14 @@ class _WeatherCardState extends State<WeatherCard>
 
   Future<void> _fetchWeatherSilently() async {
     if (!mounted) return;
-    setState(() => isSyncing = true);
+
+    // ✅ Only show syncing if we already have data displayed
+    if (temperature != null) {
+      setState(() => isSyncing = true);
+    }
 
     try {
+      final startTime = DateTime.now();
       Weather weather;
 
       if (widget.useDeviceLocation) {
@@ -182,6 +193,9 @@ class _WeatherCardState extends State<WeatherCard>
       } else {
         throw Exception('No location provided');
       }
+
+      final duration = DateTime.now().difference(startTime);
+      debugPrint('⏱️ Weather fetched in ${duration.inMilliseconds}ms');
 
       final weatherData = {
         'locationName': weather.locationName,
@@ -198,6 +212,8 @@ class _WeatherCardState extends State<WeatherCard>
       if (!mounted) return;
       setState(() {
         isSyncing = false;
+
+        // ✅ Only show error if we don't have cached data
         if (temperature == null) {
           displayLocation =
               translatedTexts['locationError'] ?? 'Location unavailable';
@@ -428,7 +444,7 @@ class _WeatherCardState extends State<WeatherCard>
               ),
               child: Stack(
                 children: [
-                  // Decorative circles - smaller and repositioned
+                  // Decorative circles
                   Positioned(
                     right: -25,
                     top: -25,
@@ -454,12 +470,12 @@ class _WeatherCardState extends State<WeatherCard>
                     ),
                   ),
 
-                  // Main content - reduced padding
+                  // Main content
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        // Weather icon with animation - made smaller
+                        // Weather icon with animation
                         if (!isLoading && _pulseAnimation != null)
                           ScaleTransition(
                             scale: _pulseAnimation!,
@@ -516,7 +532,7 @@ class _WeatherCardState extends State<WeatherCard>
 
                         const SizedBox(width: 16),
 
-                        // Weather details - more compact
+                        // Weather details
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -554,7 +570,7 @@ class _WeatherCardState extends State<WeatherCard>
 
                               const SizedBox(height: 4),
 
-                              // Temperature & Condition in one line
+                              // Temperature & Condition
                               Row(
                                 children: [
                                   Text(
@@ -597,10 +613,9 @@ class _WeatherCardState extends State<WeatherCard>
 
                               const SizedBox(height: 8),
 
-                              // Wind & Last Sync in one row
+                              // Wind & Last Sync
                               Row(
                                 children: [
-                                  // Wind
                                   Container(
                                     padding: const EdgeInsets.all(4),
                                     decoration: BoxDecoration(
@@ -623,10 +638,8 @@ class _WeatherCardState extends State<WeatherCard>
                                     ),
                                   ),
 
-                                  // Spacer
                                   const SizedBox(width: 12),
 
-                                  // Last sync
                                   if (lastSyncTime != null) ...[
                                     Icon(
                                       isSyncing
@@ -658,7 +671,7 @@ class _WeatherCardState extends State<WeatherCard>
                           ),
                         ),
 
-                        // Compact refresh indicator
+                        // Refresh indicator
                         const SizedBox(width: 8),
                         if (isSyncing)
                           Container(

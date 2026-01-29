@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../../../utils/colors.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
@@ -30,27 +32,114 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   double? _distanceToShop;
   String? _formattedAddress;
 
+  // Cache keys
+  static const String _locationCacheKey = 'product_detail_location_cache';
+  static const String _addressCachePrefix = 'geocode_cache_';
+
   @override
   void initState() {
     super.initState();
-    _loadProductDetails();
-    _getCurrentLocation();
+    _loadCachedDataThenFetch();
   }
 
-  Future<void> _getCurrentLocation() async {
+  /// ✅ Load cached location first, then fetch fresh data
+  Future<void> _loadCachedDataThenFetch() async {
+    // Load cached location
+    await _loadCachedLocation();
+
+    // Load product details (this will use cached location)
+    await _loadProductDetails();
+
+    // Update location in background
+    _updateLocationInBackground();
+  }
+
+  /// Load cached location
+  Future<void> _loadCachedLocation() async {
     try {
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+      final prefs = await SharedPreferences.getInstance();
+      final locationJson = prefs.getString(_locationCacheKey);
+
+      if (locationJson != null) {
+        final data = jsonDecode(locationJson) as Map<String, dynamic>;
+
+        // Check if cache is not too old (1 hour)
+        final cachedTime = DateTime.parse(data['timestamp']);
+        final age = DateTime.now().difference(cachedTime);
+
+        if (age.inHours < 1) {
+          setState(() {
+            _currentPosition = Position(
+              latitude: data['latitude'],
+              longitude: data['longitude'],
+              timestamp: cachedTime,
+              accuracy: 0,
+              altitude: 0,
+              heading: 0,
+              speed: 0,
+              speedAccuracy: 0,
+              altitudeAccuracy: 0,
+              headingAccuracy: 0,
+            );
+          });
+          debugPrint('📍 Using cached location for product details');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading cached location: $e');
+    }
+  }
+
+  /// Cache location
+  Future<void> _cacheLocation(Position position) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final locationData = {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      await prefs.setString(_locationCacheKey, jsonEncode(locationData));
+      debugPrint('✅ Location cached for product details');
+    } catch (e) {
+      debugPrint('❌ Error caching location: $e');
+    }
+  }
+
+  /// Update location in background
+  Future<void> _updateLocationInBackground() async {
+    try {
+      // ✅ Try getLastKnownPosition first (fast)
+      Position? position = await Geolocator.getLastKnownPosition();
+
+      if (position != null && _currentPosition == null) {
+        setState(() {
+          _currentPosition = position;
+        });
+        await _cacheLocation(position);
+        _calculateDistance();
+      }
+
+      // ✅ Get accurate position with timeout
+      final accuratePosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium, // Changed from high
+        timeLimit: Duration(seconds: 5),
       );
 
       setState(() {
-        _currentPosition = position;
+        _currentPosition = accuratePosition;
       });
-
+      await _cacheLocation(accuratePosition);
       _calculateDistance();
     } catch (e) {
-      debugPrint('❌ Error getting location: $e');
+      debugPrint('⚠️ Background location update failed: $e');
+      // Don't show error - using cached location is fine
     }
+  }
+
+  /// Original getCurrentLocation (now just calls background update)
+  Future<void> _getCurrentLocation() async {
+    await _updateLocationInBackground();
   }
 
   void _calculateDistance() {
@@ -73,10 +162,39 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     }
   }
 
+  /// ✅ Optimized geocoding with caching
   Future<void> _getAddressFromCoordinates(
     double latitude,
     double longitude,
   ) async {
+    // Create cache key from coordinates
+    final cacheKey =
+        '$_addressCachePrefix${latitude.toStringAsFixed(4)}_${longitude.toStringAsFixed(4)}';
+
+    // Check cache first
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedAddress = prefs.getString(cacheKey);
+
+      if (cachedAddress != null) {
+        final data = jsonDecode(cachedAddress) as Map<String, dynamic>;
+        final cachedTime = DateTime.parse(data['timestamp']);
+        final age = DateTime.now().difference(cachedTime);
+
+        // Cache addresses for 7 days
+        if (age.inDays < 7) {
+          setState(() {
+            _formattedAddress = data['address'];
+          });
+          debugPrint('✅ Using cached address');
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error loading cached address: $e');
+    }
+
+    // Fetch fresh address
     setState(() => _isLoadingAddress = true);
 
     try {
@@ -112,9 +230,24 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           addressParts.add(place.postalCode!);
         }
 
+        final formattedAddress = addressParts.join(', ');
+
         setState(() {
-          _formattedAddress = addressParts.join(', ');
+          _formattedAddress = formattedAddress;
         });
+
+        // Cache the address
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final addressData = {
+            'address': formattedAddress,
+            'timestamp': DateTime.now().toIso8601String(),
+          };
+          await prefs.setString(cacheKey, jsonEncode(addressData));
+          debugPrint('✅ Address cached: $formattedAddress');
+        } catch (e) {
+          debugPrint('⚠️ Error caching address: $e');
+        }
 
         debugPrint('✅ Address: $_formattedAddress');
       }
@@ -445,8 +578,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               ),
             ),
           ),
-
-          // REMOVED: Back Button (as requested)
         ],
       ),
     );
@@ -850,7 +981,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 ),
               ),
 
-              // MOVED: Call Button to the right of the name
+              // Call Button
               if (sellerPhone != null)
                 Container(
                   decoration: BoxDecoration(
@@ -1127,41 +1258,42 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             Icon(Icons.error_outline, size: 100, color: Colors.grey[300]),
             const SizedBox(height: 24),
             const SmartReTranslator(
-              text: 'Product Not Found',
+              text: 'Product not found',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: FontWeight.bold,
                 color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 12),
-            SmartReTranslator(
-              text: 'This product may have been removed or is unavailable',
-              style: TextStyle(fontSize: 15, color: Colors.grey[600]),
+            const SmartReTranslator(
+              text:
+                  'This product may have been removed or is no longer available',
+              style: TextStyle(fontSize: 15, color: AppColors.textPrimary),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () => Navigator.pop(context),
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               label: const SmartReTranslator(
                 text: 'Go Back',
                 style: TextStyle(
-                  color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  color: Colors.white,
                 ),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryGreen,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
+                  horizontal: 24,
+                  vertical: 12,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
+                elevation: 2,
               ),
             ),
           ],

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../../../utils/colors.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
@@ -18,16 +20,22 @@ class MarketplaceScreen extends StatefulWidget {
 class _MarketplaceScreenState extends State<MarketplaceScreen> {
   List<Map<String, dynamic>> _products = [];
   bool _isLoading = false;
+  bool _isSyncing = false;
   String _searchQuery = '';
   String _selectedProductType = 'all';
   final TextEditingController _searchController = TextEditingController();
   Position? _currentPosition;
-  double _maxDistance = 10; // km
+  double _maxDistance = 10; // Default 10km
+
+  // Cache keys
+  static const String _locationCacheKey = 'marketplace_location_cache';
+  static const String _productsCacheKey = 'marketplace_products_cache';
+  static const String _lastSyncKey = 'marketplace_last_sync';
 
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation();
+    _loadCachedDataThenSync();
   }
 
   @override
@@ -36,15 +44,148 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     super.dispose();
   }
 
-  Future<void> _getCurrentLocation() async {
+  /// ✅ Load cached location and products first, then sync in background
+  Future<void> _loadCachedDataThenSync() async {
     setState(() => _isLoading = true);
 
+    // Load cached location and products in parallel
+    await Future.wait([_loadCachedLocation(), _loadCachedProducts()]);
+
+    // If we have cached data, display it immediately
+    if (_products.isNotEmpty) {
+      setState(() => _isLoading = false);
+      debugPrint('✅ Loaded ${_products.length} cached products');
+    }
+
+    // Update location and products in background
+    await _updateLocationAndProducts();
+  }
+
+  /// Load cached location
+  Future<void> _loadCachedLocation() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final locationJson = prefs.getString(_locationCacheKey);
+
+      if (locationJson != null) {
+        final data = jsonDecode(locationJson) as Map<String, dynamic>;
+
+        // Check if cache is not too old (1 hour)
+        final cachedTime = DateTime.parse(data['timestamp']);
+        final age = DateTime.now().difference(cachedTime);
+
+        if (age.inHours < 1) {
+          setState(() {
+            _currentPosition = Position(
+              latitude: data['latitude'],
+              longitude: data['longitude'],
+              timestamp: cachedTime,
+              accuracy: 0,
+              altitude: 0,
+              heading: 0,
+              speed: 0,
+              speedAccuracy: 0,
+              altitudeAccuracy: 0,
+              headingAccuracy: 0,
+            );
+          });
+          debugPrint('📍 Using cached location');
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading cached location: $e');
+    }
+  }
+
+  /// Load cached products
+  Future<void> _loadCachedProducts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final productsJson = prefs.getString(_productsCacheKey);
+
+      if (productsJson != null) {
+        final data = jsonDecode(productsJson) as Map<String, dynamic>;
+
+        // Check if cache is not too old (30 minutes)
+        final cachedTime = DateTime.parse(data['timestamp']);
+        final age = DateTime.now().difference(cachedTime);
+
+        if (age.inMinutes < 30) {
+          setState(() {
+            _products = List<Map<String, dynamic>>.from(data['products'] ?? []);
+          });
+          debugPrint('✅ Loaded ${_products.length} cached products');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading cached products: $e');
+    }
+  }
+
+  /// Cache location
+  Future<void> _cacheLocation(Position position) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final locationData = {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      await prefs.setString(_locationCacheKey, jsonEncode(locationData));
+      debugPrint('✅ Location cached');
+    } catch (e) {
+      debugPrint('❌ Error caching location: $e');
+    }
+  }
+
+  /// Cache products
+  Future<void> _cacheProducts(List<Map<String, dynamic>> products) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final productsData = {
+        'products': products,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      await prefs.setString(_productsCacheKey, jsonEncode(productsData));
+      await prefs.setString(_lastSyncKey, DateTime.now().toIso8601String());
+      debugPrint('✅ Cached ${products.length} products');
+    } catch (e) {
+      debugPrint('❌ Error caching products: $e');
+    }
+  }
+
+  /// Update location and products in background
+  Future<void> _updateLocationAndProducts() async {
+    try {
+      // Update location
+      await _getCurrentLocation(silent: true);
+
+      // Load products
+      if (_currentPosition != null) {
+        await _loadMarketplaceProducts(silent: true);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Background update failed: $e');
+    }
+  }
+
+  /// Get current location with caching
+  Future<void> _getCurrentLocation({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    } else {
+      setState(() => _isSyncing = true);
+    }
+
+    try {
+      // Check location services
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         throw Exception('Location services are disabled');
       }
 
+      // Check permissions
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -57,30 +198,66 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         throw Exception('Location permissions are permanently denied');
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+      // ✅ Try to get last known position first (fast)
+      Position? position = await Geolocator.getLastKnownPosition();
+
+      if (position != null && _currentPosition == null) {
+        setState(() {
+          _currentPosition = position;
+        });
+        await _cacheLocation(position);
+
+        // Load products with cached position
+        if (!silent) {
+          await _loadMarketplaceProducts();
+        }
+      }
+
+      // ✅ Get accurate position (slower)
+      final accuratePosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: Duration(seconds: 5),
       );
 
       setState(() {
-        _currentPosition = position;
+        _currentPosition = accuratePosition;
       });
+      await _cacheLocation(accuratePosition);
 
-      _loadMarketplaceProducts();
+      // Reload products if location changed significantly
+      if (position == null ||
+          (accuratePosition.latitude - position.latitude).abs() > 0.01 ||
+          (accuratePosition.longitude - position.longitude).abs() > 0.01) {
+        await _loadMarketplaceProducts(silent: silent);
+      }
     } catch (e) {
       debugPrint('❌ Error getting location: $e');
-      if (mounted) {
+      if (mounted && !silent) {
         _showSnackBar('Error getting location: $e', isError: true);
       }
-      setState(() => _isLoading = false);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isSyncing = false;
+        });
+      }
     }
   }
 
-  Future<void> _loadMarketplaceProducts() async {
+  /// Load marketplace products
+  Future<void> _loadMarketplaceProducts({bool silent = false}) async {
     if (_currentPosition == null) return;
 
-    setState(() => _isLoading = true);
+    if (!silent) {
+      setState(() => _isLoading = true);
+    } else {
+      setState(() => _isSyncing = true);
+    }
 
     try {
+      final startTime = DateTime.now();
+
       final result = await MarketplaceService.getMarketplaceProducts(
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
@@ -89,20 +266,35 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         productType: _selectedProductType,
       );
 
+      final duration = DateTime.now().difference(startTime);
+      debugPrint('⏱️ Products loaded in ${duration.inMilliseconds}ms');
+
       if (result['success'] == true) {
+        final newProducts = List<Map<String, dynamic>>.from(
+          result['products'] ?? [],
+        );
+
         setState(() {
-          _products = List<Map<String, dynamic>>.from(result['products'] ?? []);
+          _products = newProducts;
         });
+
+        // Cache products for next time
+        await _cacheProducts(newProducts);
       } else {
         throw result['message'] ?? 'Failed to load products';
       }
     } catch (e) {
       debugPrint('❌ Error loading marketplace: $e');
-      if (mounted) {
+      if (mounted && !silent) {
         _showSnackBar('Error loading products: $e', isError: true);
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isSyncing = false;
+        });
+      }
     }
   }
 
@@ -135,7 +327,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       }
     }
   }
-
 
   void _showFilterBottomSheet() {
     showModalBottomSheet(
@@ -387,8 +578,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             ),
           ),
 
-          // Products Count Header
-          if (!_isLoading && _products.isNotEmpty)
+          // Products Count Header with Sync Indicator
+          if (_products.isNotEmpty)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -439,44 +630,139 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  if (_isSyncing) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-
 
           const SizedBox(height: 8),
 
           // Products List
           Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.primaryGreen,
-                      strokeWidth: 3,
-                    ),
-                  )
+            child: _isLoading && _products.isEmpty
+                ? _buildLoadingSkeleton()
                 : _currentPosition == null
                 ? _buildLocationError()
                 : _products.isEmpty
                 ? _buildEmptyState()
                 : RefreshIndicator(
-                    onRefresh: _loadMarketplaceProducts,
+                    onRefresh: () => _loadMarketplaceProducts(),
                     color: AppColors.primaryGreen,
                     backgroundColor: Colors.white,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      itemCount: _products.length,
-                      itemBuilder: (context, index) {
-                        return _buildProductCard(_products[index]);
-                      },
+                    child: Stack(
+                      children: [
+                        ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          itemCount: _products.length,
+                          itemBuilder: (context, index) {
+                            return _buildProductCard(_products[index]);
+                          },
+                        ),
+
+                        // Show subtle loading indicator at top if syncing
+                        if (_isSyncing && _products.isNotEmpty)
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: LinearProgressIndicator(
+                              backgroundColor: Colors.transparent,
+                              color: AppColors.primaryGreen,
+                              minHeight: 2,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
           ),
         ],
       ),
+    );
+  }
+
+  /// ✅ Skeleton loader for initial load
+  Widget _buildLoadingSkeleton() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: 5,
+      itemBuilder: (context, index) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // Image skeleton
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Text skeletons
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 16,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 14,
+                      width: 100,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 12,
+                      width: 150,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -576,7 +862,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Product Image with Badge - Fixed
+                // Product Image
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: SizedBox(
@@ -619,7 +905,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                   size: 36,
                                 ),
                         ),
-                        // Product Type Badge - Fixed Position
+                        // Product Type Badge
                         Positioned(
                           bottom: 6,
                           right: 6,
@@ -702,7 +988,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                               color: AppColors.primaryGreen,
                             ),
                             SmartReTranslator(
-                              text: '${product['price_per_unit']}',
+                              text: product['price_per_unit'].toString(),
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -710,7 +996,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                               ),
                             ),
                             Text(
-                              ' /${product['unit']}',
+                              '/${product['unit']}',
                               style: const TextStyle(
                                 fontSize: 11,
                                 color: AppColors.textPrimary,
@@ -719,6 +1005,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                           ],
                         ),
                       ),
+
                       const SizedBox(height: 8),
 
                       // Seller & Distance
@@ -854,7 +1141,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _getCurrentLocation,
+              onPressed: () => _getCurrentLocation(),
               icon: const Icon(Icons.refresh, color: Colors.white),
               label: const SmartReTranslator(
                 text: 'Retry',
@@ -930,7 +1217,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   _searchController.clear();
                   _searchQuery = '';
                   _selectedProductType = 'all';
-                  _maxDistance = 50;
+                  _maxDistance = 10;
                 });
                 _loadMarketplaceProducts();
               },
