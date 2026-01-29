@@ -1244,26 +1244,4 @@ class CropCareSyncService {
       debugPrint('⚠️ Error saving history sync timestamp: $e');
     }
   }
-
-  // ==================== UTILITIES ====================
-
-  Future<Map<String, dynamic>> getSyncStatus() async {
-    final pendingFarms = await _db.getPendingFarms();
-    final pendingCrops = await _db.getPendingCrops();
-    final pendingFarmDeletions = await _db.getPendingFarmDeletions();
-    final pendingCropDeletions = await _db.getPendingCropDeletions();
-
-    return {
-      'pendingFarms': pendingFarms.length,
-      'pendingCrops': pendingCrops.length,
-      'pendingFarmDeletions': pendingFarmDeletions.length,
-      'pendingCropDeletions': pendingCropDeletions.length,
-      'isSyncing': _isSyncing,
-    };
-  }
-
-  Future<Map<String, dynamic>> forceFullResync(String accessToken) async {
-    debugPrint('🔄 Forcing full resync...');
-    return await performFullSync(accessToken);
-  }
 }

@@ -166,24 +166,3 @@ final Map<String, Future<String> Function()> modelMap = {
   'Wheat': () => _getModelPath('Wheat'),
   'Tomato': () => _getModelPath('Tomato'),
 };
-
-// ═══════════════════════════════════════════════════════════════════
-// MODEL INPUT SHAPES
-// Reference only - ModelService handles actual resizing
-// ═══════════════════════════════════════════════════════════════════
-
-/// Expected input shapes for each disease detection model
-/// Note: These are for reference only. The ModelService class
-/// handles all image resizing internally.
-final Map<String, List<int>> inputShapeMap = {
-  'Rice': [1, 224, 224, 3],
-  'Sugarcane': [1, 224, 224, 3],
-  'Groundnut': [1, 256, 256, 3],
-  'Corn': [1, 224, 224, 3],
-  'Cotton': [1, 128, 128, 3],
-  'Banana': [1, 256, 256, 3],
-  'Coconut': [1, 128, 128, 3],
-  'Coffee': [1, 224, 224, 3],
-  'Wheat': [1, 224, 224, 3],
-  'Tomato': [1, 3, 640, 640],
-};

@@ -491,9 +491,6 @@ class ApiResponse {
   bool get isUnauthorized => errorType == ApiErrorType.unauthorized;
   bool get isUnauthenticated => errorType == ApiErrorType.unauthenticated;
   bool get isTimeout => errorType == ApiErrorType.timeout;
-  bool get isServerError => errorType == ApiErrorType.server;
-  bool get isForbidden => errorType == ApiErrorType.forbidden;
-  bool get isNotFound => errorType == ApiErrorType.notFound;
 }
 
 enum ApiErrorType {

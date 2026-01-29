@@ -13,7 +13,6 @@ class WeatherService {
 
   // Cache keys for location
   static const String _lastLocationKey = 'last_known_location';
-  static const String _lastLocationNameKey = 'last_known_location_name';
 
   /// Fetch weather by place name
   Future<Weather> getWeatherByPlace(String placeName) async {
@@ -241,14 +240,6 @@ class WeatherService {
       latitude: (firstResult['latitude'] as num).toDouble(),
       longitude: (firstResult['longitude'] as num).toDouble(),
     );
-  }
-
-  /// Clear cached location (useful for testing)
-  Future<void> clearLocationCache() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_lastLocationKey);
-    await prefs.remove(_lastLocationNameKey);
-    print('🗑️ Location cache cleared');
   }
 }
 

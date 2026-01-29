@@ -14,10 +14,12 @@ class LanguageService extends ChangeNotifier {
 
   Locale _currentLocale = defaultLocale;
   Locale _previousLocale = defaultLocale;
+  // ignore: unused_field
   bool _isInitialized = false;
   bool _isDisposed = false;
   bool _hasError = false;
 
+  // ignore: unused_field
   Key _rebuildKey = UniqueKey();
 
   final Map<String, double> _downloadProgress = {};
@@ -25,45 +27,6 @@ class LanguageService extends ChangeNotifier {
 
   final Map<String, MapCache<String, String>> _translationCache = {};
   final Map<String, Set<String>> _cachedKeys = {};
-
-  // NOTE: the synchronous getter can't await async cache.get() calls.
-  // Keep a light-weight synchronous snapshot (keys list) for quick inspections.
-  Map<String, Map<String, String>> get translationCache {
-    final result = <String, Map<String, String>>{};
-    _cachedKeys.forEach((langCode, keys) {
-      final map = <String, String>{};
-      for (final key in keys) {
-        // We don't await here (getter must be sync). Provide key => key placeholder.
-        // Use getTranslationCacheAsync() to obtain actual translations.
-        map[key] = key;
-      }
-      result[langCode] = map;
-    });
-    return result;
-  }
-
-  /// Use this when you need the actual cached translated values (async).
-  Future<Map<String, Map<String, String>>> getTranslationCacheAsync() async {
-    final result = <String, Map<String, String>>{};
-    for (final lang in _cachedKeys.keys) {
-      final map = <String, String>{};
-      final cache = _translationCache[lang];
-      if (cache == null) {
-        result[lang] = map;
-        continue;
-      }
-      for (final key in _cachedKeys[lang]!) {
-        try {
-          final v = await cache.get(key);
-          if (v != null) map[key] = v;
-        } catch (_) {
-          // ignore per-item errors
-        }
-      }
-      result[lang] = map;
-    }
-    return result;
-  }
 
   MapCache<String, String> _getCacheForLanguage(String langCode) {
     if (!_translationCache.containsKey(langCode)) {
@@ -93,29 +56,20 @@ class LanguageService extends ChangeNotifier {
 
   final Map<String, Completer<String>> _inFlightTranslations = {};
   final Set<String> _untranslatedTexts = {};
-  Set<String> get untranslatedTexts => Set.from(_untranslatedTexts);
 
   int _cacheHits = 0;
   int _cacheMisses = 0;
+  // ignore: unused_field
   int _duplicateRequestsPrevented = 0;
-
-  int get cacheHits => _cacheHits;
-  int get cacheMisses => _cacheMisses;
-  int get duplicateRequestsPrevented => _duplicateRequestsPrevented;
 
   double get cacheHitRate => (_cacheHits + _cacheMisses) > 0
       ? _cacheHits / (_cacheHits + _cacheMisses)
       : 0.0;
 
-  Set<String> get pendingTranslations => _inFlightTranslations.keys.toSet();
-
   Locale get currentLocale => _currentLocale;
-  Locale get previousLocale => _previousLocale;
-  bool get isInitialized => _isInitialized;
-  bool get hasError => _hasError;
-  Key get rebuildKey => _rebuildKey;
 
   static const int _maxParallelTranslations = 5;
+  // ignore: unused_field
   int _activeTranslations = 0;
 
   static const List<String> criticalPhrases = [
@@ -893,17 +847,6 @@ class LanguageService extends ChangeNotifier {
     return text;
   }
 
-  Future<List<String>> translateBatch(List<String> texts) async {
-    final results = <String>[];
-
-    for (final text in texts) {
-      final translated = await translate(text);
-      results.add(translated);
-    }
-
-    return results;
-  }
-
   Future<void> clearCache([String? languageCode]) async {
     if (languageCode != null) {
       _translationCache.remove(languageCode);
@@ -930,43 +873,6 @@ class LanguageService extends ChangeNotifier {
     return stats;
   }
 
-  Map<String, dynamic> getTranslationStats() {
-    return {
-      'current_language': _currentLocale.languageCode,
-      'cached_languages': _translationCache.keys.length,
-      'total_cached_phrases': _cachedKeys.values.fold(
-        0,
-        (sum, set) => sum + set.length,
-      ),
-      'cache_stats_by_language': getCacheStats(),
-      'cache_hits': _cacheHits,
-      'cache_misses': _cacheMisses,
-      'cache_hit_rate': cacheHitRate,
-      'cache_hit_rate_percent': '${(cacheHitRate * 100).toStringAsFixed(1)}%',
-      'duplicate_requests_prevented': _duplicateRequestsPrevented,
-      'untranslated_texts_count': _untranslatedTexts.length,
-      'pending_translations_count': _inFlightTranslations.length,
-      'active_translations': _activeTranslations,
-    };
-  }
-
-  void resetStatistics() {
-    _cacheHits = 0;
-    _cacheMisses = 0;
-    _duplicateRequestsPrevented = 0;
-    _untranslatedTexts.clear();
-    _inFlightTranslations.clear();
-    notifyListeners();
-  }
-
-  List<String> getUntranslatedTexts() => _untranslatedTexts.toList();
-
-  Future<bool> isTextCached(String text) async {
-    final langCode = _currentLocale.languageCode;
-    final value = await _getCachedValue(langCode, text);
-    return value != null;
-  }
-
   Future<void> _resetToEnglishOnError() async {
     _hasError = true;
     _currentLocale = defaultLocale;
@@ -990,20 +896,8 @@ class LanguageService extends ChangeNotifier {
     }
   }
 
-  String get currentLanguageName =>
-      languageNames[_currentLocale.languageCode] ?? 'English';
-
   bool isSupported(Locale locale) =>
       supportedLocales.any((l) => l.languageCode == locale.languageCode);
-
-  bool isRTL() {
-    const rtlLanguages = ['ar', 'he', 'fa', 'ur'];
-    return rtlLanguages.contains(_currentLocale.languageCode);
-  }
-
-  Future<void> resetToDefault() async {
-    await changeLanguage(defaultLocale);
-  }
 
   @override
   void dispose() {
@@ -1036,12 +930,6 @@ class LanguageService extends ChangeNotifier {
       return false;
     }
   }
-
-  bool isDownloadingModel(String languageCode) =>
-      _isDownloading[languageCode] ?? false;
-
-  double getDownloadProgress(String languageCode) =>
-      _downloadProgress[languageCode] ?? 0.0;
 
   Future<bool> downloadLanguageModel(
     String languageCode, {
@@ -1179,16 +1067,4 @@ class LanguageService extends ChangeNotifier {
     return downloaded;
   }
 
-  Future<String> getEstimatedStorageUsed() async {
-    final downloaded = await getDownloadedLanguages();
-    final count = downloaded.length - 1;
-    final sizeMB = count * 35;
-
-    if (sizeMB < 1024) {
-      return '$sizeMB MB';
-    } else {
-      final sizeGB = (sizeMB / 1024).toStringAsFixed(2);
-      return '$sizeGB GB';
-    }
-  }
 }

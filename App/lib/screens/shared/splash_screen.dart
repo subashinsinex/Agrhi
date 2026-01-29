@@ -10,10 +10,6 @@ import '../shared/update_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
-
-  static MaterialPageRoute route() =>
-      MaterialPageRoute(builder: (context) => const SplashScreen());
-
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
@@ -27,7 +23,7 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _pulseAnimation;
 
   String _statusMessage = 'Initializing...';
-  bool _showOfflineBadge = false;
+  final bool _showOfflineBadge = false;
   bool _configChecked = false;
 
   static const _storage = FlutterSecureStorage(

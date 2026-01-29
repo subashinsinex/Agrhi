@@ -323,22 +323,6 @@ class AuthService {
     }
   }
 
-  /// Get remaining days until refresh token expires
-  Future<int?> getRefreshTokenDaysRemaining() async {
-    try {
-      final refreshToken = await _storageHelper.getRefreshToken();
-      if (refreshToken == null) return null;
-
-      final expiryDate = JwtDecoder.getExpirationDate(refreshToken);
-      final now = DateTime.now();
-      final difference = expiryDate.difference(now);
-
-      return difference.inDays;
-    } catch (e) {
-      return null;
-    }
-  }
-
   /// Clear all stored tokens
   Future<void> clearTokens() async {
     await _storageHelper.delete('access_token');
@@ -375,8 +359,6 @@ class RefreshResult {
       errorType = RefreshErrorType.server;
 
   bool get isNetworkError => errorType == RefreshErrorType.network;
-  bool get isAuthError => errorType == RefreshErrorType.auth;
-  bool get isServerError => errorType == RefreshErrorType.server;
 }
 
 enum RefreshErrorType { none, network, auth, server, unknown }

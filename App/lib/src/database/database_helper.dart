@@ -711,74 +711,6 @@ class DatabaseHelper {
     print('✅ Cleaned up deleted crop: $cropId');
   }
 
-  /// Restore deleted farm (undo soft delete)
-  Future<Map<String, dynamic>> restoreFarm(String farmId) async {
-    final db = await database;
-
-    final result = await db.update(
-      'farms',
-      {'isdeleted': 0, 'isdirty': 1},
-      where: 'farmid = ? AND isdeleted = 1',
-      whereArgs: [farmId],
-    );
-
-    if (result > 0) {
-      print('✅ Farm restored: $farmId');
-      return {'success': true, 'message': 'Farm restored'};
-    }
-
-    return {'success': false, 'message': 'Farm not found or not deleted'};
-  }
-
-  /// Restore deleted crop (undo soft delete)
-  Future<Map<String, dynamic>> restoreCrop(String cropId) async {
-    final db = await database;
-
-    final result = await db.update(
-      'usercrops',
-      {'isdeleted': 0, 'isdirty': 1},
-      where: 'usercropid = ? AND isdeleted = 1',
-      whereArgs: [cropId],
-    );
-
-    if (result > 0) {
-      print('✅ Crop restored: $cropId');
-      return {'success': true, 'message': 'Crop restored'};
-    }
-
-    return {'success': false, 'message': 'Crop not found or not deleted'};
-  }
-
-  /// Get all deleted items (for recycle bin feature)
-  Future<List<Map<String, dynamic>>> getDeletedFarms() async {
-    final db = await database;
-    return await db.rawQuery('''
-      SELECT f.*
-      FROM farms f
-      WHERE f.isdeleted = 1
-      ORDER BY f.createdat DESC
-    ''');
-  }
-
-  Future<List<Map<String, dynamic>>> getDeletedCrops() async {
-    final db = await database;
-    return await db.rawQuery('''
-      SELECT 
-        uc.*,
-        p.plantname as plant_name,
-        ct.name as crop_type,
-        f.surveynumber as survey_number,
-        st.name as soil_type
-      FROM usercrops uc
-      LEFT JOIN plants p ON uc.plantid = p.plantid
-      LEFT JOIN croptypes ct ON p.croptypeid = ct.croptypeid
-      LEFT JOIN farms f ON uc.farmid = f.farmid
-      LEFT JOIN soiltypes st ON uc.soiltypeid = st.soiltypeid
-      WHERE uc.isdeleted = 1
-      ORDER BY uc.createdat DESC
-    ''');
-  }
-
   // ==================== JUNCTION TABLE METHODS ====================
 
   Future<String> upsertFarmWithRelations({
@@ -982,30 +914,6 @@ class DatabaseHelper {
 
   // ==================== FARMS DATABASE OPERATIONS ====================
 
-  Future<String> upsertFarm({
-    required double farmSize,
-    required String surveyNumber,
-    String? soilTypeId,
-    String? irrigationId,
-    String? waterSrcId,
-    String? farmId,
-  }) async {
-    final db = await database;
-    final id = farmId ?? const Uuid().v4();
-
-    await db.insert('farms', {
-      'farmid': id,
-      'farmsize': farmSize,
-      'surveynumber': surveyNumber,
-      'createdat': DateTime.now().toIso8601String(),
-      'isuploaded': 0,
-      'isdirty': 1,
-      'isdeleted': 0, // ✅ Default not deleted
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-
-    return id;
-  }
-
   Future<String> upsertCrop({
     required String farmId,
     required String plantId,
@@ -1175,45 +1083,6 @@ class DatabaseHelper {
 
   // ==================== IMAGE & ANALYSIS OPS ====================
 
-  Future<String> insertImage({
-    String? plantId,
-    required String localPath,
-  }) async {
-    final db = await database;
-    final imageId = const Uuid().v4();
-    await db.insert('images', {
-      'image_id': imageId,
-      'local_path': localPath,
-      'server_image_url': null,
-      'is_uploaded': 0,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-    return imageId;
-  }
-
-  Future<String> insertDiseaseAnalysis({
-    required String userId,
-    required String plantId,
-    required String imageId,
-    required String diseaseId,
-    required double confidence,
-  }) async {
-    final db = await database;
-    final analysisId = const Uuid().v4();
-    await db.insert('disease_analysis_results', {
-      'id': analysisId,
-      'user_id': userId,
-      'plant_id': plantId,
-      'image_id': imageId,
-      'disease_id': diseaseId,
-      'confidence': confidence,
-      'created_at': DateTime.now().toIso8601String(),
-      'is_uploaded': 0,
-      'is_dirty': 1,
-    });
-    return analysisId;
-  }
-
   String _normalizeLabel(String label) => label.replaceAll('_', ' ').trim();
 
   Future<String?> findDiseaseIdByLabel(String label) async {
@@ -1321,33 +1190,6 @@ class DatabaseHelper {
     );
   }
 
-  Future<Map<String, dynamic>?> getAnalysisById(String analysisId) async {
-    final db = await database;
-    final r = await db.rawQuery(
-      '''
-      SELECT 
-        dar.*,
-        d.name as disease_name,
-        d.severity,
-        i.local_path,
-        i.server_image_url,
-        p.plantname as plant_name,
-        GROUP_CONCAT(r.remedy, '|||') as remedies,
-        GROUP_CONCAT(r.prevention, '|||') as preventions
-      FROM disease_analysis_results dar
-      LEFT JOIN diseases d ON dar.disease_id = d.diseaseid
-      LEFT JOIN images i ON dar.image_id = i.image_id
-      LEFT JOIN plants p ON dar.plant_id = p.plantid
-      LEFT JOIN diseaseremedies dr ON d.diseaseid = dr.diseaseid
-      LEFT JOIN remedies r ON dr.remedyid = r.remedyid
-      WHERE dar.id = ?
-      GROUP BY dar.id
-    ''',
-      [analysisId],
-    );
-    return r.isNotEmpty ? r.first : null;
-  }
-
   Future<void> markAsUploaded(String analysisId, String? serverImageUrl) async {
     final db = await database;
     await db.update(
@@ -1372,16 +1214,6 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getReferenceTableVersions() async {
     final db = await database;
     return await db.query('reference_table_versions');
-  }
-
-  Future<Map<String, dynamic>?> getTableVersion(String tableName) async {
-    final db = await database;
-    final result = await db.query(
-      'reference_table_versions',
-      where: 'ref_table_name = ?',
-      whereArgs: [tableName],
-    );
-    return result.isNotEmpty ? result.first : null;
   }
 
   Future<void> updateTableVersion(String tableName, String updatedAt) async {
@@ -1936,49 +1768,6 @@ class DatabaseHelper {
 
   // ==================== USER DATA SYNC ====================
 
-  Future<Map<String, dynamic>> syncPendingToServer(String accessToken) async {
-    try {
-      final pending = await getPendingAnalyses();
-      print('🚚 upload pending: ${pending.length}');
-      if (pending.isEmpty) {
-        return {
-          'success': true,
-          'message': 'No pending',
-          'synced': 0,
-          'failed': 0,
-        };
-      }
-      int ok = 0, fail = 0;
-      final failed = <String>[];
-      for (final a in pending) {
-        final res = await _uploadAnalysisToServer(a, accessToken);
-        if (res['success'] == true) {
-          await markAsUploaded(a['id'], res['serverImageUrl'] as String?);
-          print('✅ uploaded analysis ${a['id']}');
-          ok++;
-        } else {
-          print('❌ upload failed ${a['id']}');
-          fail++;
-          failed.add(a['id']);
-        }
-      }
-      return {
-        'success': fail == 0,
-        'synced': ok,
-        'failed': fail,
-        'failedIds': failed,
-      };
-    } catch (e) {
-      print('❌ upload sync error: $e');
-      return {
-        'success': false,
-        'message': 'Sync failed: $e',
-        'synced': 0,
-        'failed': 0,
-      };
-    }
-  }
-
   Future<Map<String, dynamic>> _uploadAnalysisToServer(
     Map<String, dynamic> analysis,
     String accessToken,
@@ -2018,116 +1807,6 @@ class DatabaseHelper {
       return {'success': false};
     } catch (_) {
       return {'success': false};
-    }
-  }
-
-  Future<Map<String, dynamic>> syncAnalysesFromServer(
-    String accessToken, {
-    String? since,
-  }) async {
-    try {
-      final uri = since == null
-          ? Uri.parse('$baseUrl/disease/analysis/changes')
-          : Uri.parse('$baseUrl/disease/analysis/changes?since=$since');
-      print('🔽 down-sync analyses: $uri');
-      final r = await http
-          .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
-          .timeout(const Duration(seconds: 15));
-      print('📡 analyses ${r.statusCode}, ${r.bodyBytes.length} bytes');
-      if (r.statusCode != 200) {
-        return {'success': false, 'upserts': 0, 'deleted': 0};
-      }
-
-      final payload = jsonDecode(r.body);
-      final List<dynamic> rows = payload is List
-          ? payload
-          : (payload['data'] is List ? payload['data'] : <dynamic>[]);
-      final List<dynamic> deletedIds =
-          payload is Map && payload['deletedIds'] is List
-          ? payload['deletedIds']
-          : <dynamic>[];
-      print('🧾 analyses rows=${rows.length}, deletedIds=${deletedIds.length}');
-
-      final db = await database;
-      int upserts = 0, deletes = 0;
-      await db.transaction((txn) async {
-        for (final item in rows) {
-          if (item is! Map) continue;
-
-          if (item['image_id'] != null) {
-            final imgId = item['image_id'].toString();
-            final exists = await txn.query(
-              'images',
-              where: 'image_id = ?',
-              whereArgs: [imgId],
-              limit: 1,
-            );
-            if (exists.isEmpty) {
-              await txn.insert('images', {
-                'image_id': imgId,
-                'local_path': item['local_path']?.toString() ?? '',
-                'server_image_url': item['server_image_url']?.toString(),
-                'is_uploaded': 1,
-                'created_at': item['created_at']?.toString(),
-              });
-            } else {
-              await txn.update(
-                'images',
-                {
-                  'server_image_url': item['server_image_url']?.toString(),
-                  'is_uploaded': 1,
-                },
-                where: 'image_id = ?',
-                whereArgs: [imgId],
-              );
-            }
-          }
-
-          final row = {
-            'id': item['id'].toString(),
-            'user_id': item['user_id']?.toString(),
-            'plant_id': item['plant_id']?.toString(),
-            'image_id': item['image_id']?.toString(),
-            'disease_id': item['disease_id']?.toString(),
-            'confidence': (item['confidence'] as num?)?.toDouble(),
-            'created_at': item['created_at']?.toString(),
-            'is_uploaded': 1,
-            'is_dirty': 0,
-          };
-          await _upsert(txn, 'disease_analysis_results', row, 'id');
-          upserts++;
-        }
-
-        for (final did in deletedIds) {
-          final id = did.toString();
-          final n = await txn.delete(
-            'disease_analysis_results',
-            where: 'id = ?',
-            whereArgs: [id],
-          );
-          if (n > 0) {
-            deletes++;
-          }
-        }
-
-        final removed = await txn.delete(
-          'images',
-          where:
-              'image_id NOT IN (SELECT image_id FROM disease_analysis_results)',
-        );
-        if (removed > 0) print('🧹 removed orphan images: $removed');
-      });
-
-      print('✅ down-sync done: upserts=$upserts, deletes=$deletes');
-      return {'success': true, 'upserts': upserts, 'deleted': deletes};
-    } catch (e) {
-      print('❌ analyses down-sync error: $e');
-      return {
-        'success': false,
-        'error': e.toString(),
-        'upserts': 0,
-        'deleted': 0,
-      };
     }
   }
 
@@ -2185,14 +1864,6 @@ class DatabaseHelper {
       'farms': farmsCount,
       'diseases': diseasesCount,
     };
-  }
-
-  Future<void> clearAllData() async {
-    final db = await database;
-    await db.delete('disease_analysis_results');
-    await db.delete('images');
-    await db.delete('farms');
-    await db.delete('usercrops');
   }
 
   Future<void> close() async {

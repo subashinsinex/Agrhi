@@ -10,29 +10,15 @@ class TokenRefreshService {
   final _storage = const FlutterSecureStorage();
 
   Timer? _refreshTimer;
+  // ignore: unused_field
   StreamSubscription<bool>? _connectivitySubscription;
 
   bool _isOnline = true;
+  // ignore: unused_field
   int? _expirationCountdown;
   bool _isRefreshing = false;
 
   TokenRefreshService(this._authService, this._connectivityService);
-
-  /// Initialize the service - call this after login or on app startup
-  Future<void> initialize() async {
-    print('🔄 Initializing TokenRefreshService...');
-
-    // Check initial connectivity with actual internet access
-    _isOnline = await _connectivityService.hasInternetConnection();
-    print('📶 Initial connection status: ${_isOnline ? "Online" : "Offline"}');
-
-    // Listen to connectivity changes
-    _connectivitySubscription = _connectivityService.onConnectivityChanged
-        .listen(_handleConnectivityChange);
-
-    // Start the refresh timer
-    await _startRefreshTimer();
-  }
 
   /// Handle connectivity changes
   void _handleConnectivityChange(bool isConnected) {
@@ -158,53 +144,5 @@ class TokenRefreshService {
     } finally {
       _isRefreshing = false;
     }
-  }
-
-  /// Get current countdown (for debugging/UI display)
-  int? get expirationCountdown => _expirationCountdown;
-
-  /// Check if currently online
-  bool get isOnline => _isOnline;
-
-  /// Get formatted time remaining
-  String get timeRemaining {
-    if (_expirationCountdown == null) return 'Unknown';
-
-    final minutes = _expirationCountdown! ~/ 60;
-    final seconds = _expirationCountdown! % 60;
-
-    return '${minutes}m ${seconds}s';
-  }
-
-  /// Stop the service and clean up
-  void dispose() {
-    print('🛑 Disposing TokenRefreshService');
-    _refreshTimer?.cancel();
-    _connectivitySubscription?.cancel();
-    _refreshTimer = null;
-    _connectivitySubscription = null;
-  }
-
-  /// Manually trigger a refresh check (useful after app resume)
-  Future<void> checkNow() async {
-    print('🔍 Manual token check triggered');
-
-    // Recheck internet connection
-    _isOnline = await _connectivityService.hasInternetConnection();
-    print('📶 Connection status: ${_isOnline ? "Online" : "Offline"}');
-
-    await _checkAndRefreshToken();
-  }
-
-  /// Force immediate refresh (useful for manual testing)
-  Future<void> forceRefresh() async {
-    print('🔄 Force refresh triggered');
-
-    if (!_isOnline) {
-      print('📴 Cannot force refresh - device is offline');
-      return;
-    }
-
-    await _performRefresh();
   }
 }

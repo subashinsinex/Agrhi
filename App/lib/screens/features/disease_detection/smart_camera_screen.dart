@@ -257,7 +257,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
       // Create permanent file path
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final permanentPath = '${imagesDir.path}/plant_${timestamp}.jpg';
+      final permanentPath = '${imagesDir.path}/plant_$timestamp.jpg';
 
       // Copy cropped image to permanent location
       await File(tempCroppedPath).copy(permanentPath);

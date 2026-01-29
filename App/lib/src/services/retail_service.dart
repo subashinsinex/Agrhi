@@ -462,29 +462,6 @@ class RetailService {
     }
   }
 
-  // ✅ Delete Product (Optional - if your backend supports it)
-  static Future<void> deleteProduct(String productId) async {
-    try {
-      debugPrint('🗑️ Deleting product: $productId');
-
-      final response = await _apiService.delete(
-        'retail/deleteproducts/$productId',
-        requiresAuth: true,
-      );
-
-      if (response.isSuccess) {
-        debugPrint('✅ Product deleted successfully: $productId');
-      } else {
-        final errorMsg = response.error ?? 'Failed to delete product';
-        debugPrint('❌ Delete product failed: $errorMsg');
-        throw Exception(errorMsg);
-      }
-    } catch (e) {
-      debugPrint('❌ Error deleting product: $e');
-      rethrow;
-    }
-  }
-
   // ✅ Clear cache
   static Future<void> clearCache() async {
     debugPrint('🧹 Retail cache cleared');

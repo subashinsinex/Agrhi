@@ -19,7 +19,6 @@ class ConnectivityManager extends ChangeNotifier {
   bool get isOnline => _isOnline;
 
   DateTime? _lastSyncTime;
-  DateTime? get lastSyncTime => _lastSyncTime;
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -290,20 +289,6 @@ class ConnectivityManager extends ChangeNotifier {
     }
   }
 
-  /// Force sync regardless of timing
-  Future<Map<String, dynamic>> forceSync() async {
-    _lastSyncTime = null; // Reset to force sync
-    return await performManualSync();
-  }
-
-  /// Refresh connectivity status manually
-  Future<void> refreshConnectivity() async {
-    final online = await _connectivityService.hasInternetConnection(
-      forceCheck: true, // ✅ Force fresh check
-    );
-    _updateStatus(online);
-  }
-
   // ✅ NEW: Get human-readable sync status
   String get syncStatusMessage {
     if (_isSyncing) {
@@ -329,13 +314,6 @@ class ConnectivityManager extends ChangeNotifier {
     } else {
       return 'Synced ${timeSince.inDays}d ago';
     }
-  }
-
-  // ✅ NEW: Check if sync is needed
-  bool get needsSync {
-    if (_lastSyncTime == null) return true;
-    final timeSince = DateTime.now().difference(_lastSyncTime!);
-    return timeSince.inMinutes >= 25; // Sync if 25+ min since last sync
   }
 
   /// ✅ Cleanup all resources on dispose

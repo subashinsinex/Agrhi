@@ -34,11 +34,18 @@ class _CropCareScreenState extends State<CropCareScreen>
     _syncCropCareIfOnline();
   }
 
+  // ✅ HELPER METHOD: Check if device is connected
+  Future<bool> _isConnected() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    return connectivityResult.contains(ConnectivityResult.mobile) ||
+        connectivityResult.contains(ConnectivityResult.wifi) ||
+        connectivityResult.contains(ConnectivityResult.ethernet);
+  }
+
+  // ✅ FIXED: Line 40 issue
   Future<void> _syncCropCareIfOnline() async {
     // 1) Check connectivity
-    final connectivityResult = await Connectivity().checkConnectivity();
-    final isOnline = connectivityResult != ConnectivityResult.none;
-    if (!isOnline) return;
+    if (!await _isConnected()) return;
 
     // 2) Read access token (same key you use elsewhere)
     final token = await _storage.read(key: 'accesstoken');
@@ -61,11 +68,10 @@ class _CropCareScreenState extends State<CropCareScreen>
     _syncCropCareOnChange();
   }
 
-Future<void> _syncCropCareOnChange() async {
+  // ✅ FIXED: Line 67 issue
+  Future<void> _syncCropCareOnChange() async {
     // Check connectivity
-    final connectivityResult = await Connectivity().checkConnectivity();
-    final isOnline = connectivityResult != ConnectivityResult.none;
-    if (!isOnline) return;
+    if (!await _isConnected()) return;
 
     // Get token
     final token = await _storage.read(key: 'accesstoken');
@@ -91,10 +97,7 @@ Future<void> _syncCropCareOnChange() async {
   Widget build(BuildContext context) {
     return Scaffold(
       // ✅ CustomAppBar WITHOUT TabBar
-      appBar: CustomAppBar(
-        title: 'Crop Care Manager',
-        showOnlineStatus: true,
-      ),
+      appBar: CustomAppBar(title: 'Crop Care Manager', showOnlineStatus: true),
       backgroundColor: AppColors.backgroundColor,
       floatingActionButton: FloatingActionButton(
         onPressed: () async {

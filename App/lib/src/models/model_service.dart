@@ -22,7 +22,7 @@ class ModelService {
       }
 
       debugPrint('🔧 Loading gate model from: $modelPath');
-      _gateInterpreter = await Interpreter.fromFile(modelFile);
+      _gateInterpreter = Interpreter.fromFile(modelFile);
       _gateInputShape = _gateInterpreter!.getInputTensor(0).shape;
       _gateModelLoaded = true;
 
@@ -51,7 +51,7 @@ class ModelService {
       }
 
       debugPrint('🔧 Loading disease model from: $modelPath');
-      _mainInterpreter = await Interpreter.fromFile(modelFile);
+      _mainInterpreter = Interpreter.fromFile(modelFile);
       _mainInputShape = _mainInterpreter!.getInputTensor(0).shape;
       debugPrint('✅ Disease model loaded: $modelPath');
       debugPrint('📐 Shape: $_mainInputShape');
@@ -344,22 +344,6 @@ class ModelService {
           'is_plant': false,
         },
       ];
-    }
-  }
-
-  /// Dispose interpreters to free resources
-  static void dispose() {
-    debugPrint('🧹 Disposing interpreters...');
-    if (_gateModelLoaded && _gateInterpreter != null) {
-      _gateInterpreter!.close();
-      _gateModelLoaded = false;
-      debugPrint('   ✅ Gate interpreter closed');
-    }
-    if (_mainInterpreter != null) {
-      try {
-        _mainInterpreter!.close();
-        debugPrint('   ✅ Disease interpreter closed');
-      } catch (_) {}
     }
   }
 }

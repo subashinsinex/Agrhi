@@ -1,4 +1,4 @@
-name: AGRHI
+name: agrhi
 description: "Smart Farming Solutions - Offline-First Agricultural App"
 publish_to: 'none'
 version: 1.2.0+3
@@ -61,6 +61,9 @@ dependencies:
   # Memory Cache (LRU)
   quiver: ^3.2.2
   
+  uuid: any
+  path: any
+  http_parser: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

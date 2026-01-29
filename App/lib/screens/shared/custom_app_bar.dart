@@ -320,15 +320,6 @@ class _OnlineStatusIcon extends StatelessWidget {
 // ==================== Dashboard AppBar ====================
 
 class DashboardAppBar extends CustomAppBar {
-  const DashboardAppBar({super.key, super.actions})
-    : super(
-        title: 'Welcome',
-        subtitle: 'Enjoy our Services',
-        automaticallyImplyLeading: false,
-        onMenuPressed: null,
-        showOnlineStatus: true,
-      );
-
   DashboardAppBar.withSettings({
     super.key,
     required VoidCallback? onSyncPressed,
@@ -661,49 +652,16 @@ class _SettingsDropdownButton extends StatelessWidget {
         return 'हिन्दी';
       case 'te':
         return 'తెలుగు';
-      case 'kn':
-        return 'ಕನ್ನಡ';
-      case 'ml':
-        return 'മലയാളം';
+      case 'tr':
+        return 'Türkçe';
+      case 'ms':
+        return 'Bahasa Melayu';
+      case 'el':
+        return 'Ελληνικά';
       default:
         return languageCode.toUpperCase();
     }
   }
-}
-
-// ==================== Predefined AppBars ====================
-
-class FeatureAppBar extends CustomAppBar {
-  const FeatureAppBar({
-    super.key,
-    required String featureName,
-    super.actions,
-    super.onBackPressed,
-    super.showOnlineStatus = true,
-  }) : super(title: featureName, centerTitle: true);
-}
-
-class ProfileAppBar extends CustomAppBar {
-  final String userName;
-
-  const ProfileAppBar({
-    super.key,
-    required this.userName,
-    super.actions,
-    super.onBackPressed,
-    super.showOnlineStatus = true,
-  }) : super(title: 'Profile', subtitle: 'Hello, $userName');
-}
-
-class MenuAppBar extends CustomAppBar {
-  const MenuAppBar({
-    super.key,
-    required String super.title,
-    super.subtitle,
-    super.actions,
-    required VoidCallback super.onMenuPressed,
-    super.showOnlineStatus = true,
-  }) : super(automaticallyImplyLeading: false);
 }
 
 class BackAppBar extends CustomAppBar {

@@ -7,7 +7,7 @@ class ModelManagerProvider extends ChangeNotifier {
   final Map<String, CancelToken> _cancelTokens = {};
 
   Map<String, ModelDownloadStatus> _modelStatuses = {};
-  Map<String, double> _downloadProgress = {};
+  final Map<String, double> _downloadProgress = {};
   bool _isLoading = false;
   double _totalSize = 0.0;
 

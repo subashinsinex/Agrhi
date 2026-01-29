@@ -13,9 +13,6 @@ import '../../src/services/api_service.dart';
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
-  static MaterialPageRoute route() =>
-      MaterialPageRoute(builder: (context) => const SignupScreen());
-
   @override
   State<SignupScreen> createState() => _SignupScreenState();
 }

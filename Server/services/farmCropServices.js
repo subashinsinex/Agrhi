@@ -65,8 +65,8 @@ exports.getFarmById = async (req, res) => {
       LEFT JOIN farms_water_src fw ON f.farm_id = fw.farm_id
       LEFT JOIN water_src w ON fw.water_src_id = w.water_src_id
       LEFT JOIN user_details ud ON f.user_id = ud.user_id
-      WHERE f.user_id = $1 AND f.is_delete = false
-      GROUP BY f.farm_id, ud.name, ud.dob, ud.address;
+      WHERE f.user_id = $1 AND COALESCE(f.is_delete, false) = false
+      GROUP BY f.farm_id;
     `;
     const result = await pool.query(sql, [id]);
     if (result.rows.length > 0) res.json(result.rows);
@@ -83,9 +83,9 @@ exports.addFarm = async (req, res) => {
     farm_size,
     survey_number,
     is_delete,
-    soil_type_ids, // <-- array, not single value
-    irrigation_ids, // <-- array
-    water_src_ids, // <-- array
+    soil_type_ids,
+    irrigation_ids,
+    water_src_ids,
   } = req.body;
 
   const client = await pool.connect();

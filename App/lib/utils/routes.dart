@@ -24,15 +24,6 @@ class Routes {
     home: (context) => const SplashScreen(), // Default to splash
   };
 
-  // Navigation helper methods
-  static void navigateToSplash(BuildContext context) {
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      splash,
-      (Route<dynamic> route) => false,
-    );
-  }
-
   static void navigateToLogin(BuildContext context) {
     Navigator.pushNamedAndRemoveUntil(
       context,
@@ -53,45 +44,4 @@ class Routes {
     Navigator.pushNamed(context, signup);
   }
 
-  // ADD THIS: Navigation helper for Model Manager
-  static void navigateToModelManager(BuildContext context) {
-    Navigator.pushNamed(context, modelManager);
-  }
-
-  // Push replacement methods
-  static void pushReplacementToDashboard(BuildContext context) {
-    Navigator.pushReplacementNamed(context, dashboard);
-  }
-
-  static void pushReplacementToLogin(BuildContext context) {
-    Navigator.pushReplacementNamed(context, login);
-  }
-
-  static void pushReplacementToSplash(BuildContext context) {
-    Navigator.pushReplacementNamed(context, splash);
-  }
-
-  // Pop and push methods
-  static void popAndPushToDashboard(BuildContext context) {
-    Navigator.popAndPushNamed(context, dashboard);
-  }
-
-  static void popAndPushToLogin(BuildContext context) {
-    Navigator.popAndPushNamed(context, login);
-  }
-
-  // Check if can pop
-  static bool canPop(BuildContext context) {
-    return Navigator.canPop(context);
-  }
-
-  // Pop to root
-  static void popToRoot(BuildContext context) {
-    Navigator.popUntil(context, (route) => route.isFirst);
-  }
-
-  // Pop with optional result
-  static void pop<T>(BuildContext context, [T? result]) {
-    Navigator.pop(context, result);
-  }
 }

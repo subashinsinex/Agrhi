@@ -15,6 +15,8 @@ import '../../src/services/api_service.dart';
 /// Custom tile provider with caching support
 class CachedTileProvider extends TileProvider {
   final CacheManager cacheManager;
+  @override
+  // ignore: overridden_fields
   final Map<String, String> headers;
 
   CachedTileProvider({required this.cacheManager, this.headers = const {}});
@@ -30,6 +32,7 @@ class CachedTileProvider extends TileProvider {
     );
   }
 
+  @override
   String getTileUrl(TileCoordinates coordinates, TileLayer options) {
     return options.urlTemplate!
         .replaceAll('{z}', coordinates.z.toString())
@@ -957,8 +960,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       final url = Uri.parse(
         'https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}',
       );
-      if (await canLaunchUrl(url))
+      if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
       return;
     }
 
@@ -970,8 +974,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
 
     try {
-      if (await canLaunchUrl(url))
+      if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
     } catch (e) {
       debugPrint('Error launching maps: $e');
     }
@@ -1079,8 +1084,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _launchCopyright() async {
     final uri = Uri.parse('https://www.openstreetmap.org/copyright');
-    if (await canLaunchUrl(uri))
+    if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override

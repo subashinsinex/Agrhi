@@ -47,16 +47,6 @@ class StorageHelper {
     await _storage.delete(key: key);
   }
 
-  /// Delete all
-  Future<void> deleteAll() async {
-    await _storage.deleteAll();
-  }
-
-  /// Read all items
-  Future<Map<String, String>> readAll() async {
-    return await _storage.readAll();
-  }
-
   /// Get access token
   Future<String?> getAccessToken() async {
     return await read('access_token');
