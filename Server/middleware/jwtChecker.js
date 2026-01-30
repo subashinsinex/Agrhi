@@ -1,4 +1,6 @@
+// Server/middleware/jwtChecker.js
 const jwt = require("jsonwebtoken");
+const { asyncLocalStorage } = require("../db/database");
 const SECRET_KEY = process.env.SECRET_KEY;
 
 const jwtChecker = (req, res, next) => {
@@ -28,10 +30,14 @@ const jwtChecker = (req, res, next) => {
       });
     }
 
-    // Set req.user_id
+    // Set req.user_id (for backward compatibility)
     req.user_id = decoded.user_id || decoded.id;
 
-    next();
+    // ✅ Run the rest of the request in AsyncLocalStorage context
+    // The database pool will automatically fetch the user's role from user_category
+    asyncLocalStorage.run({ userId: req.user_id }, () => {
+      next();
+    });
   });
 };
 
