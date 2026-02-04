@@ -55,7 +55,7 @@ router.delete(
       console.error("Route deleteUser error:", error);
       res.status(500).json({ message: "Error deleting user" });
     }
-  }
+  },
 );
 
 router.get("/rtv", jwtChecker, async (req, res) => {

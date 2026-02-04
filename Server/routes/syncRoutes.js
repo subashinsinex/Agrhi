@@ -49,10 +49,10 @@ const upload = multer({
     const allowedExtensions = /\.(jpg|jpeg|png)$/i;
 
     const hasValidMimetype = allowedMimetypes.includes(
-      file.mimetype.toLowerCase()
+      file.mimetype.toLowerCase(),
     );
     const hasValidExtension = allowedExtensions.test(
-      file.originalname.toLowerCase()
+      file.originalname.toLowerCase(),
     );
 
     if (hasValidMimetype || hasValidExtension) {
@@ -141,7 +141,7 @@ router.get("/changes", jwtChecker, async (req, res) => {
     const userId = req.user_id;
 
     console.log(
-      `📥 User ${userId} requesting changes since: ${since || "beginning"}`
+      `📥 User ${userId} requesting changes since: ${since || "beginning"}`,
     );
 
     const result = await syncServices.getAnalysisChanges(userId, since);
@@ -222,7 +222,7 @@ router.post(
         message: error.message,
       });
     }
-  }
+  },
 );
 
 /**
@@ -246,12 +246,12 @@ router.get("/sync/status", jwtChecker, async (req, res) => {
 
     const analysisCount = await db.pool.query(
       "SELECT COUNT(*) as count FROM disease_analysis_results WHERE user_id = $1",
-      [userId]
+      [userId],
     );
 
     const imageCount = await db.pool.query(
       "SELECT COUNT(*) as count FROM images WHERE image_id IN (SELECT image_id FROM disease_analysis_results WHERE user_id = $1)",
-      [userId]
+      [userId],
     );
 
     res.status(200).json({

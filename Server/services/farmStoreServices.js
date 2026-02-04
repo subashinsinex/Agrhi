@@ -27,15 +27,13 @@ exports.addFarmerShopPlace = async (req, res) => {
     });
   }
 
-  const client = await pool.connect();
-
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     const farmer_id = req.user_id;
 
     // Check if farmer already has a shop place
-    const existingPlace = await client.query(
+    const existingPlace = await pool.query(
       "SELECT farmer_id FROM farmer_shop_place WHERE farmer_id = $1",
       [farmer_id],
     );
@@ -44,7 +42,7 @@ exports.addFarmerShopPlace = async (req, res) => {
 
     if (existingPlace.rowCount > 0) {
       // Update existing location
-      result = await client.query(
+      result = await pool.query(
         `UPDATE farmer_shop_place
          SET latitude = $1, longitude = $2, updated_at = CURRENT_TIMESTAMP
          WHERE farmer_id = $3
@@ -52,34 +50,32 @@ exports.addFarmerShopPlace = async (req, res) => {
         [latitude, longitude, farmer_id],
       );
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
       res.json({
         message: "Shop location updated successfully",
         shopPlace: result.rows[0],
       });
     } else {
-      result = await client.query(
+      result = await pool.query(
         `INSERT INTO farmer_shop_place (farmer_id, latitude, longitude)
          VALUES ($1, $2, $3)
          RETURNING *`,
         [farmer_id, latitude, longitude],
       );
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
       res.json({
         message: "Shop location created successfully",
         shopPlace: result.rows[0],
       });
     }
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("addFarmerShopPlace error:", error);
     res.status(500).json({
       message: "Error saving shop location",
       error: error.message,
     });
-  } finally {
-    client.release();
   }
 };
 
@@ -126,16 +122,14 @@ exports.createFarmProduct = async (req, res) => {
     });
   }
 
-  const client = await pool.connect();
-
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     const farmer_id = req.user_id;
 
     // Generate product_id
     const product_id = await generateUniqueId(
-      client,
+      pool,
       "farmer_products",
       "product_id",
     );
@@ -156,7 +150,7 @@ exports.createFarmProduct = async (req, res) => {
       RETURNING *
     `;
 
-    const result = await client.query(insertSql, [
+    const result = await pool.query(insertSql, [
       product_id,
       farmer_id,
       product_name,
@@ -167,21 +161,19 @@ exports.createFarmProduct = async (req, res) => {
       quantity_available,
     ]);
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({
       message: "Product created successfully",
       product: result.rows[0],
       product_id: product_id,
     });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("createFarmProduct error:", error);
     res.status(500).json({
       message: "Error creating product",
       error: error.message,
     });
-  } finally {
-    client.release();
   }
 };
 
@@ -401,19 +393,17 @@ exports.toggleFarmProductStatus = async (req, res) => {
 exports.deleteFarmProduct = async (req, res) => {
   const { id } = req.params;
 
-  const client = await pool.connect();
-
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // Get the image_id first
-    const productResult = await client.query(
+    const productResult = await pool.query(
       "SELECT image_id FROM farmer_products WHERE product_id = $1 AND farmer_id = $2",
       [id, req.user_id],
     );
 
     if (productResult.rowCount === 0) {
-      await client.query("ROLLBACK");
+      await pool.query("ROLLBACK");
       return res.status(404).json({
         message: "Product not found or access denied",
       });
@@ -422,13 +412,11 @@ exports.deleteFarmProduct = async (req, res) => {
     const imageId = productResult.rows[0].image_id;
 
     // Delete the product
-    await client.query("DELETE FROM farmer_products WHERE product_id = $1", [
-      id,
-    ]);
+    await pool.query("DELETE FROM farmer_products WHERE product_id = $1", [id]);
 
     // Delete associated image if exists
     if (imageId) {
-      const imageResult = await client.query(
+      const imageResult = await pool.query(
         "SELECT image_url FROM images WHERE image_id = $1",
         [imageId],
       );
@@ -446,20 +434,18 @@ exports.deleteFarmProduct = async (req, res) => {
         }
       }
 
-      await client.query("DELETE FROM images WHERE image_id = $1", [imageId]);
+      await pool.query("DELETE FROM images WHERE image_id = $1", [imageId]);
     }
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({ message: "Product deleted successfully" });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("deleteFarmProduct error:", error);
     res.status(500).json({
       message: "Error deleting product",
       error: error.message,
     });
-  } finally {
-    client.release();
   }
 };
 

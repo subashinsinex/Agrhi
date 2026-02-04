@@ -27,12 +27,11 @@ exports.createRetailer = async (req, res) => {
     shop_number,
   } = req.body;
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // Validate user exists
-    const userRes = await client.query(
+    const userRes = await pool.query(
       "SELECT user_id FROM users_auth WHERE user_id = $1 LIMIT 1",
       [user_id],
     );
@@ -42,20 +41,20 @@ exports.createRetailer = async (req, res) => {
 
     // Generate retailer_id
     const retailer_id = await generateUniqueId(
-      client,
+      pool,
       "retailers",
       "retailer_id",
     );
 
     // Generate image_id and insert into images table with NULL image_url
     const image_id = uuidv4();
-    await client.query(
+    await pool.query(
       "INSERT INTO images (image_id, image_url) VALUES ($1, NULL)",
       [image_id],
     );
 
     // Create retailer with the pre-generated image_id
-    const result = await client.query(
+    const result = await pool.query(
       `INSERT INTO retailers 
         (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, shop_number, image_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
@@ -75,19 +74,17 @@ exports.createRetailer = async (req, res) => {
       ],
     );
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({
       message: "Retailer created",
       retailer_id: result.rows[0].retailer_id,
     });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("createRetailer error:", error);
     res
       .status(500)
       .json({ message: "Error creating retailer", error: error.message });
-  } finally {
-    client.release();
   }
 };
 
@@ -250,17 +247,16 @@ exports.createProduct = async (req, res) => {
     image_id, // <- from images table (optional)
   } = req.body;
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     const product_id = await generateUniqueId(
-      client,
+      pool,
       "retailer_products",
       "product_id",
     );
 
-    const result = await client.query(
+    const result = await pool.query(
       `INSERT INTO retailer_products 
         (product_id, retailer_id, category, product_name, brand, price, unit, stock_qty, description, image_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -279,17 +275,15 @@ exports.createProduct = async (req, res) => {
       ],
     );
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({
       message: "Product added",
       product_id: result.rows[0].product_id,
     });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("createProduct error:", error);
     res.status(500).json({ message: "Error adding product", error });
-  } finally {
-    client.release();
   }
 };
 

@@ -19,7 +19,7 @@ class ForgotPasswordService {
       // Find user by phone_number in users_auth table
       const userResult = await pool.query(
         "SELECT user_id, email, phone_number FROM users_auth WHERE phone_number = $1",
-        [mobile]
+        [mobile],
       );
 
       // If no user found, still return success (security best practice)
@@ -62,13 +62,13 @@ class ForgotPasswordService {
           ip_address,
           user_agent
         ) VALUES ($1, $2, $3, $4, $5)`,
-        [user.user_id, tokenHash, expiresAt, ipAddress, userAgent]
+        [user.user_id, tokenHash, expiresAt, ipAddress, userAgent],
       );
 
       // Get username from user_details table
       const userDetailsResult = await pool.query(
         "SELECT name FROM user_details WHERE user_id = $1",
-        [user.user_id]
+        [user.user_id],
       );
 
       const username =
@@ -91,7 +91,7 @@ class ForgotPasswordService {
       } catch (emailError) {
         console.error(
           `Failed to send password reset email to ${user.email}:`,
-          emailError
+          emailError,
         );
         // Still return success to prevent email enumeration
       }
@@ -126,7 +126,7 @@ class ForgotPasswordService {
         WHERE prt.token_hash = $1
         AND prt.expires_at > NOW()
         AND prt.used = FALSE`,
-        [tokenHash]
+        [tokenHash],
       );
 
       if (result.rows.length === 0) {
@@ -143,7 +143,7 @@ class ForgotPasswordService {
         message: "Token is valid",
         mobile: data.phone_number
           ? `${data.phone_number.slice(0, 2)}******${data.phone_number.slice(
-              -2
+              -2,
             )}`
           : null,
       };
@@ -157,24 +157,22 @@ class ForgotPasswordService {
    * Reset password
    */
   async resetPassword({ token, newPassword, ipAddress }) {
-    const client = await pool.connect();
-
     try {
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-      await client.query("BEGIN");
+      await pool.query("BEGIN");
 
       // Find and lock the token
-      const tokenResult = await client.query(
+      const tokenResult = await pool.query(
         `SELECT user_id, used, expires_at
         FROM password_reset_tokens
         WHERE token_hash = $1
         FOR UPDATE`,
-        [tokenHash]
+        [tokenHash],
       );
 
       if (tokenResult.rows.length === 0) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return {
           success: false,
           message: "Invalid reset token",
@@ -185,7 +183,7 @@ class ForgotPasswordService {
 
       // Check if token expired
       if (new Date(tokenData.expires_at) < new Date()) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return {
           success: false,
           message: "Reset token has expired",
@@ -194,7 +192,7 @@ class ForgotPasswordService {
 
       // Check if already used
       if (tokenData.used) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return {
           success: false,
           message: "This reset link has already been used",
@@ -207,24 +205,24 @@ class ForgotPasswordService {
       const hashedPassword = await bcrypt.hash(newPassword, 10);
 
       // Update password in users_auth table
-      await client.query(
+      await pool.query(
         "UPDATE users_auth SET password = $1 WHERE user_id = $2",
-        [hashedPassword, userId]
+        [hashedPassword, userId],
       );
 
       // Update updated_at in user_details table
-      await client.query(
+      await pool.query(
         "UPDATE user_details SET updated_at = NOW() WHERE user_id = $1",
-        [userId]
+        [userId],
       );
 
       // Mark token as used
-      await client.query(
+      await pool.query(
         "UPDATE password_reset_tokens SET used = TRUE, used_at = NOW() WHERE token_hash = $1",
-        [tokenHash]
+        [tokenHash],
       );
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
 
       // Send confirmation email (async, don't wait)
       this._sendPasswordChangedEmail(userId, ipAddress);
@@ -234,11 +232,9 @@ class ForgotPasswordService {
         message: "Password reset successfully",
       };
     } catch (error) {
-      await client.query("ROLLBACK");
+      await pool.query("ROLLBACK");
       console.error("Reset password error:", error);
       throw error;
-    } finally {
-      client.release();
     }
   }
 
@@ -249,7 +245,7 @@ class ForgotPasswordService {
     try {
       const userResult = await pool.query(
         "SELECT user_id FROM users_auth WHERE phone_number = $1",
-        [mobile]
+        [mobile],
       );
 
       if (userResult.rows.length === 0) {
@@ -267,7 +263,7 @@ class ForgotPasswordService {
         FROM password_reset_tokens
         WHERE user_id = $1
         AND created_at > NOW() - INTERVAL '24 hours'`,
-        [userId]
+        [userId],
       );
 
       const attempts = parseInt(attemptsResult.rows[0].count);
@@ -295,7 +291,7 @@ class ForgotPasswordService {
         FROM password_reset_tokens
         WHERE user_id = $1
         AND created_at > NOW() - INTERVAL '24 hours'`,
-        [userId]
+        [userId],
       );
 
       const count = parseInt(result.rows[0].count);
@@ -317,7 +313,7 @@ class ForgotPasswordService {
         FROM users_auth ua
         LEFT JOIN user_details ud ON ua.user_id = ud.user_id
         WHERE ua.user_id = $1`,
-        [userId]
+        [userId],
       );
 
       if (result.rows.length > 0 && result.rows[0].email) {
@@ -348,7 +344,7 @@ class ForgotPasswordService {
     if (!email) return null;
     return email.replace(
       /(.{2})(.*)(@.*)/,
-      (match, p1, p2, p3) => p1 + "*".repeat(Math.min(p2.length, 5)) + p3
+      (match, p1, p2, p3) => p1 + "*".repeat(Math.min(p2.length, 5)) + p3,
     );
   }
 

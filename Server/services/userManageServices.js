@@ -1,14 +1,14 @@
-const pool = require("../db/database");
+const { basePool } = require("../db/database");
 const bcrypt = require("bcrypt");
 const { v4: uuidv4 } = require("uuid");
-
+const pool = basePool;
 async function generateUniqueUserId(client) {
   let user_id, exists;
   do {
     user_id = uuidv4();
     const check = await client.query(
       "SELECT 1 FROM users_auth WHERE user_id = $1",
-      [user_id]
+      [user_id],
     );
     exists = check.rowCount > 0;
   } while (exists);
@@ -44,14 +44,14 @@ async function postUser(newUser) {
     await client.query(
       `INSERT INTO users_auth (user_id, password, phone_number, email)
        VALUES ($1, $2, $3, $4)`,
-      [user_id, hashedPassword, newUser.phone_number, newUser.email]
+      [user_id, hashedPassword, newUser.phone_number, newUser.email],
     );
 
     // Fetch the UUID for the category_id to use in user_details
     // Assuming newUser.category_id currently holds something like an integer or string representing the category
     const categoryResult = await client.query(
       `SELECT category_id FROM user_category WHERE category_id = $1`, // Assuming category is the name, adjust as per your input
-      [newUser.category_id]
+      [newUser.category_id],
     );
 
     if (categoryResult.rowCount === 0) {
@@ -71,7 +71,7 @@ async function postUser(newUser) {
         newUser.address,
         newUser.pincode,
         newUser.category_id,
-      ]
+      ],
     );
 
     await client.query("COMMIT");
@@ -94,7 +94,7 @@ async function putUser(user_id, updatedUser) {
       const hashedPassword = await bcrypt.hash(updatedUser.password, 10);
       await client.query(
         "UPDATE users_auth SET password = $1 WHERE user_id = $2",
-        [hashedPassword, user_id]
+        [hashedPassword, user_id],
       );
     }
 
@@ -102,7 +102,7 @@ async function putUser(user_id, updatedUser) {
       `UPDATE users_auth
        SET phone_number = $1, email = $2
        WHERE user_id = $3`,
-      [updatedUser.phone_number, updatedUser.email, user_id]
+      [updatedUser.phone_number, updatedUser.email, user_id],
     );
 
     await client.query(
@@ -116,7 +116,7 @@ async function putUser(user_id, updatedUser) {
         updatedUser.pincode,
         updatedUser.category_id,
         user_id,
-      ]
+      ],
     );
 
     await client.query("COMMIT");

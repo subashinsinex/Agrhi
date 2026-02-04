@@ -15,7 +15,7 @@ router.delete(
   "/deletefarms/:id",
   jwtChecker,
   adminChecker,
-  farmCropService.deleteFarm
+  farmCropService.deleteFarm,
 );
 
 // Crops CRUD
@@ -29,7 +29,7 @@ router.delete(
   "/deletecrops/:id",
   jwtChecker,
   adminChecker,
-  farmCropService.deleteCrop
+  farmCropService.deleteCrop,
 );
 
 router.get("/farms/:id/options", farmCropService.getFarmCropOptions);
@@ -40,7 +40,7 @@ router.get("/masters/irrigations", jwtChecker, farmCropService.getIrrigations);
 router.get(
   "/masters/watersources",
   jwtChecker,
-  farmCropService.getWaterSources
+  farmCropService.getWaterSources,
 );
 router.get("/masters/croptypes", jwtChecker, farmCropService.getCropTypes);
 router.get("/masters/plants", jwtChecker, farmCropService.getPlants);
@@ -50,31 +50,31 @@ router.post(
   "/masters/addsoiltypes",
   jwtChecker,
   adminChecker,
-  farmCropService.addSoilType
+  farmCropService.addSoilType,
 );
 router.post(
   "/masters/addirrigations",
   jwtChecker,
   adminChecker,
-  farmCropService.addIrrigation
+  farmCropService.addIrrigation,
 );
 router.post(
   "/masters/addwatersources",
   jwtChecker,
   adminChecker,
-  farmCropService.addWaterSource
+  farmCropService.addWaterSource,
 );
 router.post(
   "/masters/addcroptypes",
   jwtChecker,
   adminChecker,
-  farmCropService.addCropType
+  farmCropService.addCropType,
 );
 router.post(
   "/masters/addplants",
   jwtChecker,
   adminChecker,
-  farmCropService.addPlant
+  farmCropService.addPlant,
 );
 
 // Delete master data
@@ -82,31 +82,31 @@ router.delete(
   "/masters/deletesoiltypes/:id",
   jwtChecker,
   adminChecker,
-  farmCropService.deleteSoilType
+  farmCropService.deleteSoilType,
 );
 router.delete(
   "/masters/deleteirrigations/:id",
   jwtChecker,
   adminChecker,
-  farmCropService.deleteIrrigation
+  farmCropService.deleteIrrigation,
 );
 router.delete(
   "/masters/deletewatersources/:id",
   jwtChecker,
   adminChecker,
-  farmCropService.deleteWaterSource
+  farmCropService.deleteWaterSource,
 );
 router.delete(
   "/masters/deletecroptypes/:id",
   jwtChecker,
   adminChecker,
-  farmCropService.deleteCropType
+  farmCropService.deleteCropType,
 );
 router.delete(
   "/masters/deleteplants/:id",
   jwtChecker,
   adminChecker,
-  farmCropService.deletePlant
+  farmCropService.deletePlant,
 );
 
 module.exports = router;

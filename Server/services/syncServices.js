@@ -1,4 +1,4 @@
-const db = require("../db/database");
+const pool = require("../db/database");
 const { v4: uuidv4 } = require("uuid");
 
 /**
@@ -10,7 +10,7 @@ async function generateUniqueId(client, tableName, idColumn) {
     id = uuidv4();
     const check = await client.query(
       `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
-      [id]
+      [id],
     );
     exists = check.rowCount > 0;
   } while (exists);
@@ -23,10 +23,9 @@ async function generateUniqueId(client, tableName, idColumn) {
  */
 async function batchUploadAnalyses(userId, analyses) {
   const uploadedIds = [];
-  const client = await db.connect();
 
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     for (const analysis of analyses) {
       // Validate required fields
@@ -45,17 +44,17 @@ async function batchUploadAnalyses(userId, analyses) {
         console.log(`🖼️ Creating placeholder for image: ${analysis.image_id}`);
         try {
           // Check if image already exists
-          const existingImage = await client.query(
+          const existingImage = await pool.query(
             "SELECT image_id FROM images WHERE image_id = $1",
-            [analysis.image_id]
+            [analysis.image_id],
           );
 
           if (existingImage.rows.length === 0) {
             // Insert placeholder - actual image will be uploaded separately
-            await client.query(
+            await pool.query(
               `INSERT INTO images (image_id, image_url) 
                VALUES ($1, $2)`,
-              [analysis.image_id, "/uploads/images/pending"]
+              [analysis.image_id, "/uploads/images/pending"],
             );
             console.log(`✅ Image placeholder created: ${analysis.image_id}`);
           } else {
@@ -68,7 +67,7 @@ async function batchUploadAnalyses(userId, analyses) {
       }
 
       // Insert the analysis
-      await client.query(
+      await pool.query(
         `INSERT INTO disease_analysis_results 
         (id, user_id, plant_id, image_id, disease_id, confidence, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -83,15 +82,15 @@ async function batchUploadAnalyses(userId, analyses) {
           analysis.disease_id,
           analysis.confidence,
           analysis.created_at || new Date().toISOString(),
-        ]
+        ],
       );
 
       uploadedIds.push(analysis.id);
     }
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     console.log(
-      `✅ Uploaded ${uploadedIds.length} analyses for user ${userId}`
+      `✅ Uploaded ${uploadedIds.length} analyses for user ${userId}`,
     );
 
     return {
@@ -100,11 +99,9 @@ async function batchUploadAnalyses(userId, analyses) {
       count: uploadedIds.length,
     };
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("❌ Batch upload transaction error:", error);
     throw error;
-  } finally {
-    client.release();
   }
 }
 
@@ -151,15 +148,15 @@ async function getAnalysisChanges(userId, since = null) {
     params = [userId];
   }
 
-  const result = await db.query(query, params);
+  const result = await pool.query(query, params);
 
   // Get deleted IDs (optional - for tracking deletions)
   let deletedIds = [];
   try {
-    const deletedResult = await db.query(
+    const deletedResult = await pool.query(
       `SELECT id FROM deleted_analyses 
        WHERE user_id = $1 AND deleted_at > $2`,
-      [userId, since || "1970-01-01"]
+      [userId, since || "1970-01-01"],
     );
     deletedIds = deletedResult.rows.map((r) => r.id);
   } catch (err) {
@@ -181,12 +178,12 @@ async function getAnalysisChanges(userId, since = null) {
 async function saveImageMetadata(imageId, imageUrl) {
   console.log(`💾 Saving image: ${imageId} -> ${imageUrl}`);
 
-  await db.query(
+  await pool.query(
     `INSERT INTO images (image_id, image_url)
      VALUES ($1, $2)
      ON CONFLICT (image_id) DO UPDATE SET
        image_url = EXCLUDED.image_url`,
-    [imageId, imageUrl]
+    [imageId, imageUrl],
   );
 
   console.log(`✅ Image saved: ${imageId}`);

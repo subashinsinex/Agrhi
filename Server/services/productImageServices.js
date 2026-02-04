@@ -15,12 +15,11 @@ exports.saveProductImage = async (file, productId) => {
     throw new Error("product_id is required");
   }
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // Get current image_id and image_url for this product
-    const productRes = await client.query(
+    const productRes = await pool.query(
       `SELECT rp.image_id, i.image_url
        FROM retailer_products rp
        LEFT JOIN images i ON rp.image_id = i.image_id
@@ -45,17 +44,17 @@ exports.saveProductImage = async (file, productId) => {
       // No image yet: create new image row and set retailer_products.image_id
       image_id = uuidv4();
 
-      await client.query(
+      await pool.query(
         "INSERT INTO images (image_id, image_url) VALUES ($1, $2)",
         [image_id, newImageUrl],
       );
 
-      const result = await client.query(
+      const result = await pool.query(
         "UPDATE retailer_products SET image_id = $2 WHERE product_id = $1 RETURNING *",
         [productId, image_id],
       );
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
       return {
         image_id,
         image_url: newImageUrl,
@@ -75,22 +74,20 @@ exports.saveProductImage = async (file, productId) => {
       });
     }
 
-    const imageUpdateRes = await client.query(
+    const imageUpdateRes = await pool.query(
       "UPDATE images SET image_url = $2 WHERE image_id = $1 RETURNING *",
       [image_id, newImageUrl],
     );
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     return {
       image_id,
       image_url: imageUpdateRes.rows[0].image_url,
       product: productRes.rows[0],
     };
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     throw error;
-  } finally {
-    client.release();
   }
 };
 
@@ -105,12 +102,11 @@ exports.saveFarmProductImage = async (file, productId) => {
     throw new Error("product_id is required");
   }
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // Get current image_id and image_url for this farm product
-    const productRes = await client.query(
+    const productRes = await pool.query(
       `SELECT fp.image_id, i.image_url
        FROM farmer_products fp
        LEFT JOIN images i ON fp.image_id = i.image_id
@@ -132,17 +128,17 @@ exports.saveFarmProductImage = async (file, productId) => {
       // No image yet: create new image row and set farmer_products.image_id
       image_id = uuidv4();
 
-      await client.query(
+      await pool.query(
         "INSERT INTO images (image_id, image_url) VALUES ($1, $2)",
         [image_id, newImageUrl],
       );
 
-      const result = await client.query(
+      const result = await pool.query(
         "UPDATE farmer_products SET image_id = $2 WHERE product_id = $1 RETURNING *",
         [productId, image_id],
       );
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
       return {
         image_id,
         image_url: newImageUrl,
@@ -162,21 +158,19 @@ exports.saveFarmProductImage = async (file, productId) => {
       });
     }
 
-    const imageUpdateRes = await client.query(
+    const imageUpdateRes = await pool.query(
       "UPDATE images SET image_url = $2 WHERE image_id = $1 RETURNING *",
       [image_id, newImageUrl],
     );
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     return {
       image_id,
       image_url: imageUpdateRes.rows[0].image_url,
       product: productRes.rows[0],
     };
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     throw error;
-  } finally {
-    client.release();
   }
 };

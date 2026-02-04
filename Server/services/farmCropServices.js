@@ -7,7 +7,7 @@ async function generateUniqueId(client, tableName, idColumn) {
     id = uuidv4();
     const check = await client.query(
       `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
-      [id]
+      [id],
     );
     exists = check.rowCount > 0;
   } while (exists);
@@ -88,26 +88,25 @@ exports.addFarm = async (req, res) => {
     water_src_ids,
   } = req.body;
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
     // Lookup user_id by phone_number
-    const userRes = await client.query(
+    const userRes = await pool.query(
       "SELECT user_id FROM users_auth WHERE phone_number = $1 LIMIT 1",
-      [phone_number]
+      [phone_number],
     );
     if (userRes.rowCount === 0) {
       throw new Error("Phone number not found. Invalid user.");
     }
     const user_id = userRes.rows[0].user_id;
-    const farm_id = await generateUniqueId(client, "farms", "farm_id");
+    const farm_id = await generateUniqueId(pool, "farms", "farm_id");
 
     // Insert farm row
-    const farmResult = await client.query(
+    const farmResult = await pool.query(
       `INSERT INTO farms (user_id, farm_id, farm_size, survey_number, is_delete)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *;`,
-      [user_id, farm_id, farm_size, survey_number, is_delete]
+      [user_id, farm_id, farm_size, survey_number, is_delete],
     );
     const farm = farmResult.rows[0];
 
@@ -116,7 +115,7 @@ exports.addFarm = async (req, res) => {
       for (const soil_type_id of soil_type_ids) {
         await client.query(
           `INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)`,
-          [farm_id, soil_type_id]
+          [farm_id, soil_type_id],
         );
       }
     }
@@ -126,7 +125,7 @@ exports.addFarm = async (req, res) => {
       for (const irrigation_id of irrigation_ids) {
         await client.query(
           `INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)`,
-          [farm_id, irrigation_id]
+          [farm_id, irrigation_id],
         );
       }
     }
@@ -136,19 +135,17 @@ exports.addFarm = async (req, res) => {
       for (const water_src_id of water_src_ids) {
         await client.query(
           `INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)`,
-          [farm_id, water_src_id]
+          [farm_id, water_src_id],
         );
       }
     }
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({ message: "Farm added", farm });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("addFarm error:", error);
     res.status(500).json({ message: "Error adding farm", error });
-  } finally {
-    client.release();
   }
 };
 
@@ -164,25 +161,24 @@ exports.addFarmByUserId = async (req, res) => {
     water_src_ids, // array
   } = req.body;
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // Optional: Validate that user_id exists in users_auth table
-    const userRes = await client.query(
+    const userRes = await pool.query(
       "SELECT user_id FROM users_auth WHERE user_id = $1 LIMIT 1",
-      [user_id]
+      [user_id],
     );
     if (userRes.rowCount === 0) {
       throw new Error("Invalid user_id. User not found.");
     }
 
     // Insert farm row
-    const farmResult = await client.query(
+    const farmResult = await pool.query(
       `INSERT INTO farms (user_id, farm_id, farm_size, survey_number, is_delete)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *;`,
-      [user_id, farm_id, farm_size, survey_number, is_delete]
+      [user_id, farm_id, farm_size, survey_number, is_delete],
     );
     const farm = farmResult.rows[0];
 
@@ -191,7 +187,7 @@ exports.addFarmByUserId = async (req, res) => {
       for (const soil_type_id of soil_type_ids) {
         await client.query(
           `INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)`,
-          [farm_id, soil_type_id]
+          [farm_id, soil_type_id],
         );
       }
     }
@@ -201,7 +197,7 @@ exports.addFarmByUserId = async (req, res) => {
       for (const irrigation_id of irrigation_ids) {
         await client.query(
           `INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)`,
-          [farm_id, irrigation_id]
+          [farm_id, irrigation_id],
         );
       }
     }
@@ -211,19 +207,17 @@ exports.addFarmByUserId = async (req, res) => {
       for (const water_src_id of water_src_ids) {
         await client.query(
           `INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)`,
-          [farm_id, water_src_id]
+          [farm_id, water_src_id],
         );
       }
     }
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({ message: "Farm added", farm });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("addFarmByUserId error:", error);
     res.status(500).json({ message: "Error adding farm", error });
-  } finally {
-    client.release();
   }
 };
 
@@ -238,65 +232,62 @@ exports.updateFarm = async (req, res) => {
     water_src_ids, // <-- array
   } = req.body;
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // Update main farm record (do NOT touch user_id)
-    await client.query(
+    await pool.query(
       `UPDATE farms 
        SET farm_size = $2, survey_number = $3, is_delete = $4
        WHERE farm_id = $1`,
-      [farm_id, farm_size, survey_number, is_delete]
+      [farm_id, farm_size, survey_number, is_delete],
     );
 
     // DELETE + multi-insert soils
-    await client.query("DELETE FROM farms_soil_types WHERE farm_id = $1", [
+    await pool.query("DELETE FROM farms_soil_types WHERE farm_id = $1", [
       farm_id,
     ]);
     if (soil_type_ids && Array.isArray(soil_type_ids)) {
       for (const soil_type_id of soil_type_ids) {
-        await client.query(
+        await pool.query(
           "INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)",
-          [farm_id, soil_type_id]
+          [farm_id, soil_type_id],
         );
       }
     }
 
     // DELETE + multi-insert irrigations
-    await client.query("DELETE FROM farm_irrigation WHERE farm_id = $1", [
+    await pool.query("DELETE FROM farm_irrigation WHERE farm_id = $1", [
       farm_id,
     ]);
     if (irrigation_ids && Array.isArray(irrigation_ids)) {
       for (const irrigation_id of irrigation_ids) {
-        await client.query(
+        await pool.query(
           "INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)",
-          [farm_id, irrigation_id]
+          [farm_id, irrigation_id],
         );
       }
     }
 
     // DELETE + multi-insert water sources
-    await client.query("DELETE FROM farms_water_src WHERE farm_id = $1", [
+    await pool.query("DELETE FROM farms_water_src WHERE farm_id = $1", [
       farm_id,
     ]);
     if (water_src_ids && Array.isArray(water_src_ids)) {
       for (const water_src_id of water_src_ids) {
-        await client.query(
+        await pool.query(
           "INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)",
-          [farm_id, water_src_id]
+          [farm_id, water_src_id],
         );
       }
     }
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({ message: "Farm updated successfully" });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("updateFarm error:", error);
     res.status(500).json({ message: "Error updating farm", error });
-  } finally {
-    client.release();
   }
 };
 
@@ -309,7 +300,7 @@ exports.isdeleteFarm = async (req, res) => {
        SET is_delete = true
        WHERE farm_id = $1
        RETURNING *`,
-      [id]
+      [id],
     );
 
     if (result.rowCount === 0) {
@@ -469,7 +460,7 @@ exports.getFarmCropOptions = async (req, res) => {
         irrigation_names: [],
         water_src_ids: [],
         water_src_names: [],
-      }
+      },
     );
   } catch (error) {
     res.status(500).json({ message: "Error fetching farm options", error });
@@ -489,14 +480,13 @@ exports.addCrop = async (req, res) => {
     is_delete,
   } = req.body;
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // ✅ Use client-provided ID or generate new one
     const cropId =
       user_crop_id ||
-      (await generateUniqueId(client, "user_crops", "user_crop_id"));
+      (await generateUniqueId(pool, "user_crops", "user_crop_id"));
 
     // ✅ Use INSERT ... ON CONFLICT to handle duplicates gracefully
     const insertSql = `
@@ -516,7 +506,7 @@ exports.addCrop = async (req, res) => {
       RETURNING *;
     `;
 
-    const result = await client.query(insertSql, [
+    const result = await pool.query(insertSql, [
       cropId,
       farm_id,
       plant_id,
@@ -528,20 +518,18 @@ exports.addCrop = async (req, res) => {
       is_delete,
     ]);
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({
       message: "Crop added",
       crop: result.rows[0],
       user_crop_id: cropId, // ✅ Return the ID to client
     });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("addCrop error:", error.message || error);
     res
       .status(500)
       .json({ message: "Error adding crop", error: error.message || error });
-  } finally {
-    client.release();
   }
 };
 
@@ -558,9 +546,8 @@ exports.updateCrop = async (req, res) => {
     is_delete,
   } = req.body;
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // 2. Update query for user_crops
     const sql = `
@@ -577,7 +564,7 @@ exports.updateCrop = async (req, res) => {
       RETURNING *
     `;
 
-    const result = await client.query(sql, [
+    const result = await pool.query(sql, [
       farm_id,
       plant_id,
       planting_date,
@@ -596,16 +583,14 @@ exports.updateCrop = async (req, res) => {
 
     const user_crop = result.rows[0];
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
     res.json({ message: "Crop updated", crop: user_crop });
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("updateCrop error:", error.message || error);
     res
       .status(500)
       .json({ message: "Error updating crop", error: error.message || error });
-  } finally {
-    client.release();
   }
 };
 
@@ -618,7 +603,7 @@ exports.isdeleteCrop = async (req, res) => {
        SET is_delete = true
        WHERE user_crop_id = $1
        RETURNING *`,
-      [id]
+      [id],
     );
 
     if (result.rowCount === 0) {
@@ -656,22 +641,21 @@ exports.getSoilTypes = async (req, res) => {
 };
 
 exports.addSoilType = async (req, res) => {
-  const client = await pool.connect();
   try {
     const { name } = req.body;
     const soil_type_id = await generateUniqueId(
-      client,
+      pool,
       "soil_types",
-      "soil_type_id"
+      "soil_type_id",
     );
 
     const result = await pool.query(
       "INSERT INTO soil_types (soil_type_id, name) VALUES ($1, $2) RETURNING *",
-      [soil_type_id, name]
+      [soil_type_id, name],
     );
     if (result.rows.length !== 0) {
-      await client.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'soil_types'"
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'soil_types'",
       );
     }
     res.json(result.rows[0]);
@@ -685,11 +669,11 @@ exports.deleteSoilType = async (req, res) => {
   try {
     const result = await pool.query(
       "DELETE FROM soil_types WHERE soil_type_id=$1",
-      [req.params.id]
+      [req.params.id],
     );
     if (result.rowCount !== 0) {
       await pool.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'soil_types'"
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'soil_types'",
       );
     }
     res.json({ message: "Soil type deleted" });
@@ -702,7 +686,7 @@ exports.deleteSoilType = async (req, res) => {
 exports.getIrrigations = async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM irrigation_method ORDER BY method_name"
+      "SELECT * FROM irrigation_method ORDER BY method_name",
     );
     res.json(result.rows);
   } catch (error) {
@@ -714,22 +698,21 @@ exports.getIrrigations = async (req, res) => {
 };
 
 exports.addIrrigation = async (req, res) => {
-  const client = await pool.connect();
   try {
     const { method_name } = req.body;
     const irrigation_method_id = await generateUniqueId(
-      client,
+      pool,
       "irrigation_method",
-      "irrigation_id"
+      "irrigation_id",
     );
 
     const result = await pool.query(
       "INSERT INTO irrigation_method (irrigation_id, method_name) VALUES ($1, $2) RETURNING *",
-      [irrigation_method_id, method_name]
+      [irrigation_method_id, method_name],
     );
     if (result.rows.length !== 0) {
-      await client.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'irrigation_method'"
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'irrigation_method'",
       );
     }
     res.json(result.rows[0]);
@@ -743,11 +726,11 @@ exports.deleteIrrigation = async (req, res) => {
   try {
     const result = await pool.query(
       "DELETE FROM irrigation_method WHERE irrigation_id=$1",
-      [req.params.id]
+      [req.params.id],
     );
     if (result.rowCount !== 0) {
       await pool.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'irrigation_method'"
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'irrigation_method'",
       );
     }
     res.json({ message: "Irrigation method deleted" });
@@ -768,22 +751,21 @@ exports.getWaterSources = async (req, res) => {
 };
 
 exports.addWaterSource = async (req, res) => {
-  const client = await pool.connect();
   try {
     const { source } = req.body;
     const water_src_id = await generateUniqueId(
-      client,
+      pool,
       "water_src",
-      "water_src_id"
+      "water_src_id",
     );
 
     const result = await pool.query(
       "INSERT INTO water_src (water_src_id, source) VALUES ($1, $2) RETURNING *",
-      [water_src_id, source]
+      [water_src_id, source],
     );
     if (result.rows.length !== 0) {
-      await client.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'water_src'"
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'water_src'",
       );
     }
     res.json(result.rows[0]);
@@ -797,11 +779,11 @@ exports.deleteWaterSource = async (req, res) => {
   try {
     const result = await pool.query(
       "DELETE FROM water_src WHERE water_src_id=$1",
-      [req.params.id]
+      [req.params.id],
     );
     if (result.rowCount !== 0) {
       await pool.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'water_src'"
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'water_src'",
       );
     }
     res.json({ message: "Water source deleted" });
@@ -822,22 +804,21 @@ exports.getCropTypes = async (req, res) => {
 };
 
 exports.addCropType = async (req, res) => {
-  const client = await pool.connect();
   try {
     const { name } = req.body;
     const crop_type_id = await generateUniqueId(
-      client,
+      pool,
       "crop_types",
-      "crop_type_id"
+      "crop_type_id",
     );
 
     const result = await pool.query(
       "INSERT INTO crop_types (crop_type_id, name) VALUES ($1, $2) RETURNING *",
-      [crop_type_id, name]
+      [crop_type_id, name],
     );
     if (result.rows.length !== 0) {
-      await client.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'crop_types'"
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'crop_types'",
       );
     }
     res.json(result.rows[0]);
@@ -851,11 +832,11 @@ exports.deleteCropType = async (req, res) => {
   try {
     const result = await pool.query(
       "DELETE FROM crop_types WHERE crop_type_id=$1",
-      [req.params.id]
+      [req.params.id],
     );
     if (result.rowCount !== 0) {
       await pool.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'crop_types'"
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'crop_types'",
       );
     }
     res.json({ message: "Crop type deleted" });
@@ -881,18 +862,17 @@ exports.getPlants = async (req, res) => {
 };
 
 exports.addPlant = async (req, res) => {
-  const client = await pool.connect();
   try {
     const { plant_name, crop_type_id, water_requirement } = req.body;
-    const plant_id = await generateUniqueId(client, "plants", "plant_id");
+    const plant_id = await generateUniqueId(pool, "plants", "plant_id");
 
     const result = await pool.query(
       "INSERT INTO plants (plant_id, plant_name, crop_type_id, water_requirement) VALUES ($1, $2, $3, $4) RETURNING *",
-      [plant_id, plant_name, crop_type_id, water_requirement]
+      [plant_id, plant_name, crop_type_id, water_requirement],
     );
     if (result.rows.length !== 0) {
-      await client.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'plants'"
+      await pool.query(
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'plants'",
       );
     }
     res.json(result.rows[0]);
@@ -909,7 +889,7 @@ exports.deletePlant = async (req, res) => {
     ]);
     if (result.rowCount !== 0) {
       await pool.query(
-        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'plants'"
+        "UPDATE reference_table_versions SET updated_at = CURRENT_TIMESTAMP WHERE ref_table_name = 'plants'",
       );
     }
     res.json({ message: "Plant deleted" });

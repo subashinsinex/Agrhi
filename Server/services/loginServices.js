@@ -9,7 +9,7 @@ async function login(phone_number, password, platform) {
     // Fetch user auth info using phone_number
     const userAuthQuery = await pool.query(
       "SELECT u.user_id, u.password FROM users_auth u WHERE u.phone_number = $1",
-      [phone_number]
+      [phone_number],
     );
 
     if (userAuthQuery.rows.length === 0) {
@@ -25,7 +25,7 @@ async function login(phone_number, password, platform) {
     // Fetch category_id from user_details to verify admin role
     const userDetailsQuery = await pool.query(
       "SELECT category_id FROM user_details WHERE user_id = $1",
-      [userAuth.user_id]
+      [userAuth.user_id],
     );
     console.log(userDetailsQuery.rows);
     if (userDetailsQuery.rows.length === 0) {
@@ -78,7 +78,7 @@ async function refreshToken(req, res) {
     // Check if the refresh token is valid for the user
     const user = await pool.query(
       "SELECT user_id FROM users_auth WHERE user_id = $1",
-      [user_id]
+      [user_id],
     );
 
     if (user.rows.length === 0) {

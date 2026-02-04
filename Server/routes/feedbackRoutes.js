@@ -1,9 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const feedbackServices = require("../services/feedbackServices");
+const jwtChecker = require("../middleware/jwtChecker");
+const adminChecker = require("../middleware/adminChecker");
 
 // User submits feedback (no crop_id)
-router.post("/addfeedback", async (req, res) => {
+router.post("/addfeedback", jwtChecker, async (req, res) => {
   try {
     const { user_id, message, isproblem } = req.body;
     const feedback = await feedbackServices.addFeedback({
@@ -18,7 +20,7 @@ router.post("/addfeedback", async (req, res) => {
 });
 
 // Admin fetches all feedbacks
-router.get("/getfeedback", async (req, res) => {
+router.get("/getfeedback", jwtChecker, adminChecker, async (req, res) => {
   try {
     const feedbacks = await feedbackServices.getAllFeedbacks();
     res.json(feedbacks);
@@ -28,7 +30,7 @@ router.get("/getfeedback", async (req, res) => {
 });
 
 // Get single feedback by ID
-router.get("/getfeedback/:id", async (req, res) => {
+router.get("/getfeedback/:id", jwtChecker, async (req, res) => {
   try {
     const { id } = req.params;
     const feedback = await feedbackServices.getFeedbackById(id);
@@ -40,7 +42,7 @@ router.get("/getfeedback/:id", async (req, res) => {
 });
 
 // Admin responds to feedback (sets reply, sets status to responsed)
-router.put("/reply/:id", async (req, res) => {
+router.put("/reply/:id", jwtChecker, adminChecker, async (req, res) => {
   try {
     const { id } = req.params;
     const { reply } = req.body;
@@ -55,7 +57,7 @@ router.put("/reply/:id", async (req, res) => {
 });
 
 // Admin updates feedback status
-router.put("/status/:id", async (req, res) => {
+router.put("/status/:id", jwtChecker, adminChecker, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -69,7 +71,7 @@ router.put("/status/:id", async (req, res) => {
   }
 });
 
-router.delete("/delete/:id", async (req, res) => {
+router.delete("/delete/:id", jwtChecker, adminChecker, async (req, res) => {
   try {
     const { id } = req.params;
     const success = await feedbackServices.deleteFeedback(id);

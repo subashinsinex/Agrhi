@@ -1,6 +1,7 @@
-const pool = require("../db/database");
+const { basePool } = require("../db/database");
 const bcrypt = require("bcrypt");
 const { v4: uuidv4 } = require("uuid");
+const pool = basePool;
 
 async function generateUniqueId(client, tableName, idColumn) {
   let id, exists;
@@ -8,7 +9,7 @@ async function generateUniqueId(client, tableName, idColumn) {
     id = uuidv4();
     const check = await client.query(
       `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
-      [id]
+      [id],
     );
     exists = check.rowCount > 0;
   } while (exists);
@@ -43,7 +44,7 @@ async function getProfilePictureUrl(userId) {
   try {
     const result = await pool.query(
       `SELECT pic_url FROM user_details WHERE user_id = $1`,
-      [userId]
+      [userId],
     );
 
     if (result.rows.length === 0) {
@@ -62,7 +63,7 @@ async function createUser(newUser) {
   try {
     const existingCheck = await client.query(
       `SELECT phone_number, email FROM users_auth WHERE phone_number = $1 OR email = $2`,
-      [newUser.phone_number, newUser.email]
+      [newUser.phone_number, newUser.email],
     );
 
     if (existingCheck.rows.length > 0) {
@@ -87,7 +88,7 @@ async function createUser(newUser) {
     await client.query(
       `INSERT INTO users_auth (user_id, password, phone_number, email)
        VALUES ($1, $2, $3, $4)`,
-      [user_id, hashedPassword, newUser.phone_number, newUser.email]
+      [user_id, hashedPassword, newUser.phone_number, newUser.email],
     );
 
     await client.query(
@@ -100,7 +101,7 @@ async function createUser(newUser) {
         newUser.address,
         newUser.pincode,
         newUser.category_id,
-      ]
+      ],
     );
 
     await client.query("COMMIT");
@@ -121,7 +122,7 @@ async function updateUser(user_id, updatedUser) {
 
     const authRes = await client.query(
       `SELECT email_verified FROM users_auth WHERE user_id = $1`,
-      [user_id]
+      [user_id],
     );
 
     if (authRes.rowCount === 0) {
@@ -132,8 +133,8 @@ async function updateUser(user_id, updatedUser) {
 
     if (!email_verified && updatedUser.email) {
       await client.query(
-        "UPDATE users_auth SET email = $1, updated_at = NOW() WHERE user_id = $2",
-        [updatedUser.email, user_id]
+        "UPDATE users_auth SET email = $1 WHERE user_id = $2",
+        [updatedUser.email, user_id],
       );
     }
 
@@ -168,7 +169,7 @@ async function updateUser(user_id, updatedUser) {
         `UPDATE user_details
          SET ${detailSet.join(", ")}, updated_at = NOW()
          WHERE user_id = $${idx}`,
-        detailValues
+        detailValues,
       );
     }
 
@@ -190,7 +191,7 @@ async function updateProfilePictureUrl(userId, picUrl) {
 
     const result = await client.query(
       "UPDATE user_details SET pic_url = $1, updated_at = NOW() WHERE user_id = $2 RETURNING user_id, pic_url",
-      [picUrl, userId]
+      [picUrl, userId],
     );
 
     if (result.rowCount === 0) {

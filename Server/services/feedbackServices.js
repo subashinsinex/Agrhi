@@ -7,7 +7,7 @@ async function generateUniqueId(client, tableName, idColumn) {
     id = uuidv4();
     const check = await client.query(
       `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
-      [id]
+      [id],
     );
     exists = check.rowCount > 0;
   } while (exists);
@@ -20,7 +20,7 @@ const getAllFeedbacks = async () => {
     `SELECT f.*, u.name AS user_name
      FROM feedback f
      LEFT JOIN user_details u ON f.user_id = u.user_id
-     ORDER BY f.created_at DESC`
+     ORDER BY f.created_at DESC`,
   );
   return result.rows;
 };
@@ -32,7 +32,7 @@ const addFeedback = async ({ user_id, message, isproblem }) => {
     const result = await db.query(
       `INSERT INTO feedback (id, user_id, message, isproblem, created_at, status)
      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'not viewed') RETURNING *`,
-      [id, user_id, message, isproblem]
+      [id, user_id, message, isproblem],
     );
     return result.rows[0];
   } catch (error) {
@@ -52,7 +52,7 @@ const getFeedbackById = async (user_id) => {
 const replyToFeedback = async ({ id, reply }) => {
   const result = await db.query(
     `UPDATE feedback SET reply = $1, status = 'responsed' WHERE id = $2 RETURNING *`,
-    [reply, id]
+    [reply, id],
   );
   return result.rows[0];
 };
@@ -63,7 +63,7 @@ const updateFeedbackStatus = async ({ id, status }) => {
   if (!allowed.includes(status)) throw new Error("Invalid status value");
   const result = await db.query(
     `UPDATE feedback SET status = $1 WHERE id = $2 RETURNING *`,
-    [status, id]
+    [status, id],
   );
   return result.rows[0];
 };

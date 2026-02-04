@@ -13,12 +13,11 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
     throw new Error("retailer_id is required");
   }
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await pool.query("BEGIN");
 
     // Get the existing image_id and old image_url
-    const retailerRes = await client.query(
+    const retailerRes = await pool.query(
       `SELECT r.image_id, i.image_url
        FROM retailers r
        LEFT JOIN images i ON r.image_id = i.image_id
@@ -52,12 +51,12 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
     }
 
     // Update the existing image row with the new image_url
-    const imageUpdateRes = await client.query(
+    const imageUpdateRes = await pool.query(
       "UPDATE images SET image_url = $2 WHERE image_id = $1 RETURNING *",
       [image_id, newImageUrl],
     );
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
 
     return {
       image_id,
@@ -65,9 +64,7 @@ exports.saveShopImageForRetailer = async (file, retailerId) => {
       retailer: retailerRes.rows[0],
     };
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     throw error;
-  } finally {
-    client.release();
   }
 };
