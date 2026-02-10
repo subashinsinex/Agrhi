@@ -1,3 +1,4 @@
+// Server/server.js
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -5,17 +6,27 @@ const requestIp = require("request-ip");
 const emailService = require("./utils/emailSender");
 const path = require("path");
 
+const { asyncLocalStorage } = require("./db/database");
+const jwtChecker = require("./middleware/jwtChecker");
+
 const app = express();
 
-// CRITICAL: Enable trust proxy BEFORE other middleware
+// 1) Trust proxy
 app.set("trust proxy", true);
 
-// Middleware
+// 2) ALS context for every request (FIRST)
+app.use((req, res, next) => {
+  asyncLocalStorage.run({ userId: null }, () => {
+    next();
+  });
+});
+
+// 3) Core middleware
 app.use(cors());
 app.use(express.json());
-app.use(requestIp.mw()); // Extracts real client IP (works behind WiFi/proxy/NAT)
+app.use(requestIp.mw());
 
-// Routes
+// 5) Routes
 const loginRoutes = require("./routes/loginRoutes");
 const userRoutes = require("./routes/userManageRoutes");
 const subsidiesRoutes = require("./routes/subsidiesRoutes");
@@ -30,18 +41,20 @@ const developerRoutes = require("./routes/developerRoutes");
 const farmStoreRoutes = require("./routes/farmStoreRoutes");
 const retailManagementRoutes = require("./routes/retailManagementRoutes");
 const marketPlaceRoutes = require("./routes/marketPlaceRoutes");
+const shopImageRoutes = require("./routes/shopImageRoutes");
+const productImageRoutes = require("./routes/productImageRoutes");
 
-app.use("/api/shop-images", require("./routes/shopImageRoutes"));
-app.use("/api/product-images", require("./routes/productImageRoutes"));
+// Image routes (behind jwtChecker because they are /api)
+app.use("/api/shop-images", shopImageRoutes);
+app.use("/api/product-images", productImageRoutes);
 
+// Other API routes
 app.use("/api", loginRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/subsidies", subsidiesRoutes);
 app.use("/api/farmcrop", farmCropRoutes);
 app.use("/api/diseaseRemedies", diseaseRemediesRoutes);
 app.use("/api/profile", profileRoutes);
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use("/models", express.static("models"));
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/sync", syncRoutes);
 app.use("/api/forgot-password", forgotPasswordRoutes);
@@ -51,13 +64,16 @@ app.use("/api/farmstore", farmStoreRoutes);
 app.use("/api/retail", retailManagementRoutes);
 app.use("/api/marketplace", marketPlaceRoutes);
 
-const PORT = process.env.PORT;
+// Static
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/models", express.static("models"));
+
+const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, async () => {
   console.log(`\n🚀 Server is running on port ${PORT}`);
   console.log(`📍 Server URL: http://localhost:${PORT}`);
 
-  // Test email service connection
   console.log("📧 Testing email service...");
   await emailService.testConnection();
 

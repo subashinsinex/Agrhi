@@ -109,7 +109,7 @@ const ResetPasswordPage = () => {
         display: flex;
         justify-content: center;
         align-items: center;
-        background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+        background: transparent;
         padding: 20px;
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
       }

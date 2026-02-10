@@ -400,6 +400,22 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                             value: 'pesticides',
                             child: SmartReTranslator(text: 'Pesticides'),
                           ),
+                          DropdownMenuItem(
+                            value: 'fruits and vegetables',
+                            child: SmartReTranslator(text: 'Fruits and Vegetables'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'dairy products',
+                            child: SmartReTranslator(text: 'Dairy Products'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'grains and pulses',
+                            child: SmartReTranslator(text: 'Grains and Pulses'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'other',
+                            child: SmartReTranslator(text: 'Other'),
+                          ),
                         ],
                         onChanged: (value) => setState(() => _category = value),
                       ),

@@ -64,8 +64,10 @@ class RLSEnabledPool {
     const store = asyncLocalStorage.getStore();
     const userId = store?.userId;
 
-    // If no user context (Public routes), run standard query
-    if (!userId) {
+    console.log("RLSEnabledPool.query userId from ALS =", userId);
+
+    // If no valid user context (public routes), run standard query
+    if (!userId || typeof userId !== "string" || userId.trim() === "") {
       return this.pool.query(text, params);
     }
 
@@ -100,7 +102,7 @@ const enhancedPool = new RLSEnabledPool(basePool);
 
 module.exports = {
   query: (text, params) => enhancedPool.query(text, params),
-  basePool, // EXPORT THIS: Used for Login where RLS isn't active yet
+  basePool, // Used for login where RLS isn't active yet
   asyncLocalStorage,
   clearRoleCache: (id) => enhancedPool.roleCache.delete(id),
 };

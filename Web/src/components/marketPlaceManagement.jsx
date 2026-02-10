@@ -5,23 +5,19 @@ import {
   FaShoppingBasket,
   FaSearch,
   FaSync,
-  FaToggleOn,
-  FaToggleOff,
-  FaTrash,
   FaFilter,
-  FaEdit,
-  FaPlus,
-  FaTimes,
-  FaCheck,
+  FaEye,
   FaChevronLeft,
   FaChevronRight,
-  FaFileExport,
   FaSort,
   FaSortUp,
   FaSortDown,
-  FaInfoCircle,
   FaLeaf,
-  FaUser,
+  FaStore,
+  FaMapMarkerAlt,
+  FaTimes,
+  FaRulerHorizontal,
+  FaCheck,
 } from "react-icons/fa";
 import { axiosInstance } from "../api/login";
 import { SERVER_IP, SERVER_PORT } from "../constant";
@@ -33,6 +29,12 @@ import { SERVER_IP, SERVER_PORT } from "../constant";
  */
 const API_BASE = `http://${SERVER_IP}:${SERVER_PORT}/api/marketplace`;
 
+// Default coordinates (e.g., Chennai) to use if geolocation fails or is denied
+const DEFAULT_LOCATION = {
+  lat: 13.0827,
+  lng: 80.2707,
+};
+
 const THEME = {
   primary: "#055219", // Deep Forest Green
   primaryLight: "#0a7d2a",
@@ -40,44 +42,28 @@ const THEME = {
   secondary: "#130f40", // Dark Navy
   accent: "#2ecc71", // Bright Green
   danger: "#e74c3c",
-  dangerHover: "#c0392b",
   warning: "#f1c40f",
   success: "#27ae60",
   textMain: "#2c3e50",
   textMuted: "#7f8c8d",
-  textLight: "#bdc3c7",
   bgLight: "#f8fdf9",
   bgWhite: "#ffffff",
   border: "#e0e0e0",
   shadowSmall: "0 2px 8px rgba(0,0,0,0.06)",
   shadowMedium: "0 8px 24px rgba(0,0,0,0.08)",
   shadowLarge: "0 16px 48px rgba(0,0,0,0.12)",
-  radiusSmall: "8px",
   radiusMedium: "16px",
-  radiusLarge: "24px",
   radiusPill: "999px",
   fontFamily: "'Outfit', 'Inter', system-ui, sans-serif",
   transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
 };
 
-const INITIAL_FORM_STATE = {
-  phone_number: "",
-  crop_type_id: "",
-  plant_id: "",
-  variety: "",
-  price_per_unit: "",
-  unit: "kg",
-  available_qty: "",
-  min_order_qty: "",
-};
-
 /**
  * ------------------------------------------------------------------
- * STYLES (CSS-IN-JS SYSTEM)
+ * STYLES
  * ------------------------------------------------------------------
  */
 const styles = {
-  // --- Layout Wrappers ---
   pageWrapper: {
     minHeight: "100vh",
     background: "transparent",
@@ -90,8 +76,6 @@ const styles = {
     maxWidth: "1600px",
     margin: "0 auto",
   },
-
-  // --- Header Section ---
   headerRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -112,24 +96,30 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "16px",
-    letterSpacing: "-0.5px",
     margin: 0,
   },
   subTitle: {
     fontSize: "1rem",
-    color: THEME.bgWhite,
+    color: THEME.bgWhite, // Assumes dark background on parent
+    opacity: 0.9,
     fontWeight: 400,
     maxWidth: "600px",
-    lineHeight: 1.5,
   },
-  headerActions: {
+  locationBadge: {
     display: "flex",
     alignItems: "center",
-    gap: "12px",
-    flexWrap: "wrap",
+    gap: "8px",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    padding: "8px 16px",
+    borderRadius: THEME.radiusPill,
+    color: "#fff",
+    fontSize: "0.9rem",
+    backdropFilter: "blur(4px)",
+    marginTop: "12px",
+    width: "fit-content",
   },
 
-  // --- Stats Dashboard ---
+  // Stats
   statsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
@@ -145,10 +135,6 @@ const styles = {
     gap: "20px",
     boxShadow: THEME.shadowSmall,
     border: `1px solid ${THEME.border}`,
-    transition: THEME.transition,
-    cursor: "default",
-    position: "relative",
-    overflow: "hidden",
   },
   statIconBox: {
     width: "64px",
@@ -169,7 +155,6 @@ const styles = {
   statLabel: {
     fontSize: "0.85rem",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
     fontWeight: 700,
     color: THEME.textMuted,
     marginBottom: "4px",
@@ -178,10 +163,9 @@ const styles = {
     fontSize: "2rem",
     fontWeight: 800,
     color: THEME.secondary,
-    lineHeight: 1,
   },
 
-  // --- Toolbar (Filter & Search) ---
+  // Toolbar
   toolbar: {
     backgroundColor: THEME.bgWhite,
     borderRadius: THEME.radiusMedium,
@@ -211,29 +195,17 @@ const styles = {
     top: "50%",
     transform: "translateY(-50%)",
     color: THEME.textMuted,
-    pointerEvents: "none",
   },
   searchInput: {
     width: "100%",
-    padding: "14px 14px 14px 48px",
+    padding: "12px 12px 12px 48px",
     fontSize: "0.95rem",
     border: `2px solid ${THEME.bgLight}`,
     backgroundColor: THEME.bgLight,
     borderRadius: THEME.radiusPill,
     outline: "none",
-    transition: THEME.transition,
     color: THEME.textMain,
     boxSizing: "border-box",
-  },
-  searchInputFocus: {
-    borderColor: THEME.primary,
-    backgroundColor: THEME.bgWhite,
-    boxShadow: `0 0 0 4px ${THEME.primaryFaint}`,
-  },
-
-  filterToggleRow: {
-    display: "flex",
-    gap: "12px",
   },
 
   filterPanel: {
@@ -241,86 +213,45 @@ const styles = {
     borderTop: `1px solid ${THEME.border}`,
     display: "flex",
     flexWrap: "wrap",
-    gap: "20px",
-    alignItems: "flex-end",
+    gap: "24px",
+    alignItems: "center",
     animation: "fadeIn 0.3s ease",
   },
   filterGroup: {
     display: "flex",
     flexDirection: "column",
     gap: "8px",
-    flex: "1 1 200px",
   },
   label: {
     fontSize: "0.85rem",
     fontWeight: 600,
     color: THEME.secondary,
-    marginLeft: "4px",
   },
   selectInput: {
-    padding: "12px 16px",
-    borderRadius: THEME.radiusSmall,
+    padding: "10px 16px",
+    borderRadius: "8px",
     border: `1px solid ${THEME.border}`,
-    backgroundColor: THEME.bgWhite,
     fontSize: "0.9rem",
     outline: "none",
-    width: "100%",
     cursor: "pointer",
-    transition: THEME.transition,
   },
-
-  // --- Buttons ---
-  btn: {
-    display: "inline-flex",
+  rangeContainer: {
+    display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    padding: "10px 20px",
-    borderRadius: THEME.radiusPill,
-    border: "none",
-    fontSize: "0.9rem",
-    fontWeight: 600,
-    cursor: "pointer",
-    transition: THEME.transition,
-    textDecoration: "none",
-    outline: "none",
-    whiteSpace: "nowrap",
+    gap: "12px",
   },
-  btnPrimary: {
-    backgroundColor: THEME.primary,
-    color: "#fff",
-    boxShadow: `0 4px 14px ${THEME.primaryFaint}`,
-  },
-  btnSecondary: {
-    backgroundColor: THEME.bgLight,
-    color: THEME.textMain,
-    border: `1px solid ${THEME.border}`,
-  },
-  btnDanger: {
-    backgroundColor: "#fff",
-    color: THEME.danger,
-    border: `1px solid ${THEME.danger}`,
-  },
-  btnGhost: {
-    backgroundColor: "transparent",
-    color: THEME.primary,
-  },
-  btnIconOnly: {
-    padding: "10px",
-    borderRadius: "50%",
-    width: "40px",
-    height: "40px",
+  rangeInput: {
+    width: "150px",
+    accentColor: THEME.primary,
   },
 
-  // --- Table Area ---
+  // Table
   tableCard: {
     backgroundColor: THEME.bgWhite,
     borderRadius: THEME.radiusMedium,
     boxShadow: THEME.shadowMedium,
     border: `1px solid ${THEME.border}`,
     overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
   },
   tableWrapper: {
     overflowX: "auto",
@@ -329,23 +260,21 @@ const styles = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "1200px",
+    minWidth: "1000px",
   },
   thead: {
     backgroundColor: THEME.bgLight,
     borderBottom: `1px solid ${THEME.border}`,
   },
   th: {
-    padding: "18px 24px",
+    padding: "16px 24px",
     textAlign: "left",
     fontSize: "0.8rem",
     fontWeight: 700,
     textTransform: "uppercase",
     color: THEME.textMuted,
-    letterSpacing: "0.5px",
     cursor: "pointer",
     userSelect: "none",
-    whiteSpace: "nowrap",
   },
   thContent: {
     display: "flex",
@@ -362,87 +291,56 @@ const styles = {
     fontSize: "0.9rem",
     color: THEME.textMain,
   },
-  actionCell: {
-    display: "flex",
-    gap: "8px",
-    justifyContent: "flex-end",
-  },
 
-  // --- Badges & Indicators ---
-  badge: {
+  // Components
+  btn: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "6px",
-    padding: "6px 12px",
+    justifyContent: "center",
+    gap: "8px",
+    padding: "10px 20px",
     borderRadius: THEME.radiusPill,
+    border: "none",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: THEME.transition,
+    textDecoration: "none",
+  },
+  btnPrimary: {
+    backgroundColor: THEME.primary,
+    color: "#fff",
+  },
+  btnSecondary: {
+    backgroundColor: THEME.bgLight,
+    color: THEME.textMain,
+    border: `1px solid ${THEME.border}`,
+  },
+  btnGhost: {
+    backgroundColor: "transparent",
+    color: THEME.primary,
+  },
+
+  // Badges
+  badge: {
+    padding: "4px 10px",
+    borderRadius: "6px",
     fontSize: "0.75rem",
     fontWeight: 700,
     textTransform: "uppercase",
   },
-  badgeActive: {
+  badgeFarm: {
     backgroundColor: "#e8f5e9",
-    color: "#27ae60",
+    color: "#2e7d32",
     border: "1px solid #c8e6c9",
   },
-  badgeInactive: {
-    backgroundColor: "#ffebee",
-    color: "#c0392b",
-    border: "1px solid #ffcdd2",
-  },
-  unitBadge: {
-    backgroundColor: "#f0f4f8",
-    color: THEME.textMuted,
-    padding: "2px 8px",
-    borderRadius: "4px",
-    fontSize: "0.8em",
-    fontWeight: 600,
-    marginLeft: "4px",
+  badgeRetail: {
+    backgroundColor: "#e3f2fd",
+    color: "#1565c0",
+    border: "1px solid #bbdefb",
   },
 
-  // --- Pagination ---
-  paginationBar: {
-    padding: "16px 24px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderTop: `1px solid ${THEME.border}`,
-    backgroundColor: "#fafbfc",
-  },
-  pageInfo: {
-    fontSize: "0.9rem",
-    color: THEME.textMuted,
-  },
-  pageControls: {
-    display: "flex",
-    gap: "8px",
-    alignItems: "center",
-  },
-  pageBtn: {
-    width: "36px",
-    height: "36px",
-    borderRadius: "8px",
-    border: `1px solid ${THEME.border}`,
-    backgroundColor: "#fff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    fontSize: "0.9rem",
-    color: THEME.textMain,
-    transition: THEME.transition,
-  },
-  pageBtnActive: {
-    backgroundColor: THEME.primary,
-    color: "#fff",
-    borderColor: THEME.primary,
-  },
-  pageBtnDisabled: {
-    opacity: 0.5,
-    cursor: "not-allowed",
-    backgroundColor: "#f5f5f5",
-  },
-
-  // --- Modals ---
+  // Modal
   modalOverlay: {
     position: "fixed",
     top: 0,
@@ -459,15 +357,13 @@ const styles = {
   },
   modalContent: {
     backgroundColor: "#fff",
-    borderRadius: THEME.radiusLarge,
+    borderRadius: THEME.radiusMedium,
     width: "100%",
-    maxWidth: "600px",
+    maxWidth: "700px",
     maxHeight: "90vh",
     overflowY: "auto",
     boxShadow: THEME.shadowLarge,
-    animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-    display: "flex",
-    flexDirection: "column",
+    animation: "slideUp 0.3s ease",
   },
   modalHeader: {
     padding: "24px 32px",
@@ -483,98 +379,47 @@ const styles = {
     color: THEME.secondary,
     margin: 0,
   },
-  modalCloseBtn: {
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    color: THEME.textMuted,
-    fontSize: "1.2rem",
-    padding: "8px",
-    borderRadius: "50%",
-    transition: "background 0.2s",
-  },
   modalBody: {
     padding: "32px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "24px",
-  },
-  modalFooter: {
-    padding: "20px 32px",
-    borderTop: `1px solid ${THEME.border}`,
-    backgroundColor: "#fafbfc",
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: "12px",
-  },
-  formGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "20px",
+    gap: "24px",
   },
-  formGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
+  detailRow: {
+    marginBottom: "16px",
   },
-  fullWidth: {
-    gridColumn: "1 / -1",
-  },
-  inputError: {
+  detailLabel: {
     fontSize: "0.8rem",
-    color: THEME.danger,
-    marginTop: "4px",
+    color: THEME.textMuted,
+    fontWeight: 600,
+    marginBottom: "4px",
+  },
+  detailValue: {
+    fontSize: "1rem",
+    color: THEME.secondary,
     fontWeight: 500,
   },
-  reqMark: {
-    color: THEME.danger,
-    marginLeft: "4px",
-  },
-
-  // --- Toasts ---
-  toastContainer: {
-    position: "fixed",
-    bottom: "32px",
-    right: "32px",
-    zIndex: 2000,
+  imageBox: {
+    width: "100%",
+    height: "200px",
+    backgroundColor: "#f0f0f0",
+    borderRadius: "12px",
+    overflow: "hidden",
     display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-  },
-  toast: {
-    minWidth: "300px",
-    padding: "16px 20px",
-    borderRadius: THEME.radiusMedium,
-    backgroundColor: "#fff",
-    boxShadow: "0 8px 30px rgba(0,0,0,0.15)",
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    borderLeft: "6px solid",
-    animation: "slideInRight 0.3s ease",
-  },
-  toastContent: {
-    flex: 1,
-  },
-  toastTitle: {
-    fontSize: "0.95rem",
-    fontWeight: 700,
-    marginBottom: "2px",
-  },
-  toastMessage: {
-    fontSize: "0.85rem",
-    color: THEME.textMuted,
-  },
-
-  // --- Empty States & Loaders ---
-  emptyState: {
-    padding: "60px",
-    display: "flex",
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    color: THEME.textMuted,
+    gridColumn: "1 / -1",
+    marginBottom: "10px",
+  },
+  productImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  emptyState: {
+    padding: "60px",
     textAlign: "center",
+    color: THEME.textMuted,
   },
   spinner: {
     width: "40px",
@@ -585,6 +430,31 @@ const styles = {
     animation: "spin 1s linear infinite",
     margin: "0 auto",
   },
+  // Pagination
+  paginationBar: {
+    padding: "16px 24px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderTop: `1px solid ${THEME.border}`,
+    backgroundColor: "#fafbfc",
+  },
+  pageControls: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "center",
+  },
+  pageBtn: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "6px",
+    border: `1px solid ${THEME.border}`,
+    backgroundColor: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
 };
 
 /**
@@ -592,8 +462,8 @@ const styles = {
  * UTILITY FUNCTIONS
  * ------------------------------------------------------------------
  */
-
 const formatCurrency = (amount) => {
+  if (amount === null || amount === undefined) return "-";
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -601,30 +471,17 @@ const formatCurrency = (amount) => {
   }).format(amount);
 };
 
-const formatDate = (dateString) => {
-  if (!dateString) return "-";
-  return new Date(dateString).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
-// Simple global keyframes injection for animations
+// Global Styles Injection
 const GlobalStyles = () => (
   <style>
     {`
       @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
       @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes slideInRight { from { opacity: 0; transform: translateX(100%); } to { opacity: 1; transform: translateX(0); } }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
       
       ::-webkit-scrollbar { width: 8px; height: 8px; }
       ::-webkit-scrollbar-track { background: #f1f1f1; }
       ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
     `}
   </style>
 );
@@ -634,89 +491,25 @@ const GlobalStyles = () => (
  * SUB-COMPONENTS
  * ------------------------------------------------------------------
  */
-
-// 1. Toast Notification Component
-const ToastNotification = ({ toasts, removeToast }) => {
-  return (
-    <div style={styles.toastContainer}>
-      {toasts.map((toast) => {
-        const borderColor =
-          toast.type === "success"
-            ? THEME.success
-            : toast.type === "error"
-            ? THEME.danger
-            : THEME.primary;
-        const Icon =
-          toast.type === "success"
-            ? FaCheck
-            : toast.type === "error"
-            ? FaTimes
-            : FaInfoCircle;
-
-        return (
-          <div
-            key={toast.id}
-            style={{ ...styles.toast, borderLeftColor: borderColor }}
-            onClick={() => removeToast(toast.id)}
-          >
-            <div
-              style={{
-                color: borderColor,
-                fontSize: "1.2rem",
-                display: "flex",
-              }}
-            >
-              <Icon />
-            </div>
-            <div style={styles.toastContent}>
-              <div style={{ ...styles.toastTitle, color: borderColor }}>
-                {toast.type === "success"
-                  ? "Success"
-                  : toast.type === "error"
-                  ? "Error"
-                  : "Info"}
-              </div>
-              <div style={styles.toastMessage}>{toast.message}</div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-// 2. Custom Button
 const Button = ({
   children,
   onClick,
   variant = "primary",
   icon: Icon,
   disabled,
-  style = {},
-  type = "button",
 }) => {
-  const [hover, setHover] = useState(false);
-
-  let baseStyle = { ...styles.btn };
-  if (variant === "primary") baseStyle = { ...baseStyle, ...styles.btnPrimary };
+  let btnStyle = { ...styles.btn };
+  if (variant === "primary") btnStyle = { ...btnStyle, ...styles.btnPrimary };
   if (variant === "secondary")
-    baseStyle = { ...baseStyle, ...styles.btnSecondary };
-  if (variant === "danger") baseStyle = { ...baseStyle, ...styles.btnDanger };
-  if (variant === "ghost") baseStyle = { ...baseStyle, ...styles.btnGhost };
+    btnStyle = { ...btnStyle, ...styles.btnSecondary };
+  if (variant === "ghost") btnStyle = { ...btnStyle, ...styles.btnGhost };
 
-  if (disabled) {
-    baseStyle = { ...baseStyle, opacity: 0.6, cursor: "not-allowed" };
-  } else if (hover) {
-    baseStyle = { ...baseStyle, transform: "translateY(-1px)", opacity: 0.9 };
-  }
+  if (disabled) btnStyle = { ...btnStyle, opacity: 0.5, cursor: "not-allowed" };
 
   return (
     <button
-      type={type}
-      style={{ ...baseStyle, ...style }}
+      style={btnStyle}
       onClick={disabled ? undefined : onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       disabled={disabled}
     >
       {Icon && <Icon size={14} />}
@@ -725,298 +518,150 @@ const Button = ({
   );
 };
 
-// 3. Form Input Field
-const FormInput = ({
-  label,
-  name,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  required,
-  error,
-  options = null,
-  helperText,
-}) => {
-  const [focused, setFocused] = useState(false);
-
-  return (
-    <div style={styles.formGroup}>
-      <label style={styles.label}>
-        {label}
-        {required && <span style={styles.reqMark}>*</span>}
-      </label>
-
-      {options ? (
-        <select
-          name={name}
-          value={value}
-          onChange={onChange}
-          style={{
-            ...styles.selectInput,
-            borderColor: error
-              ? THEME.danger
-              : focused
-              ? THEME.primary
-              : THEME.border,
-            boxShadow: focused ? `0 0 0 4px ${THEME.primaryFaint}` : "none",
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-        >
-          <option value="" disabled>
-            Select {label}
-          </option>
-          {options.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          type={type}
-          name={name}
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          style={{
-            ...styles.searchInput,
-            padding: "12px 16px",
-            borderColor: error
-              ? THEME.danger
-              : focused
-              ? THEME.primary
-              : THEME.border,
-            backgroundColor: focused ? "#fff" : THEME.bgLight,
-            boxShadow: focused ? `0 0 0 4px ${THEME.primaryFaint}` : "none",
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-        />
-      )}
-
-      {error && <span style={styles.inputError}>{error}</span>}
-      {!error && helperText && (
-        <span style={{ fontSize: "0.75rem", color: THEME.textMuted }}>
-          {helperText}
-        </span>
-      )}
-    </div>
-  );
+const getImageUrl = (imagePath) => {
+  if (!imagePath) return "https://via.placeholder.com/150"; // Fallback
+  if (imagePath.startsWith("http")) return imagePath; // Already a full URL
+  return `http://${SERVER_IP}:${SERVER_PORT}${imagePath}`;
 };
 
-// 4. Listing Form Modal
-const ListingModal = ({
-  isOpen,
-  onClose,
-  onSubmit,
-  initialData,
-  isEdit,
-  cropTypes,
-  plants,
-  fetchDropdownData,
-}) => {
-  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
-  const [errors, setErrors] = useState({});
-
-  useEffect(() => {
-    if (isOpen) {
-      if (initialData) {
-        setFormData({
-          phone_number: "", // not editable in edit mode (backend identifies farmer by listing)
-          crop_type_id: initialData.crop_type_id || "",
-          plant_id: initialData.plant_id || "",
-          variety: initialData.variety || "",
-          price_per_unit: initialData.price_per_unit || "",
-          unit: initialData.unit || "kg",
-          available_qty: initialData.available_qty || "",
-          min_order_qty: initialData.min_order_qty || "",
-        });
-      } else {
-        setFormData(INITIAL_FORM_STATE);
-      }
-      setErrors({});
-    }
-  }, [isOpen, initialData]);
-
-  const validate = () => {
-    const newErrors = {};
-    if (!isEdit && !formData.phone_number) {
-      newErrors.phone_number = "Farmer phone number is required";
-    }
-    if (
-      !isEdit &&
-      formData.phone_number &&
-      !/^\d{10}$/.test(formData.phone_number)
-    ) {
-      newErrors.phone_number = "Enter a valid 10-digit phone";
-    }
-
-    if (!formData.crop_type_id)
-      newErrors.crop_type_id = "Crop Type is required";
-    if (!formData.plant_id) newErrors.plant_id = "Plant is required";
-    if (!formData.price_per_unit) newErrors.price_per_unit = "Price required";
-    if (isNaN(formData.price_per_unit) || Number(formData.price_per_unit) <= 0)
-      newErrors.price_per_unit = "Must be a positive number";
-    if (!formData.available_qty) newErrors.available_qty = "Quantity required";
-    if (isNaN(formData.available_qty) || Number(formData.available_qty) < 0)
-      newErrors.available_qty = "Must be zero or more";
-    if (
-      formData.min_order_qty &&
-      (isNaN(formData.min_order_qty) || Number(formData.min_order_qty) < 0)
-    )
-      newErrors.min_order_qty = "Must be zero or more";
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: null }));
-    }
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (validate()) {
-      const payload = { ...formData };
-      if (isEdit) {
-        // backend updateListing ignores phone_number; remove to avoid confusion
-        delete payload.phone_number;
-      }
-      onSubmit(payload);
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen) fetchDropdownData();
-  }, [isOpen, fetchDropdownData]);
-
+// Product Details Modal
+const ProductDetailsModal = ({ isOpen, onClose, product, loading }) => {
   if (!isOpen) return null;
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHeader}>
-          <h3 style={styles.modalTitle}>
-            {isEdit ? "Edit Listing" : "Create New Listing"}
-          </h3>
-          <button style={styles.modalCloseBtn} onClick={onClose}>
+          <h3 style={styles.modalTitle}>Product Details</h3>
+          <button
+            style={{
+              border: "none",
+              background: "none",
+              cursor: "pointer",
+              fontSize: "1.2rem",
+            }}
+            onClick={onClose}
+          >
             <FaTimes />
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
+
+        {loading ? (
+          <div style={{ padding: "60px", textAlign: "center" }}>
+            <div style={styles.spinner}></div>
+            <p style={{ marginTop: "16px", color: THEME.textMuted }}>
+              Loading details...
+            </p>
+          </div>
+        ) : product ? (
           <div style={styles.modalBody}>
-            <div style={styles.formGrid}>
-              {!isEdit && (
-                <FormInput
-                  label="Farmer Phone Number"
-                  name="phone_number"
-                  type="tel"
-                  placeholder="e.g., 9876543210"
-                  value={formData.phone_number}
-                  onChange={handleChange}
-                  required
-                  error={errors.phone_number}
-                  helperText="Linked to users_auth.phone_number"
+            <div style={styles.imageBox}>
+              {product.image_url ? (
+                <img
+                  src={getImageUrl(product.image_url)}
+                  alt={product.product_name}
+                  onError={(e) => {
+                    e.target.src = "https://via.placeholder.com/150";
+                  }} // Auto-fallback if fails
+                  style={{ width: "100%", height: "150px", objectFit: "cover" }}
                 />
+              ) : (
+                <FaShoppingBasket size={48} color={THEME.textMuted} />
               )}
+            </div>
 
-              <FormInput
-                label="Crop Type"
-                name="crop_type_id"
-                value={formData.crop_type_id}
-                onChange={handleChange}
-                options={cropTypes.map((ct) => ({
-                  value: ct.crop_type_id,
-                  label: ct.name,
-                }))}
-                required
-                error={errors.crop_type_id}
-              />
+            <div style={{ ...styles.detailRow, gridColumn: "1 / -1" }}>
+              <h2 style={{ margin: "0 0 8px 0", color: THEME.secondary }}>
+                {product.product_name}
+              </h2>
+              <span
+                style={
+                  product.product_type === "farm"
+                    ? styles.badgeFarm
+                    : styles.badgeRetail
+                }
+              >
+                {product.product_type === "farm"
+                  ? "Farm Product"
+                  : "Retail Product"}
+              </span>
+            </div>
 
-              <FormInput
-                label="Plant"
-                name="plant_id"
-                value={formData.plant_id}
-                onChange={handleChange}
-                options={plants.map((p) => ({
-                  value: p.plant_id,
-                  label: p.plant_name,
-                }))}
-                required
-                error={errors.plant_id}
-              />
+            <div style={styles.detailRow}>
+              <div style={styles.detailLabel}>Variety/Brand</div>
+              <div style={styles.detailValue}>
+                {product.variety || product.brand || "-"}
+              </div>
+            </div>
 
-              <FormInput
-                label="Variety"
-                name="variety"
-                value={formData.variety}
-                onChange={handleChange}
-                placeholder="e.g. Red Delicious"
-              />
+            <div style={styles.detailRow}>
+              <div style={styles.detailLabel}>Price</div>
+              <div style={styles.detailValue}>
+                {formatCurrency(product.price_per_unit)} / {product.unit}
+              </div>
+            </div>
 
-              <FormInput
-                label="Price Per Unit"
-                name="price_per_unit"
-                type="number"
-                value={formData.price_per_unit}
-                onChange={handleChange}
-                placeholder="0.00"
-                required
-                error={errors.price_per_unit}
-              />
+            <div style={styles.detailRow}>
+              <div style={styles.detailLabel}>Available Quantity</div>
+              <div style={styles.detailValue}>
+                {product.quantity_available} {product.unit}
+              </div>
+            </div>
 
-              <FormInput
-                label="Unit"
-                name="unit"
-                value={formData.unit}
-                onChange={handleChange}
-                options={[
-                  { value: "kg", label: "Kilogram (kg)" },
-                  { value: "g", label: "Gram (g)" },
-                  { value: "piece", label: "Piece" },
-                  { value: "litre", label: "Litre" },
-                  { value: "dozen", label: "Dozen" },
-                ]}
-                required
-              />
+            <div style={styles.detailRow}>
+              <div style={styles.detailLabel}>Seller</div>
+              <div style={styles.detailValue}>{product.seller_name}</div>
+            </div>
 
-              <FormInput
-                label="Available Qty"
-                name="available_qty"
-                type="number"
-                value={formData.available_qty}
-                onChange={handleChange}
-                placeholder="0"
-                required
-                error={errors.available_qty}
-              />
+            <div style={styles.detailRow}>
+              <div style={styles.detailLabel}>Phone</div>
+              <div style={styles.detailValue}>
+                {product.seller_phone || "N/A"}
+              </div>
+            </div>
 
-              <FormInput
-                label="Min Order Qty"
-                name="min_order_qty"
-                type="number"
-                value={formData.min_order_qty}
-                onChange={handleChange}
-                placeholder="1"
-                error={errors.min_order_qty}
-              />
+            <div style={{ ...styles.detailRow, gridColumn: "1 / -1" }}>
+              <div style={styles.detailLabel}>Description</div>
+              <div
+                style={{
+                  ...styles.detailValue,
+                  fontSize: "0.9rem",
+                  lineHeight: 1.5,
+                }}
+              >
+                {product.description || "No description provided."}
+              </div>
+            </div>
+
+            <div style={{ ...styles.detailRow, gridColumn: "1 / -1" }}>
+              <div style={styles.detailLabel}>Location</div>
+              <div
+                style={{
+                  ...styles.detailValue,
+                  fontSize: "0.9rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <FaMapMarkerAlt color={THEME.danger} />
+                {product.seller_address ||
+                  product.shop_address ||
+                  "Address not available"}
+              </div>
             </div>
           </div>
-          <div style={styles.modalFooter}>
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary">
-              {isEdit ? "Update Listing" : "Create Listing"}
-            </Button>
+        ) : (
+          <div
+            style={{
+              padding: "40px",
+              textAlign: "center",
+              color: THEME.danger,
+            }}
+          >
+            Failed to load details.
           </div>
-        </form>
+        )}
       </div>
     </div>
   );
@@ -1029,244 +674,162 @@ const ListingModal = ({
  */
 const MarketPlaceManagement = () => {
   // --- STATE ---
-  const [listings, setListings] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [stats, setStats] = useState({
+    total_products: 0,
+    total_farm_products: 0,
+    total_retail_products: 0,
+    nearby_sellers: 0,
+  });
+
   const [loading, setLoading] = useState(true);
-  const [toasts, setToasts] = useState([]);
+  const [userLocation, setUserLocation] = useState(null); // { lat, lng }
 
-  // Filters & Search
+  // Filters
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [maxDistance, setMaxDistance] = useState(50); // Default 50km
+  const [filterType, setFilterType] = useState("all"); // 'all', 'farm', 'retail'
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filterActive, setFilterActive] = useState(""); // "all", "true", "false"
-  const [filterCropType, setFilterCropType] = useState("");
-  const [filterFarmerId, setFilterFarmerId] = useState("");
-  const [filterPlantId, setFilterPlantId] = useState("");
-  const [farmers, setFarmers] = useState([]);
-  const [cropTypes, setCropTypes] = useState([]);
-  const [plants, setPlants] = useState([]);
 
-  // Pagination & Sorting
+  // Pagination (Frontend)
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [sortConfig, setSortConfig] = useState({
-    key: "created_at",
-    direction: "desc",
+    key: "distance_km",
+    direction: "asc",
   });
 
-  // Modals
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingListing, setEditingListing] = useState(null);
+  // Product Details Modal
+  const [selectedProductId, setSelectedProductId] = useState(null);
+  const [selectedProductData, setSelectedProductData] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
-  // --- TOAST SYSTEM ---
-  const addToast = useCallback((message, type = "info") => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+  // --- INITIALIZATION ---
+
+  // 1. Get User Location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.error("Location denied, using default", error);
+          setUserLocation(DEFAULT_LOCATION);
+        },
+      );
+    } else {
+      setUserLocation(DEFAULT_LOCATION);
+    }
   }, []);
 
-  const removeToast = (id) =>
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  // 2. Debounce Search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
 
-  // --- DATA FETCHING ---
-  const fetchListings = useCallback(async () => {
+  // --- API CALLS ---
+
+  const fetchMarketplaceData = useCallback(async () => {
+    if (!userLocation) return;
+
     setLoading(true);
     const accessToken = localStorage.getItem("access_token");
-
     if (!accessToken) {
-      addToast("Authentication missing. Please login.", "error");
+      console.error("No access token found");
       setLoading(false);
       return;
     }
 
-    const params = {};
-    if (filterActive === "true") params.is_active = true;
-    if (filterActive === "false") params.is_active = false;
-    if (filterCropType) params.crop_type_id = filterCropType;
-    if (filterFarmerId) params.farmer_id = filterFarmerId;
-    if (filterPlantId) params.crop_type_id = filterCropType;
+    const params = {
+      lat: userLocation.lat,
+      lng: userLocation.lng,
+      max_distance: maxDistance,
+      product_type: filterType,
+      search: debouncedSearch || undefined,
+    };
 
     try {
-      const response = await axiosInstance.get(`${API_BASE}/alllistings`, {
+      // 1. Fetch Products
+      const prodRes = await axiosInstance.get(`${API_BASE}/products`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         params,
       });
-      setListings(response.data || []);
-      setCurrentPage(1);
+
+      // 2. Fetch Stats
+      const statsRes = await axiosInstance.get(`${API_BASE}/stats`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: {
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          max_distance: maxDistance,
+        },
+      });
+
+      setProducts(prodRes.data.products || []);
+      setStats(statsRes.data.stats || {});
+      setCurrentPage(1); // Reset to page 1 on new fetch
     } catch (error) {
-      const msg = error.response?.data?.message || "Failed to fetch listings.";
-      addToast(msg, "error");
+      console.error("Error fetching marketplace data:", error);
     } finally {
       setLoading(false);
     }
-  }, [filterActive, filterCropType, filterFarmerId, filterPlantId, addToast]);
+  }, [userLocation, maxDistance, filterType, debouncedSearch]);
 
-  const fetchDropdownData = useCallback(async () => {
-    const accessToken = localStorage.getItem("access_token");
-    if (!accessToken) {
-      addToast("Authentication missing. Please login.", "error");
-      return;
-    }
-    try {
-      const [farmersRes, cropRes, plantsRes] = await Promise.all([
-        axiosInstance.get(`${API_BASE}/farmers`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-        axiosInstance.get(`${API_BASE}/croptypes`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-        axiosInstance.get(`${API_BASE}/plants`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-      ]);
-      setFarmers(farmersRes.data);
-      setCropTypes(cropRes.data);
-      setPlants(plantsRes.data);
-    } catch {
-      addToast("Error loading dropdown options", "error");
-    }
-  }, [addToast]);
-
+  // Trigger fetch when dependencies change
   useEffect(() => {
-    fetchListings();
-  }, [fetchListings]);
+    fetchMarketplaceData();
+  }, [fetchMarketplaceData]);
 
-  const handleApplyFilters = () => {
-    fetchListings();
-  };
-
-  const handleResetFilters = () => {
-    setFilterActive("");
-    setFilterCropType("");
-    setFilterFarmerId("");
-    setFilterPlantId("");
-    setSearchTerm("");
-    fetchListings();
-  };
-
-  // --- CRUD HANDLERS ---
-  const handleCreate = async (formData) => {
+  // Fetch Single Product Details
+  const fetchProductDetails = async (id, type) => {
+    setDetailsLoading(true);
     const accessToken = localStorage.getItem("access_token");
     try {
-      await axiosInstance.post(`${API_BASE}/createlistings`, formData, {
+      const response = await axiosInstance.get(`${API_BASE}/products/${id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
+        params: { product_type: type },
       });
-      addToast("Listing created successfully", "success");
-      setIsModalOpen(false);
-      fetchListings();
+      setSelectedProductData(response.data.product);
     } catch (error) {
-      addToast(
-        error.response?.data?.message || "Error creating listing",
-        "error"
-      );
+      console.error("Error fetching details:", error);
+      setSelectedProductData(null);
+    } finally {
+      setDetailsLoading(false);
     }
   };
 
-  const handleUpdate = async (formData) => {
-    if (!editingListing) return;
-    const accessToken = localStorage.getItem("access_token");
-    try {
-      await axiosInstance.put(
-        `${API_BASE}/updatelistings/${editingListing.listing_id}`,
-        formData,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      addToast("Listing updated successfully", "success");
-      setIsModalOpen(false);
-      setEditingListing(null);
-      fetchListings();
-    } catch (error) {
-      addToast(
-        error.response?.data?.message || "Error updating listing",
-        "error"
-      );
-    }
+  const handleOpenDetails = (product) => {
+    setSelectedProductId(product.product_id);
+    fetchProductDetails(product.product_id, product.product_type);
   };
 
-  const handleToggleStatus = async (listing) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to ${
-          listing.is_active ? "deactivate" : "activate"
-        } this listing?`
-      )
-    )
-      return;
-
-    const accessToken = localStorage.getItem("access_token");
-    try {
-      await axiosInstance.put(
-        `${API_BASE}/togglelistings/${listing.listing_id}/isactive`,
-        { is_active: !listing.is_active },
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      addToast(
-        `Listing is now ${!listing.is_active ? "Active" : "Inactive"}`,
-        "success"
-      );
-      fetchListings();
-    } catch {
-      addToast("Failed to change status", "error");
-    }
+  const handleCloseDetails = () => {
+    setSelectedProductId(null);
+    setSelectedProductData(null);
   };
 
-  const handleDelete = async (id) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to permanently delete this listing?"
-      )
-    )
-      return;
+  // --- SORTING & PAGINATION (Frontend Side) ---
 
-    const accessToken = localStorage.getItem("access_token");
-    try {
-      await axiosInstance.delete(`${API_BASE}/deletelistings/${id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      addToast("Listing deleted successfully", "success");
-      setListings((prev) => prev.filter((l) => l.listing_id !== id));
-    } catch (error) {
-      addToast(
-        error.response?.data?.message || "Failed to delete listing",
-        "error"
-      );
-    }
-  };
-
-  const openCreateModal = () => {
-    setEditingListing(null);
-    setIsModalOpen(true);
-  };
-
-  const openEditModal = (listing) => {
-    setEditingListing(listing);
-    setIsModalOpen(true);
-  };
-
-  // --- DATA PROCESSING ---
-  const processedListings = useMemo(() => {
-    let result = [...listings];
-
-    if (searchTerm) {
-      const lower = searchTerm.toLowerCase();
-      result = result.filter(
-        (l) =>
-          (l.variety && l.variety.toLowerCase().includes(lower)) ||
-          (l.plant_name && l.plant_name.toLowerCase().includes(lower)) ||
-          (l.farmer_name && l.farmer_name.toLowerCase().includes(lower)) ||
-          (l.listing_id && l.listing_id.toLowerCase().includes(lower)) ||
-          (l.crop_type && l.crop_type.toLowerCase().includes(lower))
-      );
-    }
-
+  const sortedProducts = useMemo(() => {
+    let sortableItems = [...products];
     if (sortConfig.key) {
-      result.sort((a, b) => {
+      sortableItems.sort((a, b) => {
         let aVal = a[sortConfig.key];
         let bVal = b[sortConfig.key];
 
+        // Handle nulls
         if (aVal === null) aVal = "";
         if (bVal === null) bVal = "";
 
+        // String comparison
         if (typeof aVal === "string") {
           aVal = aVal.toLowerCase();
           bVal = bVal.toLowerCase();
@@ -1277,15 +840,14 @@ const MarketPlaceManagement = () => {
         return 0;
       });
     }
+    return sortableItems;
+  }, [products, sortConfig]);
 
-    return result;
-  }, [listings, searchTerm, sortConfig]);
-
-  const totalPages = Math.ceil(processedListings.length / itemsPerPage);
-  const paginatedListings = useMemo(() => {
+  const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
+  const paginatedProducts = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return processedListings.slice(start, start + itemsPerPage);
-  }, [processedListings, currentPage, itemsPerPage]);
+    return sortedProducts.slice(start, start + itemsPerPage);
+  }, [sortedProducts, currentPage, itemsPerPage]);
 
   const handleSort = (key) => {
     let direction = "asc";
@@ -1304,136 +866,82 @@ const MarketPlaceManagement = () => {
     );
   };
 
-  // --- EXPORT CSV ---
-  const handleExportCSV = () => {
-    if (listings.length === 0) {
-      addToast("No data to export", "error");
-      return;
-    }
-    const headers = [
-      "Listing ID",
-      "Farmer Name",
-      "Crop Type",
-      "Plant",
-      "Variety",
-      "Price",
-      "Unit",
-      "Available",
-      "Status",
-      "Created At",
-    ];
-    const rows = listings.map((l) => [
-      l.listing_id,
-      l.farmer_name || "Unknown",
-      l.crop_type || "-",
-      l.plant_name || "-",
-      l.variety || "-",
-      l.price_per_unit,
-      l.unit,
-      l.available_qty,
-      l.is_active ? "Active" : "Inactive",
-      l.created_at,
-    ]);
-
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "marketplace_listings.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // --- STATS ---
-  const stats = useMemo(() => {
-    const total = listings.length;
-    const active = listings.filter((l) => l.is_active).length;
-    const totalStock = listings.reduce(
-      (acc, curr) => acc + Number(curr.available_qty || 0),
-      0
-    );
-    const uniqueFarmers = new Set(listings.map((l) => l.farmer_id)).size;
-    return { total, active, totalStock, uniqueFarmers };
-  }, [listings]);
-
-  const renderRow = (l) => (
-    <tr key={l.listing_id} style={styles.tr}>
-      <td style={styles.td}>{l.listing_id}</td>
+  // --- RENDER HELPERS ---
+  const renderRow = (product) => (
+    <tr key={`${product.product_type}_${product.product_id}`} style={styles.tr}>
       <td style={styles.td}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <FaUser size={14} color={THEME.textMuted} />
-          <span>{l.farmer_name || "Unknown"}</span>
-        </div>
-        <div
-          style={{
-            fontSize: "0.75rem",
-            color: THEME.textMuted,
-            marginTop: "2px",
-          }}
-        >
-          {l.farmer_phone ? `📞 ${l.farmer_phone}` : ""}
-        </div>
-      </td>
-      <td style={styles.td}>{l.crop_type || "-"}</td>
-      <td style={styles.td}>
-        <div>{l.plant_name || "-"}</div>
-        {l.variety && (
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div
             style={{
-              fontSize: "0.8rem",
-              color: THEME.textMuted,
-              marginTop: "2px",
+              width: "40px",
+              height: "40px",
+              borderRadius: "8px",
+              background: "#f0f0f0",
+              overflow: "hidden",
             }}
           >
-            Variety: {l.variety}
+            {product.image_url ? (
+              <img
+                src={product.image_url}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <FaShoppingBasket color="#ccc" />
+              </div>
+            )}
           </div>
+          <div>
+            <div style={{ fontWeight: 600 }}>{product.product_name}</div>
+            <div style={{ fontSize: "0.8rem", color: THEME.textMuted }}>
+              {product.variety || product.product_type_label}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td style={styles.td}>
+        <span
+          style={
+            product.product_type === "farm"
+              ? styles.badgeFarm
+              : styles.badgeRetail
+          }
+        >
+          {product.product_type === "farm" ? "Farm" : "Retail"}
+        </span>
+      </td>
+      <td style={styles.td}>{product.seller_name}</td>
+      <td style={styles.td}>
+        {formatCurrency(product.price_per_unit)} / {product.unit}
+      </td>
+      <td style={styles.td}>{parseFloat(product.distance_km).toFixed(1)} km</td>
+      <td style={styles.td}>
+        {product.quantity_available > 0 ? (
+          <span style={{ color: THEME.success, fontWeight: 600 }}>
+            In Stock ({product.quantity_available})
+          </span>
+        ) : (
+          <span style={{ color: THEME.danger, fontWeight: 600 }}>
+            Out of Stock
+          </span>
         )}
       </td>
       <td style={styles.td}>
-        <div>{formatCurrency(l.price_per_unit)}</div>
-        <span style={styles.unitBadge}>{l.unit}</span>
-      </td>
-      <td style={styles.td}>{l.available_qty}</td>
-      <td style={styles.td}>
-        <span
-          style={{
-            ...styles.badge,
-            ...(l.is_active ? styles.badgeActive : styles.badgeInactive),
-          }}
-        >
-          {l.is_active ? (
-            <>
-              <FaToggleOn /> Active
-            </>
-          ) : (
-            <>
-              <FaToggleOff /> Inactive
-            </>
-          )}
-        </span>
-      </td>
-      <td style={styles.td}>{formatDate(l.created_at)}</td>
-      <td style={{ ...styles.td, ...styles.actionCell }}>
-        <Button variant="ghost" icon={FaEdit} onClick={() => openEditModal(l)}>
-          Edit
-        </Button>
         <Button
           variant="ghost"
-          icon={l.is_active ? FaToggleOff : FaToggleOn}
-          onClick={() => handleToggleStatus(l)}
+          icon={FaEye}
+          onClick={() => handleOpenDetails(product)}
         >
-          {l.is_active ? "Deactivate" : "Activate"}
-        </Button>
-        <Button
-          variant="danger"
-          icon={FaTrash}
-          onClick={() => handleDelete(l.listing_id)}
-        >
-          Delete
+          View
         </Button>
       </td>
     </tr>
@@ -1442,7 +950,6 @@ const MarketPlaceManagement = () => {
   return (
     <>
       <GlobalStyles />
-
       <div style={styles.pageWrapper}>
         <div style={styles.container}>
           {/* HEADER */}
@@ -1450,25 +957,20 @@ const MarketPlaceManagement = () => {
             <div style={styles.titleGroup}>
               <h1 style={styles.mainTitle}>
                 <FaShoppingBasket color={THEME.primary} />
-                Marketplace Listings
+                Marketplace Explorer
               </h1>
               <p style={styles.subTitle}>
-                Manage farmer-to-consumer listings, update pricing and
-                availability, and monitor marketplace activity.
+                Monitor nearby products, check availability, and analyze
+                marketplace activity in real-time.
               </p>
-            </div>
 
-            <div style={styles.headerActions}>
-              <Button
-                variant="secondary"
-                icon={FaFileExport}
-                onClick={handleExportCSV}
-              >
-                Export CSV
-              </Button>
-              <Button variant="primary" icon={FaPlus} onClick={openCreateModal}>
-                New Listing
-              </Button>
+              {userLocation && (
+                <div style={styles.locationBadge}>
+                  <FaMapMarkerAlt />
+                  Loc: {userLocation.lat.toFixed(4)},{" "}
+                  {userLocation.lng.toFixed(4)}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1479,8 +981,8 @@ const MarketPlaceManagement = () => {
                 <FaShoppingBasket />
               </div>
               <div style={styles.statContent}>
-                <div style={styles.statLabel}>Total Listings</div>
-                <div style={styles.statValue}>{stats.total}</div>
+                <div style={styles.statLabel}>Total Products</div>
+                <div style={styles.statValue}>{stats.total_products || 0}</div>
               </div>
             </div>
 
@@ -1489,55 +991,63 @@ const MarketPlaceManagement = () => {
                 <FaLeaf />
               </div>
               <div style={styles.statContent}>
-                <div style={styles.statLabel}>Active Listings</div>
-                <div style={styles.statValue}>{stats.active}</div>
+                <div style={styles.statLabel}>Farm Products</div>
+                <div style={styles.statValue}>
+                  {stats.total_farm_products || 0}
+                </div>
               </div>
             </div>
 
             <div style={styles.statCard}>
               <div style={styles.statIconBox}>
-                <FaUser />
+                <FaStore />
               </div>
               <div style={styles.statContent}>
-                <div style={styles.statLabel}>Unique Farmers</div>
-                <div style={styles.statValue}>{stats.uniqueFarmers}</div>
+                <div style={styles.statLabel}>Retail Products</div>
+                <div style={styles.statValue}>
+                  {stats.total_retail_products || 0}
+                </div>
               </div>
             </div>
 
             <div style={styles.statCard}>
               <div style={styles.statIconBox}>
-                <FaShoppingBasket />
+                <FaMapMarkerAlt />
               </div>
               <div style={styles.statContent}>
-                <div style={styles.statLabel}>Total Stock</div>
-                <div style={styles.statValue}>{stats.totalStock}</div>
+                <div style={styles.statLabel}>Nearby Sellers</div>
+                <div style={styles.statValue}>{stats.nearby_sellers || 0}</div>
               </div>
             </div>
           </div>
 
-          {/* TOOLBAR */}
+          {/* TOOLBAR & FILTERS */}
           <div style={styles.toolbar}>
             <div style={styles.toolbarTop}>
               <div style={styles.searchContainer}>
                 <FaSearch style={styles.searchIcon} />
                 <input
                   type="text"
-                  placeholder="Search by farmer, crop, plant, variety, or listing ID..."
+                  placeholder="Search products or descriptions..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   style={styles.searchInput}
                 />
               </div>
 
-              <div style={styles.filterToggleRow}>
+              <div style={{ display: "flex", gap: "12px" }}>
                 <Button
                   variant={isFilterOpen ? "primary" : "secondary"}
                   icon={FaFilter}
-                  onClick={() => setIsFilterOpen((prev) => !prev)}
+                  onClick={() => setIsFilterOpen(!isFilterOpen)}
                 >
                   Filters
                 </Button>
-                <Button variant="ghost" icon={FaSync} onClick={fetchListings}>
+                <Button
+                  variant="ghost"
+                  icon={FaSync}
+                  onClick={fetchMarketplaceData}
+                >
                   Refresh
                 </Button>
               </div>
@@ -1546,95 +1056,59 @@ const MarketPlaceManagement = () => {
             {isFilterOpen && (
               <div style={styles.filterPanel}>
                 <div style={styles.filterGroup}>
-                  <label style={styles.label}>Status</label>
+                  <label style={styles.label}>Product Type</label>
                   <select
-                    value={filterActive}
-                    onChange={(e) => setFilterActive(e.target.value)}
                     style={styles.selectInput}
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
                   >
-                    <option value="">All</option>
-                    <option value="true">Active only</option>
-                    <option value="false">Inactive only</option>
+                    <option value="all">All Products</option>
+                    <option value="farm">Farm Only</option>
+                    <option value="retail">Retail Only</option>
                   </select>
                 </div>
 
                 <div style={styles.filterGroup}>
-                  <label style={styles.label}>Crop Type</label>
-                  <select
-                    value={filterCropType}
-                    onChange={(e) => setFilterCropType(e.target.value)}
-                    style={styles.selectInput}
-                  >
-                    <option value="">All</option>
-                    {cropTypes.map((ct) => (
-                      <option key={ct.crop_type_id} value={ct.crop_type_id}>
-                        {ct.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={styles.filterGroup}>
-                  <label style={styles.label}>Farmer</label>
-                  <select
-                    value={filterFarmerId}
-                    onChange={(e) => setFilterFarmerId(e.target.value)}
-                    style={styles.selectInput}
-                  >
-                    <option value="">All</option>
-                    {farmers.map((f) => (
-                      <option key={f.user_id} value={f.user_id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={styles.filterGroup}>
-                  <label style={styles.label}>Plant</label>
-                  <select
-                    value={filterPlantId}
-                    onChange={(e) => setFilterPlantId(e.target.value)}
-                    style={styles.selectInput}
-                  >
-                    <option value="">All</option>
-                    {plants.map((p) => (
-                      <option key={p.plant_id} value={p.plant_id}>
-                        {p.plant_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div
-                  style={{
-                    ...styles.filterGroup,
-                    alignItems: "flex-end",
-                    flex: "0 0 auto",
-                  }}
-                >
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <Button
-                      variant="primary"
-                      icon={FaCheck}
-                      onClick={handleApplyFilters}
+                  <label style={styles.label}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
                     >
-                      Apply
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      icon={FaTimes}
-                      onClick={handleResetFilters}
-                    >
-                      Reset
-                    </Button>
+                      <FaRulerHorizontal />
+                      Max Distance: <b>{maxDistance} km</b>
+                    </div>
+                  </label>
+                  <div style={styles.rangeContainer}>
+                    <span style={{ fontSize: "0.8rem" }}>1km</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="100"
+                      value={maxDistance}
+                      onChange={(e) => setMaxDistance(parseInt(e.target.value))}
+                      style={styles.rangeInput}
+                    />
+                    <span style={{ fontSize: "0.8rem" }}>100km</span>
                   </div>
+                </div>
+
+                <div style={{ marginLeft: "auto" }}>
+                  <Button
+                    variant="primary"
+                    icon={FaCheck}
+                    onClick={fetchMarketplaceData}
+                  >
+                    Apply Filters
+                  </Button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* TABLE */}
+          {/* DATA TABLE */}
           <div style={styles.tableCard}>
             <div style={styles.tableWrapper}>
               <table style={styles.table}>
@@ -1642,34 +1116,26 @@ const MarketPlaceManagement = () => {
                   <tr>
                     <th
                       style={styles.th}
-                      onClick={() => handleSort("listing_id")}
+                      onClick={() => handleSort("product_name")}
                     >
                       <div style={styles.thContent}>
-                        ID {getSortIcon("listing_id")}
+                        Product {getSortIcon("product_name")}
                       </div>
                     </th>
                     <th
                       style={styles.th}
-                      onClick={() => handleSort("farmer_name")}
+                      onClick={() => handleSort("product_type")}
                     >
                       <div style={styles.thContent}>
-                        Farmer {getSortIcon("farmer_name")}
+                        Type {getSortIcon("product_type")}
                       </div>
                     </th>
                     <th
                       style={styles.th}
-                      onClick={() => handleSort("crop_type")}
+                      onClick={() => handleSort("seller_name")}
                     >
                       <div style={styles.thContent}>
-                        Crop {getSortIcon("crop_type")}
-                      </div>
-                    </th>
-                    <th
-                      style={styles.th}
-                      onClick={() => handleSort("plant_name")}
-                    >
-                      <div style={styles.thContent}>
-                        Plant/Variety {getSortIcon("plant_name")}
+                        Seller {getSortIcon("seller_name")}
                       </div>
                     </th>
                     <th
@@ -1682,134 +1148,91 @@ const MarketPlaceManagement = () => {
                     </th>
                     <th
                       style={styles.th}
-                      onClick={() => handleSort("available_qty")}
+                      onClick={() => handleSort("distance_km")}
                     >
                       <div style={styles.thContent}>
-                        Qty {getSortIcon("available_qty")}
+                        Distance {getSortIcon("distance_km")}
                       </div>
                     </th>
                     <th
                       style={styles.th}
-                      onClick={() => handleSort("is_active")}
+                      onClick={() => handleSort("quantity_available")}
                     >
                       <div style={styles.thContent}>
-                        Status {getSortIcon("is_active")}
+                        Status {getSortIcon("quantity_available")}
                       </div>
                     </th>
-                    <th
-                      style={styles.th}
-                      onClick={() => handleSort("created_at")}
-                    >
-                      <div style={styles.thContent}>
-                        Created {getSortIcon("created_at")}
-                      </div>
-                    </th>
-                    <th
-                      style={{
-                        ...styles.th,
-                        textAlign: "right",
-                      }}
-                    >
-                      Actions
-                    </th>
+                    <th style={styles.th}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
                       <td
-                        colSpan="9"
+                        colSpan="7"
                         style={{ padding: "60px", textAlign: "center" }}
                       >
                         <div style={styles.spinner}></div>
-                        <p
-                          style={{
-                            marginTop: "16px",
-                            color: THEME.textMuted,
-                          }}
-                        >
-                          Loading Listings...
-                        </p>
                       </td>
                     </tr>
-                  ) : paginatedListings.length === 0 ? (
+                  ) : sortedProducts.length === 0 ? (
                     <tr>
-                      <td colSpan="9">
+                      <td colSpan="7">
                         <div style={styles.emptyState}>
-                          <FaShoppingBasket size={48} color={THEME.border} />
-                          <h3>No Listings Found</h3>
-                          <p>Try adjusting your search terms or filters.</p>
+                          <FaShoppingBasket
+                            size={48}
+                            style={{ marginBottom: "16px", opacity: 0.5 }}
+                          />
+                          <h3>No Products Found</h3>
+                          <p>Try adjusting your distance or search filters.</p>
                         </div>
                       </td>
                     </tr>
                   ) : (
-                    paginatedListings.map(renderRow)
+                    paginatedProducts.map(renderRow)
                   )}
                 </tbody>
               </table>
             </div>
 
-            {!loading && paginatedListings.length > 0 && (
+            {/* Pagination */}
+            {!loading && sortedProducts.length > 0 && (
               <div style={styles.paginationBar}>
-                <div style={styles.pageInfo}>
+                <div style={{ fontSize: "0.9rem", color: THEME.textMuted }}>
                   Showing <b>{(currentPage - 1) * itemsPerPage + 1}</b> to{" "}
                   <b>
                     {Math.min(
                       currentPage * itemsPerPage,
-                      processedListings.length
+                      sortedProducts.length,
                     )}
                   </b>{" "}
-                  of <b>{processedListings.length}</b> entries
+                  of <b>{sortedProducts.length}</b> results
                 </div>
                 <div style={styles.pageControls}>
                   <button
                     style={{
                       ...styles.pageBtn,
-                      ...(currentPage === 1 ? styles.pageBtnDisabled : {}),
+                      opacity: currentPage === 1 ? 0.5 : 1,
                     }}
-                    onClick={() => setCurrentPage((p) => (p > 1 ? p - 1 : p))}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
                   >
-                    <FaChevronLeft />
+                    <FaChevronLeft size={12} />
                   </button>
-
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(
-                      (p) =>
-                        p === 1 ||
-                        p === totalPages ||
-                        Math.abs(p - currentPage) <= 1
-                    )
-                    .map((p, index, array) => (
-                      <React.Fragment key={p}>
-                        {index > 0 && array[index - 1] !== p - 1 && (
-                          <span style={{ color: THEME.textMuted }}>...</span>
-                        )}
-                        <button
-                          style={{
-                            ...styles.pageBtn,
-                            ...(p === currentPage ? styles.pageBtnActive : {}),
-                          }}
-                          onClick={() => setCurrentPage(p)}
-                        >
-                          {p}
-                        </button>
-                      </React.Fragment>
-                    ))}
-
+                  <span style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                    {currentPage} / {totalPages}
+                  </span>
                   <button
                     style={{
                       ...styles.pageBtn,
-                      ...(currentPage === totalPages
-                        ? styles.pageBtnDisabled
-                        : {}),
+                      opacity: currentPage === totalPages ? 0.5 : 1,
                     }}
                     onClick={() =>
-                      setCurrentPage((p) => (p < totalPages ? p + 1 : p))
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
                     }
                     disabled={currentPage === totalPages}
                   >
-                    <FaChevronRight />
+                    <FaChevronRight size={12} />
                   </button>
                 </div>
               </div>
@@ -1818,18 +1241,13 @@ const MarketPlaceManagement = () => {
         </div>
       </div>
 
-      <ListingModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={editingListing ? handleUpdate : handleCreate}
-        initialData={editingListing}
-        isEdit={!!editingListing}
-        cropTypes={cropTypes}
-        plants={plants}
-        fetchDropdownData={fetchDropdownData}
+      {/* Detail Modal */}
+      <ProductDetailsModal
+        isOpen={!!selectedProductId}
+        onClose={handleCloseDetails}
+        product={selectedProductData}
+        loading={detailsLoading}
       />
-
-      <ToastNotification toasts={toasts} removeToast={removeToast} />
     </>
   );
 };

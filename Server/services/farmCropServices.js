@@ -113,7 +113,7 @@ exports.addFarm = async (req, res) => {
     // Multi-insert soils
     if (soil_type_ids && Array.isArray(soil_type_ids)) {
       for (const soil_type_id of soil_type_ids) {
-        await client.query(
+        await pool.query(
           `INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)`,
           [farm_id, soil_type_id],
         );
@@ -123,7 +123,7 @@ exports.addFarm = async (req, res) => {
     // Multi-insert irrigations
     if (irrigation_ids && Array.isArray(irrigation_ids)) {
       for (const irrigation_id of irrigation_ids) {
-        await client.query(
+        await pool.query(
           `INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)`,
           [farm_id, irrigation_id],
         );
@@ -133,7 +133,7 @@ exports.addFarm = async (req, res) => {
     // Multi-insert water sources
     if (water_src_ids && Array.isArray(water_src_ids)) {
       for (const water_src_id of water_src_ids) {
-        await client.query(
+        await pool.query(
           `INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)`,
           [farm_id, water_src_id],
         );
@@ -185,7 +185,7 @@ exports.addFarmByUserId = async (req, res) => {
     // Multi-insert soil types
     if (soil_type_ids && Array.isArray(soil_type_ids)) {
       for (const soil_type_id of soil_type_ids) {
-        await client.query(
+        await pool.query(
           `INSERT INTO farms_soil_types (farm_id, soil_type_id) VALUES ($1, $2)`,
           [farm_id, soil_type_id],
         );
@@ -195,7 +195,7 @@ exports.addFarmByUserId = async (req, res) => {
     // Multi-insert irrigations
     if (irrigation_ids && Array.isArray(irrigation_ids)) {
       for (const irrigation_id of irrigation_ids) {
-        await client.query(
+        await pool.query(
           `INSERT INTO farm_irrigation (farm_id, irrigation_id) VALUES ($1, $2)`,
           [farm_id, irrigation_id],
         );
@@ -205,7 +205,7 @@ exports.addFarmByUserId = async (req, res) => {
     // Multi-insert water sources
     if (water_src_ids && Array.isArray(water_src_ids)) {
       for (const water_src_id of water_src_ids) {
-        await client.query(
+        await pool.query(
           `INSERT INTO farms_water_src (farm_id, water_src_id) VALUES ($1, $2)`,
           [farm_id, water_src_id],
         );
@@ -243,7 +243,7 @@ exports.updateFarm = async (req, res) => {
       [farm_id, farm_size, survey_number, is_delete],
     );
 
-    // DELETE + multi-insert soils
+    // DELETE + mult-insert soils
     await pool.query("DELETE FROM farms_soil_types WHERE farm_id = $1", [
       farm_id,
     ]);

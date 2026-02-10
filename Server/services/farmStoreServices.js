@@ -134,6 +134,13 @@ exports.createFarmProduct = async (req, res) => {
       "product_id",
     );
 
+    // Generate image_id and insert placeholder into images table
+    const image_id = uuidv4();
+    await pool.query(
+      "INSERT INTO images (image_id, image_url) VALUES ($1, NULL)",
+      [image_id],
+    );
+
     const insertSql = `
       INSERT INTO farmer_products (
         product_id,
@@ -144,9 +151,10 @@ exports.createFarmProduct = async (req, res) => {
         price_per_unit,
         unit,
         quantity_available,
-        is_available
+        is_available,
+        image_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9)
       RETURNING *
     `;
 
@@ -159,6 +167,7 @@ exports.createFarmProduct = async (req, res) => {
       price_per_unit,
       unit,
       quantity_available,
+      image_id, // Always include the generated image_id
     ]);
 
     await pool.query("COMMIT");
@@ -166,6 +175,7 @@ exports.createFarmProduct = async (req, res) => {
       message: "Product created successfully",
       product: result.rows[0],
       product_id: product_id,
+      image_id: image_id, // Return image_id to frontend
     });
   } catch (error) {
     await pool.query("ROLLBACK");

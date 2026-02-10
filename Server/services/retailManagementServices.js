@@ -1,11 +1,12 @@
-const pool = require("../db/database");
+// Server/services/retailManagementServices.js (or similar)
+const { query } = require("../db/database");
 const { v4: uuidv4 } = require("uuid");
 
-async function generateUniqueId(client, tableName, idColumn) {
+async function generateUniqueId(queryFn, tableName, idColumn) {
   let id, exists;
   do {
     id = uuidv4();
-    const check = await client.query(
+    const check = await queryFn(
       `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
       [id],
     );
@@ -28,10 +29,10 @@ exports.createRetailer = async (req, res) => {
   } = req.body;
 
   try {
-    await pool.query("BEGIN");
+    await query("BEGIN");
 
     // Validate user exists
-    const userRes = await pool.query(
+    const userRes = await query(
       "SELECT user_id FROM users_auth WHERE user_id = $1 LIMIT 1",
       [user_id],
     );
@@ -41,22 +42,21 @@ exports.createRetailer = async (req, res) => {
 
     // Generate retailer_id
     const retailer_id = await generateUniqueId(
-      pool,
+      query,
       "retailers",
       "retailer_id",
     );
 
     // Generate image_id and insert into images table with NULL image_url
     const image_id = uuidv4();
-    await pool.query(
-      "INSERT INTO images (image_id, image_url) VALUES ($1, NULL)",
-      [image_id],
-    );
+    await query("INSERT INTO images (image_id, image_url) VALUES ($1, NULL)", [
+      image_id,
+    ]);
 
     // Create retailer with the pre-generated image_id
-    const result = await pool.query(
+    const result = await query(
       `INSERT INTO retailers 
-        (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, shop_number, image_id)
+         (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, shop_number, image_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
       [
@@ -74,13 +74,13 @@ exports.createRetailer = async (req, res) => {
       ],
     );
 
-    await pool.query("COMMIT");
+    await query("COMMIT");
     res.json({
       message: "Retailer created",
       retailer_id: result.rows[0].retailer_id,
     });
   } catch (error) {
-    await pool.query("ROLLBACK");
+    await query("ROLLBACK");
     console.error("createRetailer error:", error);
     res
       .status(500)
@@ -89,7 +89,7 @@ exports.createRetailer = async (req, res) => {
 };
 
 exports.getRetailerById = async (req, res) => {
-  const { id } = req.params; // retailer_id
+  const { id } = req.params; // user_id
   try {
     const sql = `
       SELECT 
@@ -103,7 +103,7 @@ exports.getRetailerById = async (req, res) => {
       LEFT JOIN images img ON r.image_id = img.image_id
       WHERE r.user_id = $1
     `;
-    const result = await pool.query(sql, [id]);
+    const result = await query(sql, [id]);
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Retailer not found" });
     }
@@ -129,13 +129,13 @@ exports.getRetailerByRetailId = async (req, res) => {
       LEFT JOIN images img ON r.image_id = img.image_id
       WHERE r.retailer_id = $1
     `;
-    const result = await pool.query(sql, [id]);
+    const result = await query(sql, [id]);
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Retailer not found" });
     }
     res.json(result.rows[0]);
   } catch (error) {
-    console.error("getRetailerById error:", error);
+    console.error("getRetailerByRetailId error:", error);
     res.status(500).json({ message: "Error fetching retailer", error });
   }
 };
@@ -149,25 +149,25 @@ exports.updateRetailer = async (req, res) => {
     business_type,
     license_number,
     is_verified,
-    image_id, // <--- NEW
+    image_id,
     shop_number,
   } = req.body;
 
   try {
     const sql = `
       UPDATE retailers
-      SET shop_name = COALESCE($2, shop_name),
-          shop_address = COALESCE($3, shop_address),
-          gst_number = COALESCE($4, gst_number),
+      SET shop_name     = COALESCE($2, shop_name),
+          shop_address  = COALESCE($3, shop_address),
+          gst_number    = COALESCE($4, gst_number),
           business_type = COALESCE($5, business_type),
-          license_number = COALESCE($6, license_number),
-          is_verified = COALESCE($7, is_verified),
-          image_id = COALESCE($8, image_id),
-          shop_number = COALESCE($9, shop_number)
+          license_number= COALESCE($6, license_number),
+          is_verified   = COALESCE($7, is_verified),
+          image_id      = COALESCE($8, image_id),
+          shop_number   = COALESCE($9, shop_number)
       WHERE retailer_id = $1
       RETURNING *
     `;
-    const result = await pool.query(sql, [
+    const result = await query(sql, [
       id,
       shop_name,
       shop_address,
@@ -190,7 +190,6 @@ exports.updateRetailer = async (req, res) => {
   }
 };
 
-// lat,lng from query; join user_details like in farms service
 exports.getNearbyRetailers = async (req, res) => {
   const { lat, lng } = req.query;
 
@@ -224,7 +223,7 @@ exports.getNearbyRetailers = async (req, res) => {
       WHERE distance_km <= 5
       ORDER BY distance_km
     `;
-    const result = await pool.query(sql, [parseFloat(lat), parseFloat(lng)]);
+    const result = await query(sql, [parseFloat(lat), parseFloat(lng)]);
     res.json(result.rows);
   } catch (error) {
     console.error("getNearbyRetailers error:", error);
@@ -233,6 +232,8 @@ exports.getNearbyRetailers = async (req, res) => {
 };
 
 // ---- Products ----
+
+// Server/services/retailManagementServices.js
 
 exports.createProduct = async (req, res) => {
   const {
@@ -244,21 +245,40 @@ exports.createProduct = async (req, res) => {
     unit,
     stock_qty,
     description,
-    image_id, // <- from images table (optional)
   } = req.body;
 
   try {
-    await pool.query("BEGIN");
+    const userId = req.user_id;
 
+    const ownerCheck = await query(
+      "SELECT 1 FROM retailers WHERE retailer_id = $1 AND user_id = $2",
+      [retailer_id, userId],
+    );
+
+    if (ownerCheck.rowCount === 0) {
+      return res.status(403).json({ message: "You don't own this shop" });
+    }
+
+    await query("BEGIN");
+
+    // Generate product_id
     const product_id = await generateUniqueId(
-      pool,
+      query,
       "retailer_products",
       "product_id",
     );
 
-    const result = await pool.query(
+    // Generate image_id and insert placeholder into images table
+    const image_id = uuidv4();
+    await query(
+      "INSERT INTO images (image_id, image_url) VALUES ($1, 'no-image')",
+      [image_id],
+    );
+
+    // Insert product with the pre-generated image_id
+    const result = await query(
       `INSERT INTO retailer_products 
-        (product_id, retailer_id, category, product_name, brand, price, unit, stock_qty, description, image_id)
+         (product_id, retailer_id, category, product_name, brand, price, unit, stock_qty, description, image_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
       [
@@ -271,19 +291,22 @@ exports.createProduct = async (req, res) => {
         unit,
         stock_qty || 0,
         description,
-        image_id || null,
+        image_id, // Always include the generated image_id
       ],
     );
 
-    await pool.query("COMMIT");
+    await query("COMMIT");
     res.json({
       message: "Product added",
       product_id: result.rows[0].product_id,
+      image_id: image_id, // Return image_id to frontend
     });
   } catch (error) {
-    await pool.query("ROLLBACK");
+    await query("ROLLBACK");
     console.error("createProduct error:", error);
-    res.status(500).json({ message: "Error adding product", error });
+    res
+      .status(500)
+      .json({ message: "Error adding product", error: error.message });
   }
 };
 
@@ -299,7 +322,7 @@ exports.getProductsByRetailer = async (req, res) => {
       WHERE rp.retailer_id = $1
       ORDER BY rp.created_at DESC
     `;
-    const result = await pool.query(sql, [id]);
+    const result = await query(sql, [id]);
     res.json(result.rows);
   } catch (error) {
     console.error("getProductsByRetailer error:", error);
@@ -317,24 +340,24 @@ exports.updateProduct = async (req, res) => {
     unit,
     stock_qty,
     is_active,
-    image_id, // <- NEW optional
+    image_id,
   } = req.body;
 
   try {
     const sql = `
       UPDATE retailer_products
-      SET category    = COALESCE($2, category),
+      SET category     = COALESCE($2, category),
           product_name = COALESCE($3, product_name),
-          brand       = COALESCE($4, brand),
-          price       = COALESCE($5, price),
-          unit        = COALESCE($6, unit),
-          stock_qty   = COALESCE($7, stock_qty),
-          is_active   = COALESCE($8, is_active),
-          image_id    = COALESCE($9, image_id)
+          brand        = COALESCE($4, brand),
+          price        = COALESCE($5, price),
+          unit         = COALESCE($6, unit),
+          stock_qty    = COALESCE($7, stock_qty),
+          is_active    = COALESCE($8, is_active),
+          image_id     = COALESCE($9, image_id)
       WHERE product_id = $1
       RETURNING *
     `;
-    const result = await pool.query(sql, [
+    const result = await query(sql, [
       id,
       category,
       product_name,
@@ -367,7 +390,7 @@ exports.toggleProductStatus = async (req, res) => {
       WHERE product_id = $1
       RETURNING product_id, product_name, is_active
     `;
-    const result = await pool.query(sql, [id]);
+    const result = await query(sql, [id]);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Product not found" });
@@ -387,9 +410,7 @@ exports.toggleProductStatus = async (req, res) => {
 exports.deleteProduct = async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query("DELETE FROM retailer_products WHERE product_id = $1", [
-      id,
-    ]);
+    await query("DELETE FROM retailer_products WHERE product_id = $1", [id]);
     res.json({ message: "Product deleted" });
   } catch (error) {
     console.error("deleteProduct error:", error);
@@ -398,6 +419,7 @@ exports.deleteProduct = async (req, res) => {
 };
 
 // ---- List all retailers with basic details + owner + image ----
+
 exports.getAllRetailers = async (req, res) => {
   try {
     const sql = `
@@ -412,7 +434,7 @@ exports.getAllRetailers = async (req, res) => {
       LEFT JOIN images img ON r.image_id = img.image_id
       ORDER BY r.created_at DESC
     `;
-    const result = await pool.query(sql);
+    const result = await query(sql);
     res.json(result.rows);
   } catch (error) {
     console.error("getAllRetailers error:", error);
@@ -421,6 +443,7 @@ exports.getAllRetailers = async (req, res) => {
 };
 
 // ---- List all retailers with their products (nested) ----
+
 exports.getRetailersWithProducts = async (req, res) => {
   try {
     const sql = `
@@ -458,9 +481,8 @@ exports.getRetailersWithProducts = async (req, res) => {
       ORDER BY r.created_at DESC, rp.created_at DESC
     `;
 
-    const result = await pool.query(sql);
+    const result = await query(sql);
 
-    // Nest products under each retailer
     const map = new Map();
 
     for (const row of result.rows) {
@@ -526,8 +548,7 @@ exports.getStoreLocations = async (req, res) => {
         AND longitude IS NOT NULL
       ORDER BY created_at DESC
     `;
-
-    const result = await pool.query(sql);
+    const result = await query(sql);
     res.json(result.rows);
   } catch (error) {
     console.error("getStoreLocations error:", error);

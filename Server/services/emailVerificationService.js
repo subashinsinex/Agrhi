@@ -15,7 +15,7 @@ class EmailVerificationService {
         FROM users_auth ua
         LEFT JOIN user_details ud ON ua.user_id = ud.user_id
         WHERE ua.user_id = $1`,
-        [userId]
+        [userId],
       );
 
       if (userResult.rows.length === 0) {
@@ -77,7 +77,7 @@ class EmailVerificationService {
           otp_hash, 
           expires_at
         ) VALUES ($1, $2, $3)`,
-        [userId, otpHash, expiresAt]
+        [userId, otpHash, expiresAt],
       );
 
       // Send OTP email with IP address
@@ -114,25 +114,23 @@ class EmailVerificationService {
    * Verify OTP
    */
   async verifyOTP({ userId, otp, ipAddress }) {
-    const client = await pool.connect();
-
     try {
       const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
-
-      await client.query("BEGIN");
+      console.log("Verifying OTP for userId:", userId, "from otp:", otpHash);
+      await pool.query("BEGIN");
 
       // Find and lock the OTP record
-      const otpResult = await client.query(
+      const otpResult = await pool.query(
         `SELECT id, verified, expires_at, attempts
         FROM email_otp_verifications
         WHERE user_id = $1
         AND otp_hash = $2
         FOR UPDATE`,
-        [userId, otpHash]
+        [userId, otpHash],
       );
 
       if (otpResult.rows.length === 0) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
 
         // Increment failed attempts
         await this._incrementFailedAttempts(userId);
@@ -147,7 +145,7 @@ class EmailVerificationService {
 
       // Check if expired
       if (new Date(otpData.expires_at) < new Date()) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return {
           success: false,
           message: "OTP has expired. Please request a new one.",
@@ -156,7 +154,7 @@ class EmailVerificationService {
 
       // Check if already verified
       if (otpData.verified) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return {
           success: false,
           message: "This OTP has already been used",
@@ -165,7 +163,7 @@ class EmailVerificationService {
 
       // Check attempts (max 5 attempts)
       if (otpData.attempts >= 5) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         return {
           success: false,
           message:
@@ -174,20 +172,20 @@ class EmailVerificationService {
       }
 
       // Mark OTP as verified
-      await client.query(
+      await pool.query(
         `UPDATE email_otp_verifications 
         SET verified = TRUE, verified_at = NOW() 
         WHERE id = $1`,
-        [otpData.id]
+        [otpData.id],
       );
 
       // Mark email as verified in users_auth table
-      await client.query(
+      await pool.query(
         "UPDATE users_auth SET email_verified = TRUE WHERE user_id = $1",
-        [userId]
+        [userId],
       );
 
-      await client.query("COMMIT");
+      await pool.query("COMMIT");
 
       // Send confirmation email with IP and location (async)
       this._sendVerificationConfirmationEmail(userId, ipAddress);
@@ -197,11 +195,9 @@ class EmailVerificationService {
         message: "Email verified successfully",
       };
     } catch (error) {
-      await client.query("ROLLBACK");
+      await pool.query("ROLLBACK");
       console.error("Verify OTP error:", error);
       throw error;
-    } finally {
-      client.release();
     }
   }
 
@@ -235,7 +231,7 @@ class EmailVerificationService {
     try {
       const userResult = await pool.query(
         "SELECT email, email_verified FROM users_auth WHERE user_id = $1",
-        [userId]
+        [userId],
       );
 
       if (userResult.rows.length === 0) {
@@ -256,7 +252,7 @@ class EmailVerificationService {
         AND expires_at > NOW()
         ORDER BY created_at DESC
         LIMIT 1`,
-        [userId]
+        [userId],
       );
 
       const hasPendingOTP = pendingOTPResult.rows.length > 0;
@@ -301,7 +297,7 @@ class EmailVerificationService {
         FROM email_otp_verifications
         WHERE user_id = $1
         AND created_at > NOW() - INTERVAL '1 hour'`,
-        [userId]
+        [userId],
       );
 
       const count = parseInt(result.rows[0].count);
@@ -323,7 +319,7 @@ class EmailVerificationService {
         WHERE user_id = $1
         ORDER BY created_at DESC
         LIMIT 1`,
-        [userId]
+        [userId],
       );
 
       if (result.rows.length === 0) {
@@ -360,7 +356,7 @@ class EmailVerificationService {
         WHERE user_id = $1
         AND verified = FALSE
         AND expires_at > NOW()`,
-        [userId]
+        [userId],
       );
     } catch (error) {
       console.error("Increment failed attempts error:", error);
@@ -377,7 +373,7 @@ class EmailVerificationService {
         FROM users_auth ua
         LEFT JOIN user_details ud ON ua.user_id = ud.user_id
         WHERE ua.user_id = $1`,
-        [userId]
+        [userId],
       );
 
       if (userResult.rows.length > 0 && userResult.rows[0].email) {
@@ -407,7 +403,7 @@ class EmailVerificationService {
     if (!email) return null;
     return email.replace(
       /(.{2})(.*)(@.*)/,
-      (match, p1, p2, p3) => p1 + "*".repeat(Math.min(p2.length, 5)) + p3
+      (match, p1, p2, p3) => p1 + "*".repeat(Math.min(p2.length, 5)) + p3,
     );
   }
 }
