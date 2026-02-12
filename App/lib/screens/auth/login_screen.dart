@@ -16,6 +16,8 @@ import '../../src/services/language_service.dart';
 import '../../src/services/api_service.dart';
 import '../../src/services/farm_store_service.dart';
 import '../../src/database/database_helper.dart';
+import '../../src/services/sync_service.dart';
+import '../../src/services/connectivity_manager.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -284,6 +286,19 @@ Future<void> _handleLogin() async {
           debugPrint('✅ Synced ${syncResult['updated']} tables');
         } else {
           debugPrint('⚠️ ${syncResult['message']}');
+        }
+
+        try {
+          final fullSyncResult =
+              await SyncService.instance.performFullSync(accessToken);
+          debugPrint('🔁 Full sync after login: $fullSyncResult');
+          if (fullSyncResult['success'] == true && mounted) {
+            final connectivityManager =
+                context.read<ConnectivityManager>();
+            connectivityManager.updateLastSyncTime(DateTime.now());
+          }
+        } catch (e) {
+          debugPrint('❌ Full sync after login failed: $e');
         }
 
         if (userCategory == 'farmer' || userCategory == 'admin') {

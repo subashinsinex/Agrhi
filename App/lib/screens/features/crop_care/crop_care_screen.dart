@@ -100,26 +100,44 @@ class _CropCareScreenState extends State<CropCareScreen>
       appBar: CustomAppBar(title: 'Crop Care Manager', showOnlineStatus: true),
       backgroundColor: AppColors.backgroundColor,
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          bool changed = false;
-          if (_tabController.index == 0) {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const AddCropScreen()),
-            );
-            changed = result == true;
-          } else {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const AddFarmScreen()),
-            );
-            changed = result == true;
-          }
-          if (changed) _refreshBothTabs();
-        },
-        backgroundColor: AppColors.primaryGreen,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+  onPressed: () async {
+    bool changed = false;
+    
+    // ✅ If on Crops tab, check if farms exist first
+    if (_tabController.index == 0) {
+      // Check if farms exist
+      final db = DatabaseHelper.instance;
+      final farms = await db.getAllFarmsWithRelations();
+      
+      if (farms.isEmpty) {
+        // Show message and switch to Farms tab
+        if (mounted) {
+          // Switch to Farms tab
+          _tabController.animateTo(1);
+        }
+        return;
+      }
+      
+      // Farms exist, proceed to add crop
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const AddCropScreen()),
+      );
+      changed = result == true;
+    } else {
+      // On Farms tab, directly add farm
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const AddFarmScreen()),
+      );
+      changed = result == true;
+    }
+    
+    if (changed) _refreshBothTabs();
+  },
+  backgroundColor: AppColors.primaryGreen,
+  child: const Icon(Icons.add, color: Colors.white),
+),
       body: Column(
         children: [
           // ✅ TabBar BELOW AppBar
@@ -161,6 +179,7 @@ class _CropCareScreenState extends State<CropCareScreen>
                 CropsManagerTab(
                   key: _cropsTabKey,
                   onDataChanged: _refreshBothTabs,
+                  parentTabController: _tabController, // ✅ PASS CONTROLLER
                 ),
                 FarmsManagerTab(
                   key: _farmsTabKey,
@@ -179,8 +198,13 @@ class _CropCareScreenState extends State<CropCareScreen>
 
 class CropsManagerTab extends StatefulWidget {
   final VoidCallback onDataChanged;
+  final TabController? parentTabController; // ✅ ADD THIS
 
-  const CropsManagerTab({super.key, required this.onDataChanged});
+  const CropsManagerTab({
+    super.key,
+    required this.onDataChanged,
+    this.parentTabController, // ✅ ADD THIS
+  });
 
   @override
   State<CropsManagerTab> createState() => _CropsManagerTabState();
@@ -562,77 +586,118 @@ class _CropsManagerTabState extends State<CropsManagerTab>
               ),
             ),
           ),
+        // ✅ FIXED: Check if farms exist before showing button
         _crops.isEmpty
             ? SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.eco, size: 100, color: Colors.grey.shade300),
-                        const SizedBox(height: 24),
-                        const SmartReTranslator(
-                          text: 'No Active Crops',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 12),
-                        const SmartReTranslator(
-                          text:
-                              'You haven\'t added any active crops yet. Start by creating your first crop.',
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.grey,
-                            height: 1.5,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 32),
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const AddCropScreen(),
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: DatabaseHelper.instance.getAllFarmsWithRelations(),
+                  builder: (context, snapshot) {
+                    final hasFarms = snapshot.hasData && snapshot.data!.isNotEmpty;
+                    
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.eco, size: 100, color: Colors.grey.shade300),
+                            const SizedBox(height: 24),
+                            const SmartReTranslator(
+                              text: 'No Active Crops',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
                               ),
-                            );
-                            if (result == true) widget.onDataChanged();
-                          },
-                          icon: const Icon(Icons.add, color: Colors.white),
-                          label: const SmartReTranslator(
-                            text: 'Add Crop',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryGreen,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 16,
+                            const SizedBox(height: 12),
+                            // ✅ CONDITIONAL INSTRUCTION TEXT
+                            SmartReTranslator(
+                              text: hasFarms
+                                  ? 'You haven\'t added any active crops yet. Start by creating your first crop.'
+                                  : 'To add crops, you need to create a farm first. Go to the Farms tab and add your first farm.',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Colors.grey,
+                                height: 1.5,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 2,
-                          ),
+                            const SizedBox(height: 32),
+                            // ✅ CONDITIONAL BUTTON
+                            if (hasFarms)
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const AddCropScreen(),
+                                    ),
+                                  );
+                                  if (result == true) widget.onDataChanged();
+                                },
+                                icon: const Icon(Icons.add, color: Colors.white),
+                                label: const SmartReTranslator(
+                                  text: 'Add Crop',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryGreen,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 32,
+                                    vertical: 16,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 2,
+                                ),
+                              )
+                            else
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  // ✅ SWITCH TO FARMS TAB
+                                  widget.parentTabController?.animateTo(1);
+                                },
+                                icon: const Icon(Icons.agriculture, color: Colors.white),
+                                label: const SmartReTranslator(
+                                  text: 'Go to Farms',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryGreen,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 32,
+                                    vertical: 16,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 2,
+                                ),
+                              ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
               )
             : SliverPadding(

@@ -316,6 +316,16 @@ class ConnectivityManager extends ChangeNotifier {
     }
   }
 
+  void updateLastSyncTime(DateTime time) async {
+  _lastSyncTime = time;
+  await _storage.write(
+    key: 'last_sync_time',
+    value: _lastSyncTime!.toIso8601String(),
+  );
+  notifyListeners();
+}
+
+
   /// ✅ Cleanup all resources on dispose
   @override
   void dispose() {

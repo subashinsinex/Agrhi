@@ -35,8 +35,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _checkRequestStatus() async {
     final mobile = _mobileController.text.trim();
 
-    if (mobile.isEmpty || mobile.length != 10) {
-      _showError('Please enter a valid 10-digit mobile number');
+    if (mobile.isEmpty || mobile.length < 7 || mobile.length > 15) {
+      _showError('Please enter a valid mobile number');
       return;
     }
 

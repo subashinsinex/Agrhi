@@ -9,7 +9,7 @@ class AppConstants {
   // Validation Constants
   static const int minPasswordLength = 4;
   static const int maxPasswordLength = 50;
-  static const int minPhoneLength = 10;
+  static const int minPhoneLength = 7;
   static const int maxPhoneLength = 15;
   static const int minNameLength = 2;
   static const int maxNameLength = 50;

@@ -7,6 +7,9 @@ import '../../utils/routes.dart';
 import '../../src/services/app_config_service.dart';
 import '../../src/database/database_helper.dart';
 import '../shared/update_screen.dart';
+import '../../src/services/sync_service.dart';
+import '../../src/services/connectivity_manager.dart';
+import 'package:provider/provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -153,27 +156,47 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   // ✅ SIMPLIFIED: Only check if tokens exist, don't validate
-  Future<void> _proceedWithAuth() async {
-    setState(() => _statusMessage = 'Loading...');
-    await Future.delayed(const Duration(milliseconds: 500));
+Future<void> _proceedWithAuth() async {
+  setState(() => _statusMessage = 'Loading...');
+  await Future.delayed(const Duration(milliseconds: 500));
 
-    // ✅ Simple token existence check - no validation, no refresh
-    final hasTokens = await _hasStoredTokens();
+  // ✅ Simple token existence check - no validation, no refresh
+  final hasTokens = await _hasStoredTokens();
 
-    if (!mounted) return;
+  if (!mounted) return;
 
-    if (hasTokens) {
-      setState(() => _statusMessage = 'Welcome back!');
-      await Future.delayed(const Duration(milliseconds: 300));
+  if (hasTokens) {
+    setState(() => _statusMessage = 'Welcome back!');
+    await Future.delayed(const Duration(milliseconds: 300));
 
-      // ✅ ConnectivityManager will handle auth check and sync
-      if (mounted) Routes.navigateToDashboard(context);
-    } else {
-      setState(() => _statusMessage = 'Redirecting to login...');
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) Routes.navigateToLogin(context);
+    // 🔁 Full sync on app open (from splash)
+    try {
+      final accessToken = await _storage.read(key: 'access_token');
+      if (accessToken != null && accessToken.isNotEmpty) {
+        setState(() => _statusMessage = 'Syncing your data...');
+        final fullSyncResult =
+            await SyncService.instance.performFullSync(accessToken);
+        debugPrint('🔁 Full sync from splash: $fullSyncResult');
+
+        if (fullSyncResult['success'] == true && mounted) {
+          final connectivityManager =
+              context.read<ConnectivityManager>();
+          connectivityManager.updateLastSyncTime(DateTime.now());
+        }
+      } else {
+        debugPrint('⚠️ No access token found, skipping full sync');
+      }
+    } catch (e) {
+      debugPrint('❌ Full sync from splash failed: $e');
     }
+
+    if (mounted) Routes.navigateToDashboard(context);
+  } else {
+    setState(() => _statusMessage = 'Redirecting to login...');
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) Routes.navigateToLogin(context);
   }
+}
 
   // ✅ NEW: Simple token existence check - no validation
   Future<bool> _hasStoredTokens() async {

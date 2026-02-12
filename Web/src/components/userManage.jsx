@@ -21,6 +21,8 @@ import {
   ShieldCheck,
   CheckCircle,
   AlertCircle,
+  ShoppingBag,
+  User,
   Leaf,
   Wind,
   CloudSun,
@@ -97,8 +99,12 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
         .length,
       admins: users.filter((u) => u.category_id === categoryOptions[2].id)
         .length,
+      retailers: users.filter((u) => u.category_id === categoryOptions[3].id)
+        .length,
+      consumers: users.filter((u) => u.category_id === categoryOptions[4].id)
+        .length,
     }),
-    [users]
+    [users],
   );
 
   // Form State
@@ -158,7 +164,7 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
     } catch (err) {
       setErrorMsg(
         "Failed to synchronize records: " +
-          (err.response?.data?.message || err.message)
+          (err.response?.data?.message || err.message),
       );
     } finally {
       setLoading(false);
@@ -223,7 +229,8 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
       setIsFormVisible(false);
     } catch (err) {
       setErrorMsg(
-        err?.response?.data?.message || "Operation failed. Please check inputs."
+        err?.response?.data?.message ||
+          "Operation failed. Please check inputs.",
       );
     }
   };
@@ -255,7 +262,7 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
     return users.filter(
       (u) =>
         u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase())
+        u.email.toLowerCase().includes(searchTerm.toLowerCase()),
     );
   }, [users, searchTerm]);
 
@@ -617,6 +624,24 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
             <h2>{stats.admins}</h2>
           </div>
         </div>
+        <div className="ag-stat-card">
+          <div className="ag-stat-icon" style={{ color: "#7B1FA2" }}>
+            <ShoppingBag size={22} />
+          </div>
+          <div className="ag-stat-info">
+            <h4>Retailers</h4>
+            <h2>{stats.retailers}</h2>
+          </div>
+        </div>
+        <div className="ag-stat-card">
+          <div className="ag-stat-icon" style={{ color: "#FF9800" }}>
+            <User size={22} />
+          </div>
+          <div className="ag-stat-info">
+            <h4>Consumers</h4>
+            <h2>{stats.consumers}</h2>
+          </div>
+        </div>
       </div>
 
       {/* Feedback Messages */}
@@ -882,10 +907,10 @@ const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
                       `${apiBase}/deleteUser/${userToDelete.user_id}`,
                       {
                         headers: { Authorization: `Bearer ${access_token}` },
-                      }
+                      },
                     );
                     setUsers(
-                      users.filter((u) => u.user_id !== userToDelete.user_id)
+                      users.filter((u) => u.user_id !== userToDelete.user_id),
                     );
                     setIsConfirmOpen(false);
                   } catch (e) {

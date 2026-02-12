@@ -515,229 +515,200 @@ class _FarmProductsScreenState extends State<FarmProductsScreen> {
     );
   }
 
-  Widget _buildProductCard(Map<String, dynamic> product) {
-    final stockQtyRaw = product['quantity_available'];
-    final stockQty = stockQtyRaw is String
-        ? double.tryParse(stockQtyRaw)?.toInt() ?? 0
-        : (stockQtyRaw is num ? stockQtyRaw.toInt() : 0);
+Widget _buildProductCard(Map<String, dynamic> product) {
+  final stockQtyRaw = product['quantity_available'];
+  final stockQty = stockQtyRaw is String
+      ? double.tryParse(stockQtyRaw)?.toInt() ?? 0
+      : (stockQtyRaw is num ? stockQtyRaw.toInt() : 0);
 
-    final isLowStock = stockQty < 10;
-    final isAvailable = product['is_available'] ?? true;
+  final isLowStock = stockQty < 10;
+  final isAvailable = product['is_available'] ?? true;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isAvailable
-              ? [const Color(0xFFE8F5E9), const Color(0xFFF1F8E9)]
-              : [Colors.grey.shade200, Colors.grey.shade100],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: isAvailable
-                ? AppColors.primaryGreen.withOpacity(0.1)
-                : Colors.grey.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: isAvailable
+            ? AppColors.primaryGreen.withOpacity(0.2)
+            : Colors.grey.withOpacity(0.3),
+        width: 1,
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () async {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => AddEditFarmProductScreen(
-                  farmerId: _farmerId!,
-                  product: product,
-                ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.04),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddEditFarmProductScreen(
+                farmerId: _farmerId!,
+                product: product,
               ),
-            );
+            ),
+          );
 
-            if (result == true) {
-              _loadProducts();
-            }
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                // Product Image
-                Opacity(
-                  opacity: isAvailable ? 1.0 : 0.5,
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isAvailable
-                            ? AppColors.primaryGreen.withOpacity(0.3)
-                            : Colors.grey.withOpacity(0.3),
-                        width: 2,
-                      ),
-                    ),
-                    child: product['image_url'] != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.network(
-                              '${AppConstants.baseUrl.replaceAll('/api', '')}${product['image_url']}',
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Icon(
-                                  Icons.broken_image_outlined,
-                                  color: Colors.grey.shade400,
-                                  size: 32,
-                                );
-                              },
-                            ),
-                          )
-                        : Icon(
-                            Icons.agriculture,
-                            color: isAvailable
-                                ? AppColors.primaryGreen.withOpacity(0.5)
-                                : Colors.grey.withOpacity(0.5),
-                            size: 32,
-                          ),
-                  ),
+          if (result == true) {
+            _loadProducts();
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Product Image
+              Container(
+                width: 65,
+                height: 65,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(width: 12),
-
-                // Product Details
-                Expanded(
-                  child: Opacity(
-                    opacity: isAvailable ? 1.0 : 0.6,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SmartReTranslator(
-                          text: product['product_name'] ?? 'Unknown Product',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                            height: 1.3,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                child: product['image_url'] != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          '${AppConstants.baseUrl.replaceAll('/api', '')}${product['image_url']}',
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.image_not_supported_outlined,
+                              color: Colors.grey.shade400,
+                              size: 24,
+                            );
+                          },
                         ),
-                        if (product['variety'] != null &&
-                            product['variety'].toString().isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          SmartReTranslator(
-                            text: product['variety'],
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[700],
-                            ),
+                      )
+                    : Icon(
+                        Icons.agriculture,
+                        color: Colors.grey.shade400,
+                        size: 28,
+                      ),
+              ),
+              const SizedBox(width: 12),
+
+              // Product Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Product Name
+                    SmartReTranslator(
+                      text: product['product_name'] ?? 'Unknown Product',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    
+                    // Variety
+                    if (product['variety'] != null &&
+                        product['variety'].toString().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      SmartReTranslator(
+                        text: product['variety'],
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 8),
+
+                    // Price
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.currency_rupee,
+                          size: 14,
+                          color: AppColors.primaryGreen,
+                        ),
+                        Text(
+                          '${product['price_per_unit']}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryGreen,
                           ),
-                        ],
-                        const SizedBox(height: 8),
-
-                        // Price and Stock Row
-                        Row(
-                          children: [
-                            // Price
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.currency_rupee,
-                                  size: 14,
-                                  color: AppColors.primaryGreen,
-                                ),
-                                SmartReTranslator(
-                                  text: '${product['price_per_unit']}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primaryGreen,
-                                  ),
-                                ),
-                                Text(
-                                  ' /${product['unit']}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(width: 12),
-
-                            // Stock indicator
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isLowStock
-                                    ? Colors.orange.withOpacity(0.2)
-                                    : Colors.blue.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    isLowStock
-                                        ? Icons.warning_amber
-                                        : Icons.check_circle_outline,
-                                    size: 12,
-                                    color: isLowStock
-                                        ? Colors.orange[800]
-                                        : Colors.blue[800],
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '$stockQty ${product['unit']}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: isLowStock
-                                          ? Colors.orange[800]
-                                          : Colors.blue[800],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        ),
+                        Text(
+                          '/${product['unit']}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                          ),
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
+              ),
 
-                const SizedBox(width: 8),
+              const SizedBox(width: 8),
 
-                // Toggle Switch
-                Transform.scale(
-                  scale: 0.85,
-                  child: Switch(
+              // Switch & Stock Column
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Toggle Switch
+                  Switch(
                     value: isAvailable,
                     onChanged: (value) {
                       _toggleProductStatus(product['product_id'], isAvailable);
                     },
                     activeColor: AppColors.primaryGreen,
-                    activeTrackColor: AppColors.primaryGreen.withOpacity(0.5),
-                    inactiveThumbColor: Colors.grey.shade400,
-                    inactiveTrackColor: Colors.grey.shade300,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                ),
-              ],
-            ),
+                  
+                  const SizedBox(height: 4),
+                  
+                  // Stock Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isLowStock
+                          ? Colors.orange.shade100
+                          : Colors.blue.shade100,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '$stockQty ${product['unit']}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isLowStock
+                            ? Colors.orange.shade900
+                            : Colors.blue.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
+
 }

@@ -392,76 +392,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showSyncSuccessSnackBar(Map<String, dynamic> result) {
-    final diseaseSync = result['disease_sync'] as Map<String, dynamic>?;
-    final cropCareSync = result['crop_care_sync'] as Map<String, dynamic>?;
-
-    int catalogsUpdated = 0;
-    int uploaded = 0;
-    int downloaded = 0;
-    int imagesUploaded = 0;
-    int farmsUploaded = 0;
-    int cropsUploaded = 0;
-    int historyDownloaded = 0;
-
-    if (diseaseSync != null && (diseaseSync['success'] ?? false)) {
-      final catalogsResult = diseaseSync['catalogs'] as Map<String, dynamic>?;
-      final twoWayResult = diseaseSync['two_way_sync'] as Map<String, dynamic>?;
-
-      catalogsUpdated = (catalogsResult?['updated'] as int?) ?? 0;
-      uploaded = (twoWayResult?['upload']?['upload'] as int?) ?? 0;
-      downloaded = (twoWayResult?['download']?['downloaded'] as int?) ?? 0;
-      imagesUploaded = (twoWayResult?['images']?['upload'] as int?) ?? 0;
-    }
-
-    if (cropCareSync != null && (cropCareSync['success'] ?? false)) {
-      final sync = cropCareSync['sync'] as Map<String, dynamic>?;
-      if (sync != null) {
-        farmsUploaded = sync['farmUpload']?['uploaded'] ?? 0;
-        cropsUploaded = sync['cropUpload']?['uploaded'] ?? 0;
-        historyDownloaded = sync['historyDownload']?['downloaded'] ?? 0;
-      }
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SmartReTranslator(
-              text: '✅ Sync complete!',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 6),
-            if (result['disease_success'] == true)
-              SmartReTranslator(
-                text:
-                    'Upload $uploaded, Downloaded $downloaded, Images $imagesUploaded, Catalogs $catalogsUpdated',
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
-            if (result['disease_success'] == true &&
-                result['crop_care_success'] == true)
-              const SizedBox(height: 3),
-            if (result['crop_care_success'] == true)
-              SmartReTranslator(
-                text:
-                    'Farms $farmsUploaded, Crops $cropsUploaded, History $historyDownloaded',
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
-          ],
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: const SmartReTranslator(
+        text: '✅ Full sync completed',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
         ),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.successColor,
-        duration: const Duration(seconds: 4),
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
-    );
-  }
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppColors.successColor,
+      duration: const Duration(seconds: 3),
+      margin: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+    ),
+  );
+}
+
 
   Future<void> _performBackgroundCleanup() async {
     try {

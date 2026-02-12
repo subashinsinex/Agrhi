@@ -440,7 +440,7 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Shop number is required';
                           }
-                          if (value.trim().length < 10) {
+                          if (value.trim().length < 7 || value.trim().length > 15) {
                             return 'Enter a valid phone number';
                           }
                           return null;
