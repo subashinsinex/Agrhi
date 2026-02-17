@@ -155,8 +155,9 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  // ✅ SIMPLIFIED: Only check if tokens exist, don't validate
 Future<void> _proceedWithAuth() async {
+  if (!mounted) return;
+  
   setState(() => _statusMessage = 'Loading...');
   await Future.delayed(const Duration(milliseconds: 500));
 
@@ -169,27 +170,29 @@ Future<void> _proceedWithAuth() async {
     setState(() => _statusMessage = 'Welcome back!');
     await Future.delayed(const Duration(milliseconds: 300));
 
-    // 🔁 Full sync on app open (from splash)
-    try {
-      final accessToken = await _storage.read(key: 'access_token');
-      if (accessToken != null && accessToken.isNotEmpty) {
-        setState(() => _statusMessage = 'Syncing your data...');
-        final fullSyncResult =
-            await SyncService.instance.performFullSync(accessToken);
+    // 🔁 Start full sync in background (non-blocking)
+    final accessToken = await _storage.read(key: 'access_token');
+    if (accessToken != null && accessToken.isNotEmpty) {
+      // Don't await - let it run in background
+      SyncService.instance.performFullSync(accessToken).then((fullSyncResult) {
         debugPrint('🔁 Full sync from splash: $fullSyncResult');
-
+        
         if (fullSyncResult['success'] == true && mounted) {
-          final connectivityManager =
-              context.read<ConnectivityManager>();
-          connectivityManager.updateLastSyncTime(DateTime.now());
+          try {
+            final connectivityManager = context.read<ConnectivityManager>();
+            connectivityManager.updateLastSyncTime(DateTime.now());
+          } catch (e) {
+            debugPrint('⚠️ Could not update sync time: $e');
+          }
         }
-      } else {
-        debugPrint('⚠️ No access token found, skipping full sync');
-      }
-    } catch (e) {
-      debugPrint('❌ Full sync from splash failed: $e');
+      }).catchError((e) {
+        debugPrint('❌ Full sync from splash failed: $e');
+      });
+    } else {
+      debugPrint('⚠️ No access token found, skipping full sync');
     }
 
+    // Navigate immediately without waiting for sync
     if (mounted) Routes.navigateToDashboard(context);
   } else {
     setState(() => _statusMessage = 'Redirecting to login...');
@@ -197,6 +200,7 @@ Future<void> _proceedWithAuth() async {
     if (mounted) Routes.navigateToLogin(context);
   }
 }
+
 
   // ✅ NEW: Simple token existence check - no validation
   Future<bool> _hasStoredTokens() async {
