@@ -147,27 +147,9 @@ async function getAnalysisChanges(userId, since = null) {
     `;
     params = [userId];
   }
-
   const result = await pool.query(query, params);
-
-  // Get deleted IDs (optional - for tracking deletions)
-  let deletedIds = [];
-  try {
-    const deletedResult = await pool.query(
-      `SELECT id FROM deleted_analyses 
-       WHERE user_id = $1 AND deleted_at > $2`,
-      [userId, since || "1970-01-01"],
-    );
-    deletedIds = deletedResult.rows.map((r) => r.id);
-  } catch (err) {
-    console.log("No deleted_analyses table found (optional)");
-  }
-
-  console.log(`📦 Retrieved ${result.rows.length} analyses for user ${userId}`);
-
   return {
     analyses: result.rows,
-    deleted_ids: deletedIds,
     server_timestamp: new Date().toISOString(),
   };
 }

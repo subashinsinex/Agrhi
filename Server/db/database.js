@@ -64,8 +64,6 @@ class RLSEnabledPool {
     const store = asyncLocalStorage.getStore();
     const userId = store?.userId;
 
-    console.log("RLSEnabledPool.query userId from ALS =", userId);
-
     // If no valid user context (public routes), run standard query
     if (!userId || typeof userId !== "string" || userId.trim() === "") {
       return this.pool.query(text, params);

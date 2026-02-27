@@ -18,14 +18,6 @@ router.post("/config", async (req, res) => {
     // ✅ Simple check: if builds don't match = update needed
     const needsUpdate = currentBuild !== latestBuild;
 
-    console.log("📱 App Version Check:", {
-      package: package_name,
-      current_build: currentBuild,
-      latest_build: latestBuild,
-      needs_update: needsUpdate,
-      platform,
-    });
-
     res.json({
       needs_update: needsUpdate,
       current_build_number: currentBuild,

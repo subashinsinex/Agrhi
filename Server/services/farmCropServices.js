@@ -48,6 +48,13 @@ exports.getAllFarms = async (req, res) => {
 exports.getFarmById = async (req, res) => {
   const { id } = req.params;
   try {
+    const checkConsumerSql = `SELECT 1 FROM user_details WHERE user_id = $1 AND category_id = 'a3e9a9b4-4c2d-4b1f-9b3b-23f5c4a7d901'`;
+    const consumerCheck = await pool.query(checkConsumerSql, [id]);
+    if (consumerCheck.rowCount > 0) {
+      return res
+        .status(200)
+        .json({ message: "Consumer Not Allowed to Access Farm Details" });
+    }
     const sql = `
       SELECT
         f.farm_id,

@@ -16,7 +16,6 @@ async function login(phone_number, password, platform) {
       return { success: false, message: "User not found" };
     }
     const userAuth = userAuthQuery.rows[0];
-    console.log("Fetched User Auth:", userAuth);
 
     if (!(await bcrypt.compare(password, userAuth.password))) {
       return { success: false, message: "Invalid password" };
@@ -27,7 +26,6 @@ async function login(phone_number, password, platform) {
       "SELECT category_id FROM user_details WHERE user_id = $1",
       [userAuth.user_id],
     );
-    console.log(userDetailsQuery.rows);
     if (userDetailsQuery.rows.length === 0) {
       return { success: false, message: "User details not found" };
     }

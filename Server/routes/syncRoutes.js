@@ -127,8 +127,6 @@ router.post("/batch-upload", jwtChecker, async (req, res) => {
  */
 router.get("/changes", jwtChecker, async (req, res) => {
   try {
-    console.log("📥 Download changes request received");
-
     if (!req.user_id) {
       console.log("❌ req.user_id is undefined");
       return res.status(401).json({
@@ -139,10 +137,6 @@ router.get("/changes", jwtChecker, async (req, res) => {
 
     const { since } = req.query;
     const userId = req.user_id;
-
-    console.log(
-      `📥 User ${userId} requesting changes since: ${since || "beginning"}`,
-    );
 
     const result = await syncServices.getAnalysisChanges(userId, since);
     res.status(200).json(result);
