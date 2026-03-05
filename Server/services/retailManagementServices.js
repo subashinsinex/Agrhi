@@ -88,6 +88,107 @@ exports.createRetailer = async (req, res) => {
   }
 };
 
+exports.createRetailerAdmin = async (req, res) => {
+  const {
+    phone_number, // ← instead of user_id
+    shop_name,
+    shop_address,
+    gst_number,
+    business_type,
+    license_number,
+    latitude,
+    longitude,
+    shop_number,
+  } = req.body;
+
+  try {
+    await query("BEGIN");
+
+    // Step 1: Lookup user_id from phone_number in users_auth
+    const userRes = await query(
+      "SELECT user_id FROM users_auth WHERE phone_number = $1 LIMIT 1",
+      [phone_number],
+    );
+
+    if (userRes.rowCount === 0) {
+      await query("ROLLBACK");
+      return res.status(404).json({
+        success: false,
+        message: "No user found with this phone number.",
+      });
+    }
+
+    const user_id = userRes.rows[0].user_id;
+
+    // Step 2: Check if retailer already exists for this user
+    const existingRetailer = await query(
+      "SELECT retailer_id FROM retailers WHERE user_id = $1 LIMIT 1",
+      [user_id],
+    );
+
+    if (existingRetailer.rowCount > 0) {
+      await query("ROLLBACK");
+      return res.status(409).json({
+        success: false,
+        message: "A retailer already exists for this user.",
+        retailer_id: existingRetailer.rows[0].retailer_id,
+      });
+    }
+
+    // Step 3: Generate retailer_id
+    const retailer_id = await generateUniqueId(
+      query,
+      "retailers",
+      "retailer_id",
+    );
+
+    // Step 4: Generate image_id and insert into images table
+    const image_id = uuidv4();
+    await query("INSERT INTO images (image_id, image_url) VALUES ($1, NULL)", [
+      image_id,
+    ]);
+
+    // Step 5: Insert retailer
+    const result = await query(
+      `INSERT INTO retailers 
+         (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, shop_number, image_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING *`,
+      [
+        retailer_id,
+        user_id,
+        shop_name,
+        shop_address,
+        gst_number,
+        business_type,
+        license_number,
+        latitude,
+        longitude,
+        shop_number,
+        image_id,
+      ],
+    );
+
+    await query("COMMIT");
+
+    res.status(201).json({
+      success: true,
+      message: "Retailer created successfully by admin",
+      retailer_id: result.rows[0].retailer_id,
+      user_id: user_id,
+      phone_number: phone_number,
+    });
+  } catch (error) {
+    await query("ROLLBACK");
+    console.error("createRetailerAdmin error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating retailer",
+      error: error.message,
+    });
+  }
+};
+
 exports.getRetailerById = async (req, res) => {
   const { id } = req.params; // user_id
   try {

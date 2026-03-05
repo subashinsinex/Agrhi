@@ -31,6 +31,7 @@ import {
   ChevronUp,
   RefreshCw,
   Database,
+  UserPlus,
 } from "lucide-react";
 import { SERVER_IP, SERVER_PORT } from "../constant";
 
@@ -67,7 +68,7 @@ const RetailManager = ({ isSidebarOpen }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRetailer, setSelectedRetailer] = useState(null);
 
-  // --------------- RETAILER FORM -------------
+  // --------------- RETAILER FORM (existing - user_id based) -------------
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [form, setForm] = useState({
@@ -80,12 +81,28 @@ const RetailManager = ({ isSidebarOpen }) => {
     license_number: "",
     latitude: "",
     longitude: "",
+    shop_number: "",
     is_verified: false,
   });
 
   const [shopImageFile, setShopImageFile] = useState(null);
   const [shopImagePreview, setShopImagePreview] = useState(null);
   const [shopImageUploading, setShopImageUploading] = useState(false);
+
+  // --------------- ADMIN FORM (new - phone_number based) ----------------
+  const [isAdminFormVisible, setIsAdminFormVisible] = useState(false);
+  const [adminFormLoading, setAdminFormLoading] = useState(false);
+  const [adminForm, setAdminForm] = useState({
+    phone_number: "",
+    shop_name: "",
+    shop_address: "",
+    gst_number: "",
+    business_type: "",
+    license_number: "",
+    latitude: "",
+    longitude: "",
+    shop_number: "",
+  });
 
   // ---------------- PRODUCTS -----------------
   const [products, setProducts] = useState([]);
@@ -116,6 +133,7 @@ const RetailManager = ({ isSidebarOpen }) => {
   const [loadingAggregate, setLoadingAggregate] = useState(false);
 
   const formSectionRef = useRef(null);
+  const adminFormRef = useRef(null);
   const access_token = localStorage.getItem("access_token");
 
   // --------------- STATS ---------------------
@@ -125,7 +143,7 @@ const RetailManager = ({ isSidebarOpen }) => {
       verified: retailers.filter((r) => r.is_verified).length,
       unverified: retailers.filter((r) => !r.is_verified).length,
     }),
-    [retailers]
+    [retailers],
   );
 
   const authHeader = useMemo(
@@ -134,7 +152,7 @@ const RetailManager = ({ isSidebarOpen }) => {
         Authorization: `Bearer ${access_token}`,
       },
     }),
-    [access_token]
+    [access_token],
   );
 
   // ========== API OPERATIONS ==========
@@ -147,11 +165,10 @@ const RetailManager = ({ isSidebarOpen }) => {
       setLoadingRetailers(false);
       return;
     }
-
     try {
       const res = await axiosInstance.get(
         `${apiBase}/allretailers`,
-        authHeader
+        authHeader,
       );
       const data = res.data || [];
       const processed = data.map((r) => {
@@ -164,16 +181,13 @@ const RetailManager = ({ isSidebarOpen }) => {
             year: "numeric",
           });
         }
-        return {
-          ...r,
-          formatted_created_at: created,
-        };
+        return { ...r, formatted_created_at: created };
       });
       setRetailers(processed);
     } catch (err) {
       setErrorMsg(
         "Failed to fetch retailers: " +
-          (err.response?.data?.message || err.message)
+          (err.response?.data?.message || err.message),
       );
     } finally {
       setLoadingRetailers(false);
@@ -187,7 +201,7 @@ const RetailManager = ({ isSidebarOpen }) => {
       try {
         const res = await axiosInstance.get(
           `${apiBase}/getretail/${retailer_id}`,
-          authHeader
+          authHeader,
         );
         const r = res.data;
         let created = "Not Set";
@@ -199,18 +213,15 @@ const RetailManager = ({ isSidebarOpen }) => {
             year: "numeric",
           });
         }
-        setSelectedRetailer({
-          ...r,
-          formatted_created_at: created,
-        });
+        setSelectedRetailer({ ...r, formatted_created_at: created });
       } catch (err) {
         setErrorMsg(
           "Failed to fetch retailer details: " +
-            (err.response?.data?.message || err.message)
+            (err.response?.data?.message || err.message),
         );
       }
     },
-    [authHeader]
+    [authHeader],
   );
 
   const fetchProductsForRetailer = useCallback(
@@ -221,29 +232,28 @@ const RetailManager = ({ isSidebarOpen }) => {
       try {
         const res = await axiosInstance.get(
           `${apiBase}/getproducts/retailer/${retailer_id}`,
-          authHeader
+          authHeader,
         );
         setProducts(res.data || []);
       } catch (err) {
         setErrorMsg(
           "Failed to fetch products: " +
-            (err.response?.data?.message || err.message)
+            (err.response?.data?.message || err.message),
         );
       } finally {
         setLoadingProducts(false);
       }
     },
-    [authHeader]
+    [authHeader],
   );
 
-  // Optional single-call aggregate: retailers with embedded products
   const fetchRetailersWithProducts = useCallback(async () => {
     setLoadingAggregate(true);
     setErrorMsg("");
     try {
       const res = await axiosInstance.get(
         `${apiBase}/retailers-with-products`,
-        authHeader
+        authHeader,
       );
       const list = res.data || [];
       const processed = list.map((r) => {
@@ -256,10 +266,7 @@ const RetailManager = ({ isSidebarOpen }) => {
             year: "numeric",
           });
         }
-        return {
-          ...r,
-          formatted_created_at: created,
-        };
+        return { ...r, formatted_created_at: created };
       });
       setRetailers(processed);
       if (processed.length > 0) {
@@ -270,7 +277,7 @@ const RetailManager = ({ isSidebarOpen }) => {
     } catch (err) {
       setErrorMsg(
         "Failed to fetch aggregate retailers: " +
-          (err.response?.data?.message || err.message)
+          (err.response?.data?.message || err.message),
       );
     } finally {
       setLoadingAggregate(false);
@@ -282,7 +289,6 @@ const RetailManager = ({ isSidebarOpen }) => {
       if (!shopImageFile || !retailer_id) return null;
       setShopImageUploading(true);
       setErrorMsg("");
-
       try {
         const fd = new FormData();
         fd.append("retailer_id", retailer_id);
@@ -295,20 +301,20 @@ const RetailManager = ({ isSidebarOpen }) => {
               Authorization: `Bearer ${access_token}`,
               "Content-Type": "multipart/form-data",
             },
-          }
+          },
         );
         return res.data?.image_id || null;
       } catch (err) {
         setErrorMsg(
           "Shop image upload failed: " +
-            (err.response?.data?.message || err.message)
+            (err.response?.data?.message || err.message),
         );
         return null;
       } finally {
         setShopImageUploading(false);
       }
     },
-    [shopImageFile, access_token]
+    [shopImageFile, access_token],
   );
 
   const uploadProductImage = useCallback(
@@ -316,7 +322,6 @@ const RetailManager = ({ isSidebarOpen }) => {
       if (!productImageFile || !product_id) return null;
       setProductImageUploading(true);
       setErrorMsg("");
-
       try {
         const fd = new FormData();
         fd.append("product_id", product_id);
@@ -329,20 +334,20 @@ const RetailManager = ({ isSidebarOpen }) => {
               Authorization: `Bearer ${access_token}`,
               "Content-Type": "multipart/form-data",
             },
-          }
+          },
         );
         return res.data?.image_id || null;
       } catch (err) {
         setErrorMsg(
           "Product image upload failed: " +
-            (err.response?.data?.message || err.message)
+            (err.response?.data?.message || err.message),
         );
         return null;
       } finally {
         setProductImageUploading(false);
       }
     },
-    [productImageFile, access_token]
+    [productImageFile, access_token],
   );
 
   // ========== EFFECTS ==========
@@ -362,19 +367,13 @@ const RetailManager = ({ isSidebarOpen }) => {
     fetchProductsForRetailer,
   ]);
 
-  // ========== HANDLERS: RETAILER FORM ==========
+  // ========== HANDLERS: EXISTING RETAILER FORM ==========
 
   const handleChange = (e) =>
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleCheckboxChange = (e) =>
-    setForm({
-      ...form,
-      [e.target.name]: e.target.checked,
-    });
+    setForm({ ...form, [e.target.name]: e.target.checked });
 
   const resetForm = (showForm = true) => {
     setForm({
@@ -387,6 +386,7 @@ const RetailManager = ({ isSidebarOpen }) => {
       license_number: "",
       latitude: "",
       longitude: "",
+      shop_number: "",
       is_verified: false,
     });
     setIsEdit(false);
@@ -402,6 +402,7 @@ const RetailManager = ({ isSidebarOpen }) => {
       setIsFormVisible(false);
     } else {
       resetForm(true);
+      setIsAdminFormVisible(false);
       setTimeout(() => {
         formSectionRef.current?.scrollIntoView({
           behavior: "smooth",
@@ -427,13 +428,11 @@ const RetailManager = ({ isSidebarOpen }) => {
     e.preventDefault();
     setStatusMsg("");
     setErrorMsg("");
-
     try {
       if (!form.user_id) {
-        setErrorMsg("User ID is required (retailer must be a user).");
+        setErrorMsg("User ID is required.");
         return;
       }
-
       if (isEdit) {
         await axiosInstance.put(
           `${apiBase}/updateretailers/${form.retailer_id}`,
@@ -445,22 +444,21 @@ const RetailManager = ({ isSidebarOpen }) => {
             license_number: form.license_number,
             latitude: form.latitude || null,
             longitude: form.longitude || null,
+            shop_number: form.shop_number || null,
             is_verified: form.is_verified,
           },
-          authHeader
+          authHeader,
         );
-
         if (shopImageFile) {
           const image_id = await uploadShopImage(form.retailer_id);
           if (image_id) {
             await axiosInstance.put(
               `${apiBase}/updateretailers/${form.retailer_id}`,
               { image_id },
-              authHeader
+              authHeader,
             );
           }
         }
-
         setStatusMsg("Retailer updated successfully.");
       } else {
         const res = await axiosInstance.post(
@@ -474,31 +472,29 @@ const RetailManager = ({ isSidebarOpen }) => {
             license_number: form.license_number,
             latitude: form.latitude || null,
             longitude: form.longitude || null,
+            shop_number: form.shop_number || null,
           },
-          authHeader
+          authHeader,
         );
-        const created = res.data?.retailer;
-        const createdId = created?.retailer_id;
-
+        const createdId = res.data?.retailer_id;
         if (createdId && shopImageFile) {
           const image_id = await uploadShopImage(createdId);
           if (image_id) {
             await axiosInstance.put(
               `${apiBase}/updateretailers/${createdId}`,
               { image_id },
-              authHeader
+              authHeader,
             );
           }
         }
-
         setStatusMsg("Retailer created successfully.");
       }
-
       fetchRetailers();
       setIsFormVisible(false);
     } catch (err) {
       setErrorMsg(
-        err?.response?.data?.message || "Operation failed. Please check inputs."
+        err?.response?.data?.message ||
+          "Operation failed. Please check inputs.",
       );
     }
   };
@@ -514,13 +510,15 @@ const RetailManager = ({ isSidebarOpen }) => {
       license_number: r.license_number || "",
       latitude: r.latitude || "",
       longitude: r.longitude || "",
+      shop_number: r.shop_number || "",
       is_verified: !!r.is_verified,
     });
     setIsEdit(true);
     setIsFormVisible(true);
+    setIsAdminFormVisible(false);
     if (r.shop_image_url) {
       setShopImagePreview(
-        `http://${SERVER_IP}:${SERVER_PORT}${r.shop_image_url}`
+        `http://${SERVER_IP}:${SERVER_PORT}${r.shop_image_url}`,
       );
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -529,6 +527,103 @@ const RetailManager = ({ isSidebarOpen }) => {
   const handleRetailerCardClick = (r) => {
     setSelectedRetailer(r);
     setIsProductPanelOpen(true);
+  };
+
+  // ========== HANDLERS: ADMIN FORM (phone_number based) ==========
+
+  const handleAdminFormChange = (e) =>
+    setAdminForm({ ...adminForm, [e.target.name]: e.target.value });
+
+  const resetAdminForm = () => {
+    setAdminForm({
+      phone_number: "",
+      shop_name: "",
+      shop_address: "",
+      gst_number: "",
+      business_type: "",
+      license_number: "",
+      latitude: "",
+      longitude: "",
+      shop_number: "",
+    });
+    setErrorMsg("");
+    setStatusMsg("");
+  };
+
+  const handleToggleAdminForm = () => {
+    if (isAdminFormVisible) {
+      setIsAdminFormVisible(false);
+    } else {
+      setIsAdminFormVisible(true);
+      setIsFormVisible(false);
+      resetAdminForm();
+      setTimeout(() => {
+        adminFormRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 100);
+    }
+  };
+
+  const handleAdminSubmit = async (e) => {
+    e.preventDefault();
+    setStatusMsg("");
+    setErrorMsg("");
+
+    if (!adminForm.phone_number.trim()) {
+      setErrorMsg("Phone number is required.");
+      return;
+    }
+    if (adminForm.phone_number.trim().length < 10) {
+      setErrorMsg("Enter a valid 10-digit phone number.");
+      return;
+    }
+    if (!adminForm.shop_name.trim()) {
+      setErrorMsg("Shop name is required.");
+      return;
+    }
+
+    setAdminFormLoading(true);
+    try {
+      const res = await axiosInstance.post(
+        `${apiBase}/createretailersadmin`,
+        {
+          phone_number: adminForm.phone_number.trim(),
+          shop_name: adminForm.shop_name,
+          shop_address: adminForm.shop_address,
+          gst_number: adminForm.gst_number,
+          business_type: adminForm.business_type,
+          license_number: adminForm.license_number,
+          latitude: adminForm.latitude ? parseFloat(adminForm.latitude) : null,
+          longitude: adminForm.longitude
+            ? parseFloat(adminForm.longitude)
+            : null,
+          shop_number: adminForm.shop_number || null,
+        },
+        authHeader,
+      );
+      setStatusMsg(
+        `✅ Retailer created! Retailer ID: ${res.data?.retailer_id} for user ${res.data?.phone_number}`,
+      );
+      resetAdminForm();
+      fetchRetailers();
+      setIsAdminFormVisible(false);
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Failed to create retailer.";
+      // Handle specific backend errors
+      if (err?.response?.status === 404) {
+        setErrorMsg(
+          `❌ No user found with phone number: ${adminForm.phone_number}`,
+        );
+      } else if (err?.response?.status === 409) {
+        setErrorMsg(`⚠️ A retailer already exists for this phone number.`);
+      } else {
+        setErrorMsg(msg);
+      }
+    } finally {
+      setAdminFormLoading(false);
+    }
   };
 
   // ========== HANDLERS: PRODUCTS ==========
@@ -554,18 +649,12 @@ const RetailManager = ({ isSidebarOpen }) => {
 
   const handleProductChange = (e) => {
     const { name, value } = e.target;
-    setProductForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setProductForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleProductCheckboxChange = (e) => {
     const { name, checked } = e.target;
-    setProductForm((prev) => ({
-      ...prev,
-      [name]: checked,
-    }));
+    setProductForm((prev) => ({ ...prev, [name]: checked }));
   };
 
   const handleProductImageChange = (e) => {
@@ -595,7 +684,7 @@ const RetailManager = ({ isSidebarOpen }) => {
     setIsProductEdit(true);
     if (p.product_image_url) {
       setProductImagePreview(
-        `http://${SERVER_IP}:${SERVER_PORT}${p.product_image_url}`
+        `http://${SERVER_IP}:${SERVER_PORT}${p.product_image_url}`,
       );
     }
   };
@@ -604,12 +693,10 @@ const RetailManager = ({ isSidebarOpen }) => {
     e.preventDefault();
     setStatusMsg("");
     setErrorMsg("");
-
     if (!selectedRetailer?.retailer_id) {
       setErrorMsg("Select a retailer before adding products.");
       return;
     }
-
     try {
       if (isProductEdit) {
         await axiosInstance.put(
@@ -628,20 +715,18 @@ const RetailManager = ({ isSidebarOpen }) => {
             description: productForm.description || null,
             is_active: productForm.is_active,
           },
-          authHeader
+          authHeader,
         );
-
         if (productImageFile) {
           const image_id = await uploadProductImage(productForm.product_id);
           if (image_id) {
             await axiosInstance.put(
               `${imageUploadBase}/product-images/upload`,
               { image_id },
-              authHeader
+              authHeader,
             );
           }
         }
-
         setStatusMsg("Product updated successfully.");
       } else {
         const res = await axiosInstance.post(
@@ -660,25 +745,21 @@ const RetailManager = ({ isSidebarOpen }) => {
                 : 0,
             description: productForm.description,
           },
-          authHeader
+          authHeader,
         );
-        const created = res.data?.product;
-        const createdProductId = created?.product_id;
-
+        const createdProductId = res.data?.product_id;
         if (createdProductId && productImageFile) {
           const image_id = await uploadProductImage(createdProductId);
           if (image_id) {
             await axiosInstance.put(
               `${imageUploadBase}/product-images/upload`,
               { image_id },
-              authHeader
+              authHeader,
             );
           }
         }
-
         setStatusMsg("Product added successfully.");
       }
-
       await fetchProductsForRetailer(selectedRetailer.retailer_id);
       resetProductForm();
     } catch (err) {
@@ -689,17 +770,15 @@ const RetailManager = ({ isSidebarOpen }) => {
   const handleToggleProductStatus = async (p) => {
     setErrorMsg("");
     try {
-      await axiosInstance.put(
-        `${apiBase}/products/${p.product_id}/isactive`,
-        {
-          is_active: !p.is_active,
-        },
-        authHeader
+      await axiosInstance.post(
+        `${apiBase}/products/${p.product_id}/toggle-status`,
+        {},
+        authHeader,
       );
       await fetchProductsForRetailer(selectedRetailer.retailer_id);
     } catch (err) {
       setErrorMsg(
-        err?.response?.data?.message || "Failed to update product status."
+        err?.response?.data?.message || "Failed to update product status.",
       );
     }
   };
@@ -716,7 +795,7 @@ const RetailManager = ({ isSidebarOpen }) => {
     try {
       await axiosInstance.delete(
         `${apiBase}/deleteproducts/${productToDelete.product_id}`,
-        authHeader
+        authHeader,
       );
       await fetchProductsForRetailer(selectedRetailer.retailer_id);
       setStatusMsg("Product deleted.");
@@ -804,6 +883,7 @@ const RetailManager = ({ isSidebarOpen }) => {
   display: flex;
   gap: 16px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .ag-search-bar {
@@ -849,11 +929,18 @@ const RetailManager = ({ isSidebarOpen }) => {
   gap: 8px;
   transition: var(--transition);
   box-shadow: 0 6px 15px rgba(27, 60, 53, 0.2);
+  font-family: inherit;
 }
 
 .btn-ag:hover {
   background: var(--ag-leaf);
   transform: translateY(-2px);
+}
+
+.btn-ag:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btn-ag.secondary {
@@ -864,6 +951,15 @@ const RetailManager = ({ isSidebarOpen }) => {
 
 .btn-ag.cancel {
   background: #E74C3C;
+}
+
+.btn-ag.admin-btn {
+  background: #2B6CB0;
+  box-shadow: 0 6px 15px rgba(43, 108, 176, 0.25);
+}
+
+.btn-ag.admin-btn:hover {
+  background: #2C5282;
 }
 
 .ag-stats-grid {
@@ -917,6 +1013,15 @@ const RetailManager = ({ isSidebarOpen }) => {
   border: 1px solid rgba(139, 168, 136, 0.1);
 }
 
+.ag-admin-form-container {
+  background: var(--ag-white);
+  border-radius: var(--radius-organic);
+  padding: 40px;
+  margin-bottom: 40px;
+  box-shadow: 0 20px 40px rgba(43, 108, 176, 0.1);
+  border: 2px solid rgba(43, 108, 176, 0.2);
+}
+
 .ag-form-header {
   display: flex;
   justify-content: space-between;
@@ -935,6 +1040,33 @@ const RetailManager = ({ isSidebarOpen }) => {
 
 .ag-form-header small {
   color: var(--ag-sage);
+}
+
+.ag-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #EBF8FF;
+  color: #2B6CB0;
+  border: 1px solid #BEE3F8;
+  border-radius: 50px;
+  padding: 4px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: 10px;
+}
+
+.ag-phone-highlight {
+  background: #EBF8FF;
+  border: 1.5px solid #90CDF4 !important;
+  color: #2B6CB0 !important;
+}
+
+.ag-phone-highlight:focus {
+  border-color: #2B6CB0 !important;
+  box-shadow: 0 0 0 4px rgba(43, 108, 176, 0.15) !important;
 }
 
 .ag-form-grid {
@@ -993,6 +1125,7 @@ const RetailManager = ({ isSidebarOpen }) => {
   margin-top: 30px;
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .btn-outlined {
@@ -1007,6 +1140,7 @@ const RetailManager = ({ isSidebarOpen }) => {
   gap: 6px;
   font-weight: 500;
   transition: var(--transition);
+  font-family: inherit;
 }
 
 .btn-outlined:hover {
@@ -1145,6 +1279,7 @@ const RetailManager = ({ isSidebarOpen }) => {
   gap: 6px;
   font-size: 0.8rem;
   transition: var(--transition);
+  font-family: inherit;
 }
 
 .btn-edit {
@@ -1317,6 +1452,12 @@ const RetailManager = ({ isSidebarOpen }) => {
   color: var(--ag-sage);
 }
 
+.ag-divider {
+  border: none;
+  border-top: 1px dashed rgba(139,168,136,0.3);
+  margin: 10px 0 20px 0;
+}
+
 @media (max-width: 768px) {
   .ag-wrapper {
     padding: 18px;
@@ -1345,8 +1486,9 @@ const RetailManager = ({ isSidebarOpen }) => {
     <>
       <style dangerouslySetInnerHTML={{ __html: styles }} />
       <div className={`ag-wrapper ${isSidebarOpen ? "sidebar-open" : ""}`}>
+        {/* ========== HEADER ========== */}
         <header className="ag-header">
-          <div className="ag-title"></div>
+          <div className="ag-title" />
           <div className="ag-controls">
             <div className="ag-search-bar">
               <Search size={18} />
@@ -1374,6 +1516,17 @@ const RetailManager = ({ isSidebarOpen }) => {
               <Database size={16} />
               {loadingAggregate ? "Loading..." : "Load with products"}
             </button>
+
+            {/* NEW: Admin Create Button */}
+            <button
+              className="btn-ag admin-btn"
+              type="button"
+              onClick={handleToggleAdminForm}
+            >
+              <UserPlus size={18} />
+              {isAdminFormVisible ? "Close admin form" : "Add by phone"}
+            </button>
+
             <button
               className="btn-ag"
               type="button"
@@ -1383,12 +1536,13 @@ const RetailManager = ({ isSidebarOpen }) => {
               {isFormVisible && !isEdit
                 ? "Close form"
                 : isEdit
-                ? "Editing retailer"
-                : "Add retailer"}
+                  ? "Editing retailer"
+                  : "Add retailer"}
             </button>
           </div>
         </header>
 
+        {/* ========== STATS ========== */}
         <section className="ag-stats-grid">
           <div className="ag-stat-card">
             <div className="ag-stat-icon">
@@ -1419,6 +1573,7 @@ const RetailManager = ({ isSidebarOpen }) => {
           </div>
         </section>
 
+        {/* ========== ALERTS ========== */}
         {statusMsg && (
           <div className="ag-alert success">
             <CheckCircle size={18} />
@@ -1432,6 +1587,168 @@ const RetailManager = ({ isSidebarOpen }) => {
           </div>
         )}
 
+        {/* ========== ADMIN FORM (Phone Number Based) ========== */}
+        {isAdminFormVisible && (
+          <section ref={adminFormRef} className="ag-admin-form-container">
+            <div className="ag-form-header">
+              <div>
+                <h2 style={{ color: "#2B6CB0" }}>
+                  <UserPlus size={20} />
+                  Create retailer by phone number
+                  <span className="ag-admin-badge">Admin Only</span>
+                </h2>
+                <small>
+                  Look up an existing user by their registered phone number and
+                  onboard them as a retailer.
+                </small>
+              </div>
+              <button
+                type="button"
+                className="btn-ag cancel"
+                onClick={() => setIsAdminFormVisible(false)}
+              >
+                <X size={16} />
+                Close
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminSubmit}>
+              <div className="ag-form-grid">
+                {/* Phone Number — highlighted */}
+                <div className="ag-input-group">
+                  <label>📱 Phone number (required)</label>
+                  <input
+                    type="tel"
+                    name="phone_number"
+                    placeholder="9876543210"
+                    value={adminForm.phone_number}
+                    onChange={handleAdminFormChange}
+                    maxLength={15}
+                    className="ag-phone-highlight"
+                    required
+                  />
+                </div>
+
+                <div className="ag-input-group">
+                  <label>Shop name</label>
+                  <input
+                    type="text"
+                    name="shop_name"
+                    placeholder="Sri Amman Agro Centre"
+                    value={adminForm.shop_name}
+                    onChange={handleAdminFormChange}
+                    required
+                  />
+                </div>
+
+                <div className="ag-input-group">
+                  <label>Shop address</label>
+                  <input
+                    type="text"
+                    name="shop_address"
+                    placeholder="Main road, village, district"
+                    value={adminForm.shop_address}
+                    onChange={handleAdminFormChange}
+                  />
+                </div>
+
+                <div className="ag-input-group">
+                  <label>GST number</label>
+                  <input
+                    type="text"
+                    name="gst_number"
+                    placeholder="33ABCDE1234F1Z5"
+                    value={adminForm.gst_number}
+                    onChange={handleAdminFormChange}
+                  />
+                </div>
+
+                <div className="ag-input-group">
+                  <label>License number</label>
+                  <input
+                    type="text"
+                    name="license_number"
+                    placeholder="TN-AGRO-12345"
+                    value={adminForm.license_number}
+                    onChange={handleAdminFormChange}
+                  />
+                </div>
+
+                <div className="ag-input-group">
+                  <label>Business type</label>
+                  <select
+                    name="business_type"
+                    value={adminForm.business_type}
+                    onChange={handleAdminFormChange}
+                  >
+                    <option value="">Select...</option>
+                    {businessTypeOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="ag-input-group">
+                  <label>Shop number</label>
+                  <input
+                    type="text"
+                    name="shop_number"
+                    placeholder="12A"
+                    value={adminForm.shop_number}
+                    onChange={handleAdminFormChange}
+                  />
+                </div>
+
+                <div className="ag-input-group">
+                  <label>Latitude</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    name="latitude"
+                    placeholder="13.035650"
+                    value={adminForm.latitude}
+                    onChange={handleAdminFormChange}
+                  />
+                </div>
+
+                <div className="ag-input-group">
+                  <label>Longitude</label>
+                  <input
+                    type="number"
+                    step="0.000001"
+                    name="longitude"
+                    placeholder="80.158210"
+                    value={adminForm.longitude}
+                    onChange={handleAdminFormChange}
+                  />
+                </div>
+              </div>
+
+              <div className="ag-form-actions">
+                <button
+                  type="submit"
+                  className="btn-ag admin-btn"
+                  disabled={adminFormLoading}
+                >
+                  <UserPlus size={18} />
+                  {adminFormLoading ? "Creating..." : "Create retailer"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-outlined"
+                  onClick={resetAdminForm}
+                >
+                  <Wind size={16} />
+                  Reset form
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
+
+        {/* ========== EXISTING RETAILER FORM (user_id based) ========== */}
         {isFormVisible && (
           <section ref={formSectionRef} className="ag-form-container">
             <div className="ag-form-header">
@@ -1462,7 +1779,7 @@ const RetailManager = ({ isSidebarOpen }) => {
                   <input
                     type="text"
                     name="user_id"
-                    placeholder="User ID of retailer (from users_auth)"
+                    placeholder="User ID from users_auth"
                     value={form.user_id}
                     onChange={handleChange}
                     disabled={isEdit}
@@ -1527,6 +1844,17 @@ const RetailManager = ({ isSidebarOpen }) => {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="ag-input-group">
+                  <label>Shop number</label>
+                  <input
+                    type="text"
+                    name="shop_number"
+                    placeholder="12A"
+                    value={form.shop_number}
+                    onChange={handleChange}
+                  />
                 </div>
 
                 <div className="ag-input-group">
@@ -1605,6 +1933,7 @@ const RetailManager = ({ isSidebarOpen }) => {
           </section>
         )}
 
+        {/* ========== MAIN LAYOUT ========== */}
         <section className="ag-main-layout">
           <div>
             {loadingRetailers ? (
@@ -1721,7 +2050,6 @@ const RetailManager = ({ isSidebarOpen }) => {
                           className="btn-action btn-delete"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // future: add retailer delete route
                           }}
                         >
                           <Trash2 size={14} />
@@ -1735,6 +2063,7 @@ const RetailManager = ({ isSidebarOpen }) => {
             )}
           </div>
 
+          {/* ========== SIDE PANEL: PRODUCTS ========== */}
           <aside className="ag-side-panel">
             <div className="ag-side-header">
               <div>
@@ -2021,6 +2350,7 @@ const RetailManager = ({ isSidebarOpen }) => {
           </aside>
         </section>
 
+        {/* ========== CONFIRM MODAL ========== */}
         {isConfirmOpen && (
           <div className="ag-overlay">
             <div className="ag-modal">
@@ -2059,9 +2389,7 @@ const RetailManager = ({ isSidebarOpen }) => {
                   className="btn-ag"
                   type="button"
                   onClick={() => {
-                    if (confirmMode === "product") {
-                      handleDeleteProduct();
-                    }
+                    if (confirmMode === "product") handleDeleteProduct();
                   }}
                 >
                   <Trash2 size={16} />

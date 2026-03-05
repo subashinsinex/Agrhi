@@ -43,6 +43,10 @@ const retailManagementRoutes = require("./routes/retailManagementRoutes");
 const marketPlaceRoutes = require("./routes/marketPlaceRoutes");
 const shopImageRoutes = require("./routes/shopImageRoutes");
 const productImageRoutes = require("./routes/productImageRoutes");
+const aiChatRoutes = require("./routes/aiChatRoutes");
+
+// AI Chatbot route (before jwtChecker because it's /api/chatbot)
+app.use("/api/chatbot", aiChatRoutes);
 
 // Image routes (behind jwtChecker because they are /api)
 app.use("/api/shop-images", shopImageRoutes);

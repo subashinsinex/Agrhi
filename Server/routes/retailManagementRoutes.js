@@ -7,6 +7,13 @@ const adminChecker = require("../middleware/adminChecker");
 
 // Retailer profile
 router.post("/createretailers", jwtChecker, retailService.createRetailer);
+// Admin creates retailer using phone number
+router.post(
+  "/createretailersadmin",
+  jwtChecker,
+  adminChecker, // only admin can use this
+  retailService.createRetailerAdmin,
+);
 
 // NEW: list all retailers (admin / authenticated)
 router.get("/allretailers", jwtChecker, retailService.getAllRetailers);
@@ -20,7 +27,7 @@ router.get("/retailers/nearby", jwtChecker, retailService.getNearbyRetailers);
 router.get(
   "/retailers-with-products",
   jwtChecker,
-  retailService.getRetailersWithProducts
+  retailService.getRetailersWithProducts,
 );
 
 // Retailer products
@@ -29,7 +36,7 @@ router.post("/createproducts", jwtChecker, retailService.createProduct);
 router.get(
   "/getproducts/retailer/:id",
   jwtChecker,
-  retailService.getProductsByRetailer
+  retailService.getProductsByRetailer,
 );
 
 router.put("/updateproducts/:id", jwtChecker, retailService.updateProduct);
@@ -44,7 +51,7 @@ router.delete(
   "/deleteproducts/:id",
   jwtChecker,
   adminChecker,
-  retailService.deleteProduct
+  retailService.deleteProduct,
 );
 
 // NEW: Get store locations (retailer_id, shop_name, shop_address, business_type, latitude, longitude)
