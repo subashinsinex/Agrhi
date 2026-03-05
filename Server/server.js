@@ -1,32 +1,29 @@
-// Server/server.js
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const requestIp = require("request-ip");
-const emailService = require("./utils/emailSender");
 const path = require("path");
 
 const { asyncLocalStorage } = require("./db/database");
-const jwtChecker = require("./middleware/jwtChecker");
+const logger = require("./utils/logger");
+const httpLogger = require("./middleware/httpLogger");
+const emailService = require("./utils/emailSender");
 
 const app = express();
 
-// 1) Trust proxy
+// Trust proxy
 app.set("trust proxy", true);
 
-// 2) ALS context for every request (FIRST)
-app.use((req, res, next) => {
-  asyncLocalStorage.run({ userId: null }, () => {
-    next();
-  });
-});
+// ALS context
+app.use((req, res, next) => asyncLocalStorage.run({ userId: null }, next));
 
-// 3) Core middleware
+// Core middleware
 app.use(cors());
 app.use(express.json());
 app.use(requestIp.mw());
+app.use(httpLogger);
 
-// 5) Routes
+// Routes
 const loginRoutes = require("./routes/loginRoutes");
 const userRoutes = require("./routes/userManageRoutes");
 const subsidiesRoutes = require("./routes/subsidiesRoutes");
@@ -44,11 +41,8 @@ const marketPlaceRoutes = require("./routes/marketPlaceRoutes");
 const shopImageRoutes = require("./routes/shopImageRoutes");
 const productImageRoutes = require("./routes/productImageRoutes");
 
-// Image routes (behind jwtChecker because they are /api)
 app.use("/api/shop-images", shopImageRoutes);
 app.use("/api/product-images", productImageRoutes);
-
-// Other API routes
 app.use("/api", loginRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/subsidies", subsidiesRoutes);
@@ -64,18 +58,14 @@ app.use("/api/farmstore", farmStoreRoutes);
 app.use("/api/retail", retailManagementRoutes);
 app.use("/api/marketplace", marketPlaceRoutes);
 
-// Static
+// Static files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/models", express.static("models"));
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Server is running on port ${PORT}`);
-  console.log(`📍 Server URL: http://localhost:${PORT}`);
-
-  console.log("📧 Testing email service...");
+  logger.server(`Server started on port ${PORT}`);
   await emailService.testConnection();
-
-  console.log("✅ Server initialization complete\n");
+  logger.server("All services initialized — ready to handle requests");
 });

@@ -70,6 +70,7 @@ Server/.cache/
 Server/.eslintcache 
 Server/.tsbuildinfo 
 Server/uploads
+Server/logs
 
 # If using TypeScript in Server
 Server/tsconfig.tsbuildinfo 

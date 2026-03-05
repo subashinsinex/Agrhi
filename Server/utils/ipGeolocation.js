@@ -1,20 +1,14 @@
-// utils/ipGeolocation.js
-
+const logger = require("./logger");
 const axios = require("axios");
 
-/**
- * Get location from IP address using free API
- * Using freeipapi.com (no limit on free tier)
- */
+// IP geolocation service
 async function getLocationFromIP(ipAddress) {
   try {
-    // Clean IPv6 prefix if present (::ffff:123.45.67.89 -> 123.45.67.89)
     let cleanIp = ipAddress;
     if (ipAddress && ipAddress.includes("::ffff:")) {
       cleanIp = ipAddress.split("::ffff:")[1];
     }
 
-    // Handle localhost/private IPs
     if (
       cleanIp === "::1" ||
       cleanIp === "127.0.0.1" ||
@@ -23,14 +17,17 @@ async function getLocationFromIP(ipAddress) {
       cleanIp.startsWith("172.16.") ||
       cleanIp.startsWith("172.31.")
     ) {
+      logger.info(`IP ${cleanIp} → Local Network`);
       return "Local Network";
     }
+
+    logger.info(`Geolocation lookup for IP: ${cleanIp}`);
 
     const response = await axios.get(
       `https://free.freeipapi.com/api/json/${cleanIp}`,
       {
         timeout: 3000,
-      }
+      },
     );
 
     const { cityName, regionName, countryName } = response.data;
@@ -40,9 +37,11 @@ async function getLocationFromIP(ipAddress) {
     if (regionName) parts.push(regionName);
     if (countryName) parts.push(countryName);
 
-    return parts.length > 0 ? parts.join(", ") : "Unknown Location";
+    const location = parts.length > 0 ? parts.join(", ") : "Unknown Location";
+    logger.info(`IP ${cleanIp} → ${location}`);
+    return location;
   } catch (error) {
-    console.error("Geolocation API error:", error.message);
+    logger.error("Geolocation API error:", error.message);
     return "Unknown Location";
   }
 }

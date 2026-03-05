@@ -1,8 +1,11 @@
-// Server/services/retailManagementServices.js (or similar)
+// Retailer and product management services
 const { query } = require("../db/database");
 const { v4: uuidv4 } = require("uuid");
+const logger = require("../utils/logger");
 
+// Generate unique UUID using query function
 async function generateUniqueId(queryFn, tableName, idColumn) {
+  logger.info("Generating unique ID", { tableName, idColumn });
   let id, exists;
   do {
     id = uuidv4();
@@ -12,9 +15,11 @@ async function generateUniqueId(queryFn, tableName, idColumn) {
     );
     exists = check.rowCount > 0;
   } while (exists);
+  logger.info("Generated unique ID", { id, tableName });
   return id;
 }
 
+// Create new retailer with image placeholder
 exports.createRetailer = async (req, res) => {
   const {
     user_id,
@@ -28,6 +33,8 @@ exports.createRetailer = async (req, res) => {
     shop_number,
   } = req.body;
 
+  logger.info("Creating retailer", { user_id, shop_name });
+
   try {
     await query("BEGIN");
 
@@ -36,24 +43,27 @@ exports.createRetailer = async (req, res) => {
       "SELECT user_id FROM users_auth WHERE user_id = $1 LIMIT 1",
       [user_id],
     );
+
+    logger.info("User validation", { user_id, exists: userRes.rowCount > 0 });
+
     if (userRes.rowCount === 0) {
+      logger.error("Invalid user_id", { user_id });
       throw new Error("Invalid user_id. User not found.");
     }
 
-    // Generate retailer_id
+    // Generate IDs and create image placeholder
     const retailer_id = await generateUniqueId(
       query,
       "retailers",
       "retailer_id",
     );
-
-    // Generate image_id and insert into images table with NULL image_url
     const image_id = uuidv4();
+
     await query("INSERT INTO images (image_id, image_url) VALUES ($1, NULL)", [
       image_id,
     ]);
 
-    // Create retailer with the pre-generated image_id
+    // Insert retailer record
     const result = await query(
       `INSERT INTO retailers 
          (retailer_id, user_id, shop_name, shop_address, gst_number, business_type, license_number, latitude, longitude, shop_number, image_id)
@@ -75,21 +85,27 @@ exports.createRetailer = async (req, res) => {
     );
 
     await query("COMMIT");
+    logger.info("Retailer created successfully", { retailer_id });
+
     res.json({
       message: "Retailer created",
       retailer_id: result.rows[0].retailer_id,
     });
   } catch (error) {
     await query("ROLLBACK");
-    console.error("createRetailer error:", error);
-    res
-      .status(500)
-      .json({ message: "Error creating retailer", error: error.message });
+    logger.error("createRetailer error:", error);
+    res.status(500).json({
+      message: "Error creating retailer",
+      error: error.message,
+    });
   }
 };
 
+// Get retailer details by user_id
 exports.getRetailerById = async (req, res) => {
-  const { id } = req.params; // user_id
+  const { id } = req.params;
+  logger.info("Fetching retailer by user_id", { id });
+
   try {
     const sql = `
       SELECT 
@@ -104,18 +120,25 @@ exports.getRetailerById = async (req, res) => {
       WHERE r.user_id = $1
     `;
     const result = await query(sql, [id]);
+
     if (result.rowCount === 0) {
+      logger.warn("Retailer not found by user_id", { id });
       return res.status(404).json({ message: "Retailer not found" });
     }
+
+    logger.info("Retailer fetched by user_id", { id, count: result.rowCount });
     res.json(result.rows);
   } catch (error) {
-    console.error("getRetailerById error:", error);
+    logger.error("getRetailerById error:", { id, error });
     res.status(500).json({ message: "Error fetching retailer", error });
   }
 };
 
+// Get retailer details by retailer_id
 exports.getRetailerByRetailId = async (req, res) => {
-  const { id } = req.params; // retailer_id
+  const { id } = req.params;
+  logger.info("Fetching retailer by retailer_id", { id });
+
   try {
     const sql = `
       SELECT 
@@ -130,28 +153,25 @@ exports.getRetailerByRetailId = async (req, res) => {
       WHERE r.retailer_id = $1
     `;
     const result = await query(sql, [id]);
+
     if (result.rowCount === 0) {
+      logger.warn("Retailer not found by retailer_id", { id });
       return res.status(404).json({ message: "Retailer not found" });
     }
+
+    logger.info("Retailer fetched by retailer_id", { id });
     res.json(result.rows[0]);
   } catch (error) {
-    console.error("getRetailerByRetailId error:", error);
+    logger.error("getRetailerByRetailId error:", { id, error });
     res.status(500).json({ message: "Error fetching retailer", error });
   }
 };
 
+// Update retailer details
 exports.updateRetailer = async (req, res) => {
-  const { id } = req.params; // retailer_id
-  const {
-    shop_name,
-    shop_address,
-    gst_number,
-    business_type,
-    license_number,
-    is_verified,
-    image_id,
-    shop_number,
-  } = req.body;
+  const { id } = req.params;
+  const updates = req.body;
+  logger.info("Updating retailer", { id });
 
   try {
     const sql = `
@@ -169,34 +189,39 @@ exports.updateRetailer = async (req, res) => {
     `;
     const result = await query(sql, [
       id,
-      shop_name,
-      shop_address,
-      gst_number,
-      business_type,
-      license_number,
-      is_verified,
-      image_id,
-      shop_number,
+      updates.shop_name,
+      updates.shop_address,
+      updates.gst_number,
+      updates.business_type,
+      updates.license_number,
+      updates.is_verified,
+      updates.image_id,
+      updates.shop_number,
     ]);
 
     if (result.rowCount === 0) {
+      logger.warn("Retailer not found for update", { id });
       return res.status(404).json({ message: "Retailer not found" });
     }
 
+    logger.info("Retailer updated successfully", { id });
     res.json({ message: "Retailer updated", retailer: result.rows[0] });
   } catch (error) {
-    console.error("updateRetailer error:", error);
+    logger.error("updateRetailer error:", { id, error });
     res.status(500).json({ message: "Error updating retailer", error });
   }
 };
 
+// Find nearby retailers within 5km radius
 exports.getNearbyRetailers = async (req, res) => {
   const { lat, lng } = req.query;
+  logger.info("Finding nearby retailers", { lat, lng });
 
   if (!lat || !lng) {
-    return res
-      .status(400)
-      .json({ message: "lat and lng query params are required" });
+    logger.error("Missing lat/lng params");
+    return res.status(400).json({
+      message: "lat and lng query params are required",
+    });
   }
 
   try {
@@ -224,58 +249,59 @@ exports.getNearbyRetailers = async (req, res) => {
       ORDER BY distance_km
     `;
     const result = await query(sql, [parseFloat(lat), parseFloat(lng)]);
+
+    logger.info("Nearby retailers found", {
+      lat,
+      lng,
+      count: result.rows.length,
+    });
     res.json(result.rows);
   } catch (error) {
-    console.error("getNearbyRetailers error:", error);
-    res.status(500).json({ message: "Error fetching nearby retailers", error });
+    logger.error("getNearbyRetailers error:", { lat, lng, error });
+    res.status(500).json({
+      message: "Error fetching nearby retailers",
+      error,
+    });
   }
 };
 
-// ---- Products ----
-
-// Server/services/retailManagementServices.js
-
+// Create new product with image placeholder
 exports.createProduct = async (req, res) => {
-  const {
-    retailer_id,
-    category,
-    product_name,
-    brand,
-    price,
-    unit,
-    stock_qty,
-    description,
-  } = req.body;
+  const data = req.body;
+  const userId = req.user_id;
+  logger.info("Creating product", { retailer_id: data.retailer_id, userId });
 
   try {
-    const userId = req.user_id;
-
+    // Ownership check before transaction
     const ownerCheck = await query(
       "SELECT 1 FROM retailers WHERE retailer_id = $1 AND user_id = $2",
-      [retailer_id, userId],
+      [data.retailer_id, userId],
     );
 
     if (ownerCheck.rowCount === 0) {
+      logger.error("User doesn't own retailer", {
+        userId,
+        retailer_id: data.retailer_id,
+      });
       return res.status(403).json({ message: "You don't own this shop" });
     }
 
     await query("BEGIN");
 
-    // Generate product_id
+    // Generate IDs and create image placeholder
     const product_id = await generateUniqueId(
       query,
       "retailer_products",
       "product_id",
     );
-
-    // Generate image_id and insert placeholder into images table
     const image_id = uuidv4();
+
     await query(
       "INSERT INTO images (image_id, image_url) VALUES ($1, 'no-image')",
       [image_id],
     );
 
-    // Insert product with the pre-generated image_id
+    // Insert product record
     const result = await query(
       `INSERT INTO retailer_products 
          (product_id, retailer_id, category, product_name, brand, price, unit, stock_qty, description, image_id)
@@ -283,35 +309,44 @@ exports.createProduct = async (req, res) => {
        RETURNING *`,
       [
         product_id,
-        retailer_id,
-        category,
-        product_name,
-        brand,
-        price,
-        unit,
-        stock_qty || 0,
-        description,
-        image_id, // Always include the generated image_id
+        data.retailer_id,
+        data.category,
+        data.product_name,
+        data.brand,
+        data.price,
+        data.unit,
+        data.stock_qty || 0,
+        data.description,
+        image_id,
       ],
     );
 
     await query("COMMIT");
+    logger.info("Product created successfully", {
+      product_id,
+      retailer_id: data.retailer_id,
+    });
+
     res.json({
       message: "Product added",
       product_id: result.rows[0].product_id,
-      image_id: image_id, // Return image_id to frontend
+      image_id: image_id,
     });
   } catch (error) {
     await query("ROLLBACK");
-    console.error("createProduct error:", error);
-    res
-      .status(500)
-      .json({ message: "Error adding product", error: error.message });
+    logger.error("createProduct error:", error);
+    res.status(500).json({
+      message: "Error adding product",
+      error: error.message,
+    });
   }
 };
 
+// Get all products for a retailer
 exports.getProductsByRetailer = async (req, res) => {
-  const { id } = req.params; // retailer_id
+  const { id } = req.params;
+  logger.info("Fetching products by retailer", { id });
+
   try {
     const sql = `
       SELECT 
@@ -323,25 +358,23 @@ exports.getProductsByRetailer = async (req, res) => {
       ORDER BY rp.created_at DESC
     `;
     const result = await query(sql, [id]);
+
+    logger.info("Products fetched", {
+      retailer_id: id,
+      count: result.rows.length,
+    });
     res.json(result.rows);
   } catch (error) {
-    console.error("getProductsByRetailer error:", error);
+    logger.error("getProductsByRetailer error:", { id, error });
     res.status(500).json({ message: "Error fetching products", error });
   }
 };
 
+// Update product details
 exports.updateProduct = async (req, res) => {
-  const { id } = req.params; // product_id
-  const {
-    category,
-    product_name,
-    brand,
-    price,
-    unit,
-    stock_qty,
-    is_active,
-    image_id,
-  } = req.body;
+  const { id } = req.params;
+  const updates = req.body;
+  logger.info("Updating product", { id });
 
   try {
     const sql = `
@@ -359,29 +392,33 @@ exports.updateProduct = async (req, res) => {
     `;
     const result = await query(sql, [
       id,
-      category,
-      product_name,
-      brand,
-      price,
-      unit,
-      stock_qty,
-      is_active,
-      image_id,
+      updates.category,
+      updates.product_name,
+      updates.brand,
+      updates.price,
+      updates.unit,
+      updates.stock_qty,
+      updates.is_active,
+      updates.image_id,
     ]);
 
     if (result.rowCount === 0) {
+      logger.warn("Product not found for update", { id });
       return res.status(404).json({ message: "Product not found" });
     }
 
+    logger.info("Product updated successfully", { id });
     res.json({ message: "Product updated", product: result.rows[0] });
   } catch (error) {
-    console.error("updateProduct error:", error);
+    logger.error("updateProduct error:", { id, error });
     res.status(500).json({ message: "Error updating product", error });
   }
 };
 
+// Toggle product active/inactive status
 exports.toggleProductStatus = async (req, res) => {
   const { id } = req.params;
+  logger.info("Toggling product status", { id });
 
   try {
     const sql = `
@@ -393,34 +430,45 @@ exports.toggleProductStatus = async (req, res) => {
     const result = await query(sql, [id]);
 
     if (result.rowCount === 0) {
+      logger.warn("Product not found for toggle", { id });
       return res.status(404).json({ message: "Product not found" });
     }
 
     const product = result.rows[0];
+    logger.info("Product status toggled", {
+      id,
+      is_active: product.is_active,
+    });
+
     res.json({
       message: `Product ${product.is_active ? "activated" : "deactivated"} successfully`,
       is_active: product.is_active,
     });
   } catch (error) {
-    console.error("toggleProductStatus error:", error);
+    logger.error("toggleProductStatus error:", { id, error });
     res.status(500).json({ message: "Error toggling product status", error });
   }
 };
 
+// Delete product by product_id
 exports.deleteProduct = async (req, res) => {
   const { id } = req.params;
+  logger.info("Deleting product", { id });
+
   try {
     await query("DELETE FROM retailer_products WHERE product_id = $1", [id]);
+    logger.info("Product deleted successfully", { id });
     res.json({ message: "Product deleted" });
   } catch (error) {
-    console.error("deleteProduct error:", error);
+    logger.error("deleteProduct error:", { id, error });
     res.status(500).json({ message: "Error deleting product", error });
   }
 };
 
-// ---- List all retailers with basic details + owner + image ----
-
+// Get all retailers with owner details and shop image
 exports.getAllRetailers = async (req, res) => {
+  logger.info("Fetching all retailers");
+
   try {
     const sql = `
       SELECT
@@ -435,16 +483,19 @@ exports.getAllRetailers = async (req, res) => {
       ORDER BY r.created_at DESC
     `;
     const result = await query(sql);
+
+    logger.info("All retailers fetched", { count: result.rows.length });
     res.json(result.rows);
   } catch (error) {
-    console.error("getAllRetailers error:", error);
+    logger.error("getAllRetailers error:", error);
     res.status(500).json({ message: "Error fetching retailers", error });
   }
 };
 
-// ---- List all retailers with their products (nested) ----
-
+// Get all retailers with their nested products list
 exports.getRetailersWithProducts = async (req, res) => {
+  logger.info("Fetching retailers with products");
+
   try {
     const sql = `
       SELECT
@@ -483,8 +534,8 @@ exports.getRetailersWithProducts = async (req, res) => {
 
     const result = await query(sql);
 
+    // Group products under each retailer
     const map = new Map();
-
     for (const row of result.rows) {
       if (!map.has(row.retailer_id)) {
         map.set(row.retailer_id, {
@@ -524,16 +575,25 @@ exports.getRetailersWithProducts = async (req, res) => {
       }
     }
 
-    res.json(Array.from(map.values()));
+    const retailers = Array.from(map.values());
+    logger.info("Retailers with products fetched", {
+      retailerCount: retailers.length,
+    });
+
+    res.json(retailers);
   } catch (error) {
-    console.error("getRetailersWithProducts error:", error);
-    res
-      .status(500)
-      .json({ message: "Error fetching retailers & products", error });
+    logger.error("getRetailersWithProducts error:", error);
+    res.status(500).json({
+      message: "Error fetching retailers & products",
+      error,
+    });
   }
 };
 
+// Get store locations for map display
 exports.getStoreLocations = async (req, res) => {
+  logger.info("Fetching store locations");
+
   try {
     const sql = `
       SELECT 
@@ -549,9 +609,11 @@ exports.getStoreLocations = async (req, res) => {
       ORDER BY created_at DESC
     `;
     const result = await query(sql);
+
+    logger.info("Store locations fetched", { count: result.rows.length });
     res.json(result.rows);
   } catch (error) {
-    console.error("getStoreLocations error:", error);
+    logger.error("getStoreLocations error:", error);
     res.status(500).json({ message: "Error fetching store locations", error });
   }
 };

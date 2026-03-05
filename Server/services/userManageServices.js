@@ -1,9 +1,15 @@
+// Core dependencies
 const { basePool } = require("../db/database");
 const bcrypt = require("bcrypt");
 const { v4: uuidv4 } = require("uuid");
+const logger = require("../utils/logger"); // Import shared logger
 const pool = basePool;
+
+// Utility: generate unique user_id using UUID
 async function generateUniqueUserId(client) {
-  let user_id, exists;
+  logger.info("Generating new user_id");
+  let user_id;
+  let exists;
   do {
     user_id = uuidv4();
     const check = await client.query(
@@ -12,9 +18,11 @@ async function generateUniqueUserId(client) {
     );
     exists = check.rowCount > 0;
   } while (exists);
+  logger.info("Generated unique user_id", user_id);
   return user_id;
 }
 
+// Fetch all users with auth, details and category
 async function getUsers() {
   const sql = `
     SELECT ua.user_id, ua.phone_number, ua.email, uc.category AS user_category,
@@ -24,43 +32,54 @@ async function getUsers() {
     JOIN user_category uc ON ud.category_id = uc.category_id
     ORDER BY ua.user_id;
   `;
-  const result = await pool.query(sql);
-  return result.rows;
+
+  logger.info("Fetching users");
+  try {
+    const result = await pool.query(sql);
+    logger.info("Fetched users count:", result.rowCount);
+    return result.rows;
+  } catch (error) {
+    logger.error("Error fetching users:", error);
+    throw error;
+  }
 }
 
+// Create new user (auth + details)
 async function postUser(newUser) {
   const client = await pool.connect();
+  logger.info("Starting user creation", {
+    phone_number: newUser.phone_number,
+    email: newUser.email,
+  });
+
   try {
     await client.query("BEGIN");
 
-    // Generate unique user_id UUID
     const user_id = await generateUniqueUserId(client);
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(newUser.password, 10);
-    console.log("Hashed Password:", hashedPassword);
+    logger.info("Password hashed for user_id", user_id);
 
-    // Insert into users_auth - no category_id here
     await client.query(
       `INSERT INTO users_auth (user_id, password, phone_number, email)
        VALUES ($1, $2, $3, $4)`,
       [user_id, hashedPassword, newUser.phone_number, newUser.email],
     );
+    logger.info("Inserted into users_auth", user_id);
 
-    // Fetch the UUID for the category_id to use in user_details
-    // Assuming newUser.category_id currently holds something like an integer or string representing the category
     const categoryResult = await client.query(
-      `SELECT category_id FROM user_category WHERE category_id = $1`, // Assuming category is the name, adjust as per your input
+      `SELECT category_id FROM user_category WHERE category_id = $1`,
       [newUser.category_id],
     );
 
     if (categoryResult.rowCount === 0) {
+      logger.error("Invalid category_id for user creation", {
+        user_id,
+        category_id: newUser.category_id,
+      });
       throw new Error("Invalid category_id: category does not exist");
     }
 
-    // const category_uuid = categoryResult.rows[0].category_id;
-
-    // Insert into user_details with the valid UUID for category
     await client.query(
       `INSERT INTO user_details (user_id, name, dob, address, pincode, category_id, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
@@ -73,20 +92,26 @@ async function postUser(newUser) {
         newUser.category_id,
       ],
     );
+    logger.info("Inserted into user_details", user_id);
 
     await client.query("COMMIT");
+    logger.info("User created successfully", user_id);
     return { message: "User created successfully" };
   } catch (error) {
-    console.error("Error creating user:", error);
+    logger.error("Error creating user, rolling back", error);
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
+    logger.info("Released DB client after user creation");
   }
 }
 
+// Update existing user (auth + details)
 async function putUser(user_id, updatedUser) {
   const client = await pool.connect();
+  logger.info("Starting user update", { user_id });
+
   try {
     await client.query("BEGIN");
 
@@ -96,6 +121,7 @@ async function putUser(user_id, updatedUser) {
         "UPDATE users_auth SET password = $1 WHERE user_id = $2",
         [hashedPassword, user_id],
       );
+      logger.info("Updated password for user", user_id);
     }
 
     await client.query(
@@ -104,6 +130,7 @@ async function putUser(user_id, updatedUser) {
        WHERE user_id = $3`,
       [updatedUser.phone_number, updatedUser.email, user_id],
     );
+    logger.info("Updated users_auth for user", user_id);
 
     await client.query(
       `UPDATE user_details
@@ -118,44 +145,67 @@ async function putUser(user_id, updatedUser) {
         user_id,
       ],
     );
+    logger.info("Updated user_details for user", user_id);
 
     await client.query("COMMIT");
+    logger.info("User updated successfully", user_id);
     return { message: "User updated successfully" };
   } catch (error) {
-    console.error("Error updating user:", error);
+    logger.error("Error updating user, rolling back", { user_id, error });
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
+    logger.info("Released DB client after user update", user_id);
   }
 }
 
+// Delete user (details then auth)
 async function deleteUser(user_id) {
   const client = await pool.connect();
+  logger.info("Starting user delete", { user_id });
+
   try {
     await client.query("BEGIN");
+
     await client.query("DELETE FROM user_details WHERE user_id = $1", [
       user_id,
     ]);
+    logger.info("Deleted from user_details", user_id);
+
     await client.query("DELETE FROM users_auth WHERE user_id = $1", [user_id]);
+    logger.info("Deleted from users_auth", user_id);
+
     await client.query("COMMIT");
+    logger.info("User deleted successfully", user_id);
     return { message: "User deleted successfully" };
   } catch (error) {
-    console.error("Error deleting user:", error);
+    logger.error("Error deleting user, rolling back", { user_id, error });
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
+    logger.info("Released DB client after user delete", user_id);
   }
 }
 
+// Fetch reference table versions for sync
 async function getReferenceTableVersions() {
   const sql =
     "SELECT ref_table_name, updated_at FROM reference_table_versions ORDER BY ref_table_name;";
-  const result = await pool.query(sql);
-  return result.rows;
+
+  logger.info("Fetching reference_table_versions");
+  try {
+    const result = await pool.query(sql);
+    logger.info("Fetched reference_table_versions count:", result.rowCount);
+    return result.rows;
+  } catch (error) {
+    logger.error("Error fetching reference_table_versions:", error);
+    throw error;
+  }
 }
 
+// Export user operations and reference version fetcher
 module.exports = {
   getUsers,
   postUser,

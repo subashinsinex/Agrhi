@@ -3,75 +3,85 @@ const router = express.Router();
 const subsidiesServices = require("../services/subsidiesServices");
 const jwtChecker = require("../middleware/jwtChecker");
 const adminChecker = require("../middleware/adminChecker");
+const logger = require("../utils/logger");
 
 // Get all subsidies
 router.get("/getSubsidy", jwtChecker, async (req, res) => {
+  
   try {
     const subsidies = await subsidiesServices.getSubsidies();
     res.json(subsidies);
   } catch (error) {
-    console.error("Route getSubsidy error:", error);
+    logger.error("GET /getSubsidy - Error:", error);
     res.status(500).json({ message: "Error fetching subsidies" });
   }
 });
 
-// Create new subsidy
+// Create new subsidy (admin only)
 router.post("/postSubsidy", jwtChecker, adminChecker, async (req, res) => {
+  
   try {
-    const newSubsidy = req.body;
-    const result = await subsidiesServices.postSubsidy(newSubsidy);
+    const result = await subsidiesServices.postSubsidy(req.body);
     res.status(201).json(result);
   } catch (error) {
-    console.error("Route postSubsidy error:", error);
+    logger.error("POST /postSubsidy - Error:", error);
     res.status(500).json({ message: "Error creating subsidy" });
   }
 });
 
-// Update subsidy
+// Update existing subsidy (admin only)
 router.put(
   "/putSubsidy/:subsidyid",
   jwtChecker,
   adminChecker,
   async (req, res) => {
+    
     try {
-      const subsidy_id = req.params.subsidyid;
-      const updatedSubsidy = req.body;
       const result = await subsidiesServices.putSubsidy(
-        subsidy_id,
-        updatedSubsidy
+        req.params.subsidyid,
+        req.body,
       );
       res.json(result);
     } catch (error) {
-      console.error("Route putSubsidy error:", error);
+      logger.error("PUT /putSubsidy - Error:", {
+        subsidy_id: req.params.subsidyid,
+        error,
+      });
       res.status(500).json({ message: "Error updating subsidy" });
     }
-  }
+  },
 );
 
-// Delete subsidy
+// Delete subsidy (admin only)
 router.delete(
   "/deleteSubsidy/:subsidyid",
   jwtChecker,
   adminChecker,
   async (req, res) => {
+    
     try {
-      const subsidy_id = req.params.subsidyid;
-      const result = await subsidiesServices.deleteSubsidy(subsidy_id);
+      const result = await subsidiesServices.deleteSubsidy(
+        req.params.subsidyid,
+      );
       res.json(result);
     } catch (error) {
-      console.error("Route deleteSubsidy error:", error);
+      logger.error("DELETE /deleteSubsidy - Error:", {
+        subsidy_id: req.params.subsidyid,
+        error,
+      });
       res.status(500).json({ message: "Error deleting subsidy" });
     }
-  }
+  },
 );
 
-// Route to get all state names
+// Get state names for dropdowns (public)
 router.get("/states", async (req, res) => {
+  
   try {
     const states = await subsidiesServices.getStateNames();
-    res.json(states); // [{ statename: "Tamil Nadu" }, ...]
+    res.json(states);
   } catch (error) {
-    console.error("Route /states error:", error);
+    logger.error("GET /states - Error:", error);
     res.status(500).json({ message: "Error fetching states" });
   }
 });
