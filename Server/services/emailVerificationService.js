@@ -1,15 +1,16 @@
-// services/emailVerificationService.js
+// Email OTP verification service
 const crypto = require("crypto");
 const pool = require("../db/database");
 const emailService = require("../utils/emailSender");
+const logger = require("../utils/logger");
 
 class EmailVerificationService {
-  /**
-   * Send OTP to user's email
-   */
+  // Send OTP to user's registered email
   async sendVerificationOTP({ userId, ipAddress }) {
+    logger.info("sendVerificationOTP - Request", { userId });
+
     try {
-      // Get user details from users_auth and user_details
+      // Fetch user email and verification status
       const userResult = await pool.query(
         `SELECT ua.email, ua.email_verified, ud.name
         FROM users_auth ua
@@ -19,43 +20,43 @@ class EmailVerificationService {
       );
 
       if (userResult.rows.length === 0) {
-        return {
-          success: false,
-          message: "User not found",
-        };
+        logger.error("sendVerificationOTP - User not found", { userId });
+        return { success: false, message: "User not found" };
       }
 
       const user = userResult.rows[0];
       const username = user.name || "User";
 
-      // Check if already verified
       if (user.email_verified) {
-        return {
-          success: false,
-          message: "Email is already verified",
-        };
+        logger.info("sendVerificationOTP - Already verified", { userId });
+        return { success: false, message: "Email is already verified" };
       }
 
-      // Check if email exists
       if (!user.email) {
+        logger.error("sendVerificationOTP - No email on file", { userId });
         return {
           success: false,
           message: "No email address found for this account",
         };
       }
 
-      // Check rate limiting (max 5 OTPs per hour)
+      // Check rate limit (max 5 OTPs per hour)
       const rateLimitExceeded = await this._checkOTPRateLimit(userId);
       if (rateLimitExceeded) {
+        logger.error("sendVerificationOTP - Rate limit exceeded", { userId });
         return {
           success: false,
           message: "Too many OTP requests. Please try again in 1 hour.",
         };
       }
 
-      // Check cooldown (60 seconds between resends)
+      // Check 60s cooldown between resends
       const cooldownActive = await this._checkCooldown(userId);
       if (cooldownActive.active) {
+        logger.info("sendVerificationOTP - Cooldown active", {
+          userId,
+          secondsRemaining: cooldownActive.secondsRemaining,
+        });
         return {
           success: false,
           message: `Please wait ${cooldownActive.secondsRemaining} seconds before requesting a new OTP`,
@@ -63,107 +64,94 @@ class EmailVerificationService {
         };
       }
 
-      // Generate 6-digit OTP
+      // Generate and hash 6-digit OTP
       const otp = this._generateOTP();
       const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
-
-      // OTP expires in 10 minutes
       const expiresAt = new Date(Date.now() + 600000);
 
-      // Store OTP in database
+      // Store OTP record
       await pool.query(
-        `INSERT INTO email_otp_verifications (
-          user_id, 
-          otp_hash, 
-          expires_at
-        ) VALUES ($1, $2, $3)`,
+        `INSERT INTO email_otp_verifications (user_id, otp_hash, expires_at)
+        VALUES ($1, $2, $3)`,
         [userId, otpHash, expiresAt],
       );
 
-      // Send OTP email with IP address
+      // Send OTP email
       const emailSent = await emailService.sendEmailVerificationOTP({
         to: user.email,
-        username: username,
-        otp: otp,
-        ipAddress: ipAddress, // This now includes location tracking
+        username,
+        otp,
+        ipAddress,
       });
 
       if (!emailSent) {
+        logger.error("sendVerificationOTP - Email send failed", { userId });
         return {
           success: false,
           message: "Failed to send OTP email. Please try again.",
         };
       }
 
-      // Mask email
       const maskedEmail = this._maskEmail(user.email);
+      logger.info("sendVerificationOTP - OTP sent", { userId, maskedEmail });
 
       return {
         success: true,
         message: "OTP sent successfully",
         emailHint: maskedEmail,
-        expiresIn: 600, // seconds
+        expiresIn: 600,
       };
     } catch (error) {
-      console.error("Send verification OTP error:", error);
+      logger.error("sendVerificationOTP - Error:", error);
       throw error;
     }
   }
 
-  /**
-   * Verify OTP
-   */
+  // Verify submitted OTP and mark email as verified
   async verifyOTP({ userId, otp, ipAddress }) {
+    logger.info("verifyOTP - Request", { userId });
+
     try {
       const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
-      console.log("Verifying OTP for userId:", userId, "from otp:", otpHash);
+
       await pool.query("BEGIN");
 
-      // Find and lock the OTP record
+      // Fetch and lock OTP record
       const otpResult = await pool.query(
         `SELECT id, verified, expires_at, attempts
         FROM email_otp_verifications
-        WHERE user_id = $1
-        AND otp_hash = $2
+        WHERE user_id = $1 AND otp_hash = $2
         FOR UPDATE`,
         [userId, otpHash],
       );
 
       if (otpResult.rows.length === 0) {
         await pool.query("ROLLBACK");
-
-        // Increment failed attempts
         await this._incrementFailedAttempts(userId);
-
-        return {
-          success: false,
-          message: "Invalid OTP",
-        };
+        logger.error("verifyOTP - Invalid OTP", { userId });
+        return { success: false, message: "Invalid OTP" };
       }
 
       const otpData = otpResult.rows[0];
 
-      // Check if expired
       if (new Date(otpData.expires_at) < new Date()) {
         await pool.query("ROLLBACK");
+        logger.error("verifyOTP - OTP expired", { userId });
         return {
           success: false,
           message: "OTP has expired. Please request a new one.",
         };
       }
 
-      // Check if already verified
       if (otpData.verified) {
         await pool.query("ROLLBACK");
-        return {
-          success: false,
-          message: "This OTP has already been used",
-        };
+        logger.error("verifyOTP - OTP already used", { userId });
+        return { success: false, message: "This OTP has already been used" };
       }
 
-      // Check attempts (max 5 attempts)
       if (otpData.attempts >= 5) {
         await pool.query("ROLLBACK");
+        logger.error("verifyOTP - Max attempts exceeded", { userId });
         return {
           success: false,
           message:
@@ -173,42 +161,41 @@ class EmailVerificationService {
 
       // Mark OTP as verified
       await pool.query(
-        `UPDATE email_otp_verifications 
-        SET verified = TRUE, verified_at = NOW() 
-        WHERE id = $1`,
+        `UPDATE email_otp_verifications SET verified = TRUE, verified_at = NOW() WHERE id = $1`,
         [otpData.id],
       );
 
-      // Mark email as verified in users_auth table
+      // Mark email as verified in users_auth
       await pool.query(
         "UPDATE users_auth SET email_verified = TRUE WHERE user_id = $1",
         [userId],
       );
 
       await pool.query("COMMIT");
+      logger.info("verifyOTP - Email verified successfully", { userId });
 
-      // Send confirmation email with IP and location (async)
+      // Send confirmation email async (non-blocking)
       this._sendVerificationConfirmationEmail(userId, ipAddress);
 
-      return {
-        success: true,
-        message: "Email verified successfully",
-      };
+      return { success: true, message: "Email verified successfully" };
     } catch (error) {
       await pool.query("ROLLBACK");
-      console.error("Verify OTP error:", error);
+      logger.error("verifyOTP - Error:", error);
       throw error;
     }
   }
 
-  /**
-   * Resend OTP
-   */
+  // Resend OTP after cooldown check
   async resendOTP({ userId, ipAddress }) {
+    logger.info("resendOTP - Request", { userId });
+
     try {
-      // Check cooldown
       const cooldownActive = await this._checkCooldown(userId);
       if (cooldownActive.active) {
+        logger.info("resendOTP - Cooldown active", {
+          userId,
+          secondsRemaining: cooldownActive.secondsRemaining,
+        });
         return {
           success: false,
           message: `Please wait ${cooldownActive.secondsRemaining} seconds before requesting a new OTP`,
@@ -216,18 +203,17 @@ class EmailVerificationService {
         };
       }
 
-      // Use the same sendVerificationOTP method
       return await this.sendVerificationOTP({ userId, ipAddress });
     } catch (error) {
-      console.error("Resend OTP error:", error);
+      logger.error("resendOTP - Error:", error);
       throw error;
     }
   }
 
-  /**
-   * Get verification status
-   */
+  // Get full email verification status for a user
   async getVerificationStatus(userId) {
+    logger.info("getVerificationStatus - Request", { userId });
+
     try {
       const userResult = await pool.query(
         "SELECT email, email_verified FROM users_auth WHERE user_id = $1",
@@ -235,38 +221,37 @@ class EmailVerificationService {
       );
 
       if (userResult.rows.length === 0) {
-        return {
-          success: false,
-          message: "User not found",
-        };
+        logger.error("getVerificationStatus - User not found", { userId });
+        return { success: false, message: "User not found" };
       }
 
       const user = userResult.rows[0];
 
-      // Check if there's a pending OTP
+      // Fetch most recent pending OTP
       const pendingOTPResult = await pool.query(
         `SELECT expires_at, attempts
         FROM email_otp_verifications
-        WHERE user_id = $1
-        AND verified = FALSE
-        AND expires_at > NOW()
-        ORDER BY created_at DESC
-        LIMIT 1`,
+        WHERE user_id = $1 AND verified = FALSE AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1`,
         [userId],
       );
 
       const hasPendingOTP = pendingOTPResult.rows.length > 0;
       const pendingOTP = hasPendingOTP ? pendingOTPResult.rows[0] : null;
-
-      // Check cooldown
       const cooldown = await this._checkCooldown(userId);
+
+      logger.info("getVerificationStatus - Success", {
+        userId,
+        emailVerified: user.email_verified,
+        hasPendingOTP,
+      });
 
       return {
         success: true,
         emailVerified: user.email_verified,
         hasEmail: !!user.email,
         emailHint: user.email ? this._maskEmail(user.email) : null,
-        hasPendingOTP: hasPendingOTP,
+        hasPendingOTP,
         otpExpiresAt: pendingOTP ? pendingOTP.expires_at : null,
         attemptsRemaining: pendingOTP
           ? Math.max(0, 5 - pendingOTP.attempts)
@@ -275,50 +260,39 @@ class EmailVerificationService {
         cooldownSeconds: cooldown.active ? cooldown.secondsRemaining : 0,
       };
     } catch (error) {
-      console.error("Get verification status error:", error);
+      logger.error("getVerificationStatus - Error:", error);
       throw error;
     }
   }
 
-  /**
-   * Generate 6-digit OTP
-   */
+  // Generate random 6-digit OTP
   _generateOTP() {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  /**
-   * Check OTP rate limiting (5 per hour)
-   */
+  // Check if user exceeded 5 OTP requests per hour
   async _checkOTPRateLimit(userId) {
     try {
       const result = await pool.query(
-        `SELECT COUNT(*) as count
-        FROM email_otp_verifications
-        WHERE user_id = $1
-        AND created_at > NOW() - INTERVAL '1 hour'`,
+        `SELECT COUNT(*) as count FROM email_otp_verifications
+        WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
         [userId],
       );
-
       const count = parseInt(result.rows[0].count);
+      logger.info("_checkOTPRateLimit", { userId, count });
       return count >= 5;
     } catch (error) {
-      console.error("OTP rate limit check error:", error);
+      logger.error("_checkOTPRateLimit - Error:", error);
       return false;
     }
   }
 
-  /**
-   * Check cooldown (60 seconds between OTPs)
-   */
+  // Check 60s cooldown between OTP requests
   async _checkCooldown(userId) {
     try {
       const result = await pool.query(
-        `SELECT created_at
-        FROM email_otp_verifications
-        WHERE user_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1`,
+        `SELECT created_at FROM email_otp_verifications
+        WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [userId],
       );
 
@@ -327,8 +301,7 @@ class EmailVerificationService {
       }
 
       const lastOTPTime = new Date(result.rows[0].created_at);
-      const now = new Date();
-      const elapsedSeconds = Math.floor((now - lastOTPTime) / 1000);
+      const elapsedSeconds = Math.floor((new Date() - lastOTPTime) / 1000);
       const cooldownSeconds = 60;
 
       if (elapsedSeconds < cooldownSeconds) {
@@ -340,32 +313,27 @@ class EmailVerificationService {
 
       return { active: false, secondsRemaining: 0 };
     } catch (error) {
-      console.error("Cooldown check error:", error);
+      logger.error("_checkCooldown - Error:", error);
       return { active: false, secondsRemaining: 0 };
     }
   }
 
-  /**
-   * Increment failed attempts
-   */
+  // Increment failed OTP attempt count
   async _incrementFailedAttempts(userId) {
     try {
       await pool.query(
         `UPDATE email_otp_verifications
         SET attempts = attempts + 1
-        WHERE user_id = $1
-        AND verified = FALSE
-        AND expires_at > NOW()`,
+        WHERE user_id = $1 AND verified = FALSE AND expires_at > NOW()`,
         [userId],
       );
+      logger.info("_incrementFailedAttempts - Incremented", { userId });
     } catch (error) {
-      console.error("Increment failed attempts error:", error);
+      logger.error("_incrementFailedAttempts - Error:", error);
     }
   }
 
-  /**
-   * Send verification confirmation email
-   */
+  // Send email confirmation after successful verification
   async _sendVerificationConfirmationEmail(userId, ipAddress) {
     try {
       const userResult = await pool.query(
@@ -378,27 +346,27 @@ class EmailVerificationService {
 
       if (userResult.rows.length > 0 && userResult.rows[0].email) {
         const user = userResult.rows[0];
-        const username = user.name || "User";
-
         await emailService.sendEmailVerifiedConfirmation({
           to: user.email,
-          username: username,
-          ipAddress: ipAddress, // This now includes location tracking
+          username: user.name || "User",
+          ipAddress,
           timestamp: new Date().toLocaleString("en-IN", {
             timeZone: "Asia/Kolkata",
             dateStyle: "medium",
             timeStyle: "short",
           }),
         });
+        logger.info("_sendVerificationConfirmationEmail - Sent", { userId });
       }
     } catch (error) {
-      console.error("Send verification confirmation error:", error);
+      logger.error(
+        "_sendVerificationConfirmationEmail - Error (non-critical):",
+        error,
+      );
     }
   }
 
-  /**
-   * Mask email
-   */
+  // Mask email for safe display
   _maskEmail(email) {
     if (!email) return null;
     return email.replace(

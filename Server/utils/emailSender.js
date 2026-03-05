@@ -1,3 +1,4 @@
+const logger = require("./logger");
 const web_ip = process.env.WEB_IP;
 const web_port = process.env.WEB_PORT;
 const nodemailer = require("nodemailer");
@@ -15,9 +16,7 @@ class EmailService {
     });
   }
 
-  /**
-   * Send password reset email
-   */
+  // Password reset email
   async sendPasswordResetEmail({
     to,
     username,
@@ -28,10 +27,8 @@ class EmailService {
     try {
       const resetUrl = `http://${web_ip}:${web_port}/reset-password?token=${resetToken}`;
 
-      // Get location from IP
       const location = await getLocationFromIP(ipAddress);
 
-      // Generate timestamp
       const timestamp = new Date().toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
         dateStyle: "medium",
@@ -54,23 +51,19 @@ class EmailService {
         html,
       });
 
-      console.log(`✅ Password reset email sent to ${to}`);
+      logger.info(`Password reset email sent to ${to}`); 
       return true;
     } catch (error) {
-      console.error("Send password reset email error:", error);
+      logger.error("Password reset email error:", error); 
       return false;
     }
   }
 
-  /**
-   * Send password changed confirmation email
-   */
+  // Password changed confirmation
   async sendPasswordChangedEmail({ to, username, ipAddress, timestamp }) {
     try {
-      // Get location from IP
       const location = await getLocationFromIP(ipAddress);
 
-      // Generate timestamp if not provided
       const formattedTimestamp =
         timestamp ||
         new Date().toLocaleString("en-IN", {
@@ -93,23 +86,19 @@ class EmailService {
         html,
       });
 
-      console.log(`✅ Password changed email sent to ${to}`);
+      logger.info(`Password changed email sent to ${to}`); 
       return true;
     } catch (error) {
-      console.error("Send password changed email error:", error);
+      logger.error("Password changed email error:", error); 
       return false;
     }
   }
 
-  /**
-   * Send email verification OTP
-   */
+  // Email verification OTP
   async sendEmailVerificationOTP({ to, username, otp, ipAddress }) {
     try {
-      // Get location from IP
       const location = await getLocationFromIP(ipAddress);
 
-      // Generate timestamp
       const timestamp = new Date().toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
         dateStyle: "medium",
@@ -131,23 +120,19 @@ class EmailService {
         html,
       });
 
-      console.log(`✅ Email verification OTP sent to ${to}`);
+      logger.info(`Email verification OTP sent to ${to}`); 
       return true;
     } catch (error) {
-      console.error("Send email verification OTP error:", error);
+      logger.error("Email verification OTP error:", error); 
       return false;
     }
   }
 
-  /**
-   * Send email verified confirmation
-   */
+  // Email verified confirmation
   async sendEmailVerifiedConfirmation({ to, username, ipAddress, timestamp }) {
     try {
-      // Get location from IP
       const location = await getLocationFromIP(ipAddress);
 
-      // Generate timestamp if not provided
       const formattedTimestamp =
         timestamp ||
         new Date().toLocaleString("en-IN", {
@@ -170,28 +155,25 @@ class EmailService {
         html,
       });
 
-      console.log(`✅ Email verified confirmation sent to ${to}`);
+      logger.info(`Email verified confirmation sent to ${to}`); 
       return true;
     } catch (error) {
-      console.error("Send email verified confirmation error:", error);
+      logger.error("Email verified confirmation error:", error); 
       return false;
     }
   }
 
-  /**
-   * Test email configuration
-   */
+  // Test connection
   async testConnection() {
     try {
       await this.transporter.verify();
-      console.log("✅ Email service is ready");
+      logger.info("📧 Email service started successfully"); 
       return true;
     } catch (error) {
-      console.error("❌ Email service error:", error);
+      logger.error("Email service error:", error); 
       return false;
     }
   }
 }
 
-// IMPORTANT: Export as instance (not class)
 module.exports = new EmailService();

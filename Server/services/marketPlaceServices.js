@@ -1,10 +1,33 @@
+// Marketplace services (products, sellers, stats)
 const pool = require("../db/database");
+const logger = require("../utils/logger");
 
-// Get unified marketplace products (both farmer and retailer products)
+// Shared bounding box calculator for geo queries
+function getBoundingBox(latitude, longitude, maxDistance) {
+  const latDelta = maxDistance / 111.32;
+  const lngDelta =
+    maxDistance / (111.32 * Math.cos((latitude * Math.PI) / 180));
+  return {
+    minLat: latitude - latDelta,
+    maxLat: latitude + latDelta,
+    minLng: longitude - lngDelta,
+    maxLng: longitude + lngDelta,
+  };
+}
+
+// Get unified marketplace products (farm + retail) by location
 exports.getMarketplaceProducts = async (req, res) => {
   const { lat, lng, search, max_distance, product_type } = req.query;
+  logger.info("getMarketplaceProducts - Request", {
+    lat,
+    lng,
+    search,
+    max_distance,
+    product_type,
+  });
 
   if (!lat || !lng) {
+    logger.error("getMarketplaceProducts - Missing lat/lng");
     return res.status(400).json({
       success: false,
       message: "User location (lat, lng) is required",
@@ -13,9 +36,10 @@ exports.getMarketplaceProducts = async (req, res) => {
 
   const latitude = parseFloat(lat);
   const longitude = parseFloat(lng);
-  const maxDistance = max_distance ? parseFloat(max_distance) : 50; // Default 50km
+  const maxDistance = max_distance ? parseFloat(max_distance) : 50;
 
   if (isNaN(latitude) || isNaN(longitude)) {
+    logger.error("getMarketplaceProducts - Invalid lat/lng", { lat, lng });
     return res.status(400).json({
       success: false,
       message: "Invalid latitude or longitude",
@@ -23,20 +47,15 @@ exports.getMarketplaceProducts = async (req, res) => {
   }
 
   try {
-    // Calculate bounding box first (much faster than calculating distance for all rows)
-    const latDelta = maxDistance / 111.32; // Rough km to degrees latitude
-    const lngDelta =
-      maxDistance / (111.32 * Math.cos((latitude * Math.PI) / 180));
-
-    const minLat = latitude - latDelta;
-    const maxLat = latitude + latDelta;
-    const minLng = longitude - lngDelta;
-    const maxLng = longitude + lngDelta;
-
+    const { minLat, maxLat, minLng, maxLng } = getBoundingBox(
+      latitude,
+      longitude,
+      maxDistance,
+    );
     const params = [latitude, longitude, minLat, maxLat, minLng, maxLng];
     let paramIndex = 7;
 
-    // Build search condition
+    // Build optional search condition
     let searchCondition = "";
     if (search) {
       searchCondition = `AND (product_name ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`;
@@ -48,10 +67,9 @@ exports.getMarketplaceProducts = async (req, res) => {
       !product_type || product_type === "all" || product_type === "farm";
     const fetchRetailerProducts =
       !product_type || product_type === "all" || product_type === "retail";
-
     const queries = [];
 
-    // Farmer Products Query - Optimized with bounding box
+    // Farmer products query with bounding box filter
     if (fetchFarmerProducts) {
       queries.push(`
         SELECT
@@ -96,7 +114,7 @@ exports.getMarketplaceProducts = async (req, res) => {
       `);
     }
 
-    // Retailer Products Query - Optimized with bounding box
+    // Retailer products query with bounding box filter
     if (fetchRetailerProducts) {
       queries.push(`
         SELECT
@@ -142,6 +160,9 @@ exports.getMarketplaceProducts = async (req, res) => {
     }
 
     if (queries.length === 0) {
+      logger.info(
+        "getMarketplaceProducts - No product type matched, returning empty",
+      );
       return res.json({
         success: true,
         products: [],
@@ -156,7 +177,7 @@ exports.getMarketplaceProducts = async (req, res) => {
       });
     }
 
-    // Use CTE for better query planning
+    // CTE combining both product types ordered by distance
     const sql = `
       WITH all_products AS (
         ${queries.join(" UNION ALL ")}
@@ -166,15 +187,19 @@ exports.getMarketplaceProducts = async (req, res) => {
       WHERE distance_km <= $${paramIndex}
       ORDER BY distance_km ASC, created_at DESC
     `;
-
     params.push(maxDistance);
 
-    console.log("Executing optimized marketplace query...");
+    logger.info("getMarketplaceProducts - Executing query", {
+      maxDistance,
+      fetchFarmerProducts,
+      fetchRetailerProducts,
+    });
     const result = await pool.query(sql, params);
 
-    console.log(
-      `✅ Found ${result.rowCount} marketplace products within ${maxDistance}km`,
-    );
+    logger.info("getMarketplaceProducts - Success", {
+      count: result.rowCount,
+      maxDistance,
+    });
 
     res.json({
       success: true,
@@ -189,7 +214,7 @@ exports.getMarketplaceProducts = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("getMarketplaceProducts error:", error);
+    logger.error("getMarketplaceProducts - Error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching marketplace products",
@@ -198,12 +223,16 @@ exports.getMarketplaceProducts = async (req, res) => {
   }
 };
 
-// Get single product details (works for both farm and retail)
+// Get single product details (farm or retail)
 exports.getProductDetails = async (req, res) => {
   const { productId } = req.params;
   const { product_type } = req.query;
+  logger.info("getProductDetails - Request", { productId, product_type });
 
   if (!product_type || !["farm", "retail"].includes(product_type)) {
+    logger.error("getProductDetails - Invalid or missing product_type", {
+      product_type,
+    });
     return res.status(400).json({
       success: false,
       message: "product_type (farm or retail) is required",
@@ -266,19 +295,20 @@ exports.getProductDetails = async (req, res) => {
     const result = await pool.query(sql, [productId]);
 
     if (result.rowCount === 0) {
+      logger.warn("getProductDetails - Product not found", {
+        productId,
+        product_type,
+      });
       return res.status(404).json({
         success: false,
         message: "Product not found",
       });
     }
 
-    console.log(`✅ Product details fetched: ${productId}`);
-    res.json({
-      success: true,
-      product: result.rows[0],
-    });
+    logger.info("getProductDetails - Success", { productId, product_type });
+    res.json({ success: true, product: result.rows[0] });
   } catch (error) {
-    console.error("getProductDetails error:", error);
+    logger.error("getProductDetails - Error:", { productId, error });
     res.status(500).json({
       success: false,
       message: "Error fetching product details",
@@ -287,11 +317,13 @@ exports.getProductDetails = async (req, res) => {
   }
 };
 
-// Get marketplace statistics
+// Get marketplace stats (seller and product counts by location)
 exports.getMarketplaceStats = async (req, res) => {
   const { lat, lng, max_distance } = req.query;
+  logger.info("getMarketplaceStats - Request", { lat, lng, max_distance });
 
   if (!lat || !lng) {
+    logger.error("getMarketplaceStats - Missing lat/lng");
     return res.status(400).json({
       success: false,
       message: "User location (lat, lng) is required",
@@ -303,17 +335,12 @@ exports.getMarketplaceStats = async (req, res) => {
   const maxDistance = max_distance ? parseFloat(max_distance) : 50;
 
   try {
-    // Calculate bounding box
-    const latDelta = maxDistance / 111.32;
-    const lngDelta =
-      maxDistance / (111.32 * Math.cos((latitude * Math.PI) / 180));
+    const { minLat, maxLat, minLng, maxLng } = getBoundingBox(
+      latitude,
+      longitude,
+      maxDistance,
+    );
 
-    const minLat = latitude - latDelta;
-    const maxLat = latitude + latDelta;
-    const minLng = longitude - lngDelta;
-    const maxLng = longitude + lngDelta;
-
-    // Single optimized query for all stats
     const statsQuery = `
       WITH nearby_sellers AS (
         SELECT 
@@ -380,6 +407,12 @@ exports.getMarketplaceStats = async (req, res) => {
     ]);
 
     const stats = result.rows[0];
+    logger.info("getMarketplaceStats - Success", {
+      latitude,
+      longitude,
+      maxDistance,
+      stats,
+    });
 
     res.json({
       success: true,
@@ -391,7 +424,7 @@ exports.getMarketplaceStats = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("getMarketplaceStats error:", error);
+    logger.error("getMarketplaceStats - Error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching marketplace stats",
@@ -400,11 +433,13 @@ exports.getMarketplaceStats = async (req, res) => {
   }
 };
 
-// Search sellers (farmers and retailers)
+// Search nearby sellers (farmers and retailers)
 exports.searchSellers = async (req, res) => {
   const { lat, lng, search, max_distance } = req.query;
+  logger.info("searchSellers - Request", { lat, lng, search, max_distance });
 
   if (!lat || !lng) {
+    logger.error("searchSellers - Missing lat/lng");
     return res.status(400).json({
       success: false,
       message: "User location (lat, lng) is required",
@@ -416,19 +451,15 @@ exports.searchSellers = async (req, res) => {
   const maxDistance = max_distance ? parseFloat(max_distance) : 50;
 
   try {
-    // Calculate bounding box
-    const latDelta = maxDistance / 111.32;
-    const lngDelta =
-      maxDistance / (111.32 * Math.cos((latitude * Math.PI) / 180));
-
-    const minLat = latitude - latDelta;
-    const maxLat = latitude + latDelta;
-    const minLng = longitude - lngDelta;
-    const maxLng = longitude + lngDelta;
-
+    const { minLat, maxLat, minLng, maxLng } = getBoundingBox(
+      latitude,
+      longitude,
+      maxDistance,
+    );
     const params = [latitude, longitude, minLat, maxLat, minLng, maxLng];
-    let searchCondition = "";
 
+    // Build optional seller name search condition
+    let searchCondition = "";
     if (search) {
       searchCondition = `AND seller_name ILIKE $7`;
       params.push(`%${search}%`);
@@ -504,13 +535,20 @@ exports.searchSellers = async (req, res) => {
 
     const result = await pool.query(sql, params);
 
+    logger.info("searchSellers - Success", {
+      lat,
+      lng,
+      search,
+      count: result.rowCount,
+    });
+
     res.json({
       success: true,
       sellers: result.rows,
       total: result.rowCount,
     });
   } catch (error) {
-    console.error("searchSellers error:", error);
+    logger.error("searchSellers - Error:", error);
     res.status(500).json({
       success: false,
       message: "Error searching sellers",

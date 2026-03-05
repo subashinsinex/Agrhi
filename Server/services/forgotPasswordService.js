@@ -1,13 +1,12 @@
-// services/forgotPasswordService.js
+// Forgot password service
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const pool = require("../db/database");
-const emailService = require("../utils/emailSender"); // CHANGE THIS - point to emailSender
+const emailService = require("../utils/emailSender");
+const logger = require("../utils/logger");
 
 class ForgotPasswordService {
-  /**
-   * Request password reset
-   */
+  // Request password reset link via mobile number
   async requestPasswordReset({ mobile, ipAddress, userAgent }) {
     const genericResponse = {
       success: true,
@@ -16,84 +15,94 @@ class ForgotPasswordService {
     };
 
     try {
-      // Find user by phone_number in users_auth table
+      // Fetch user by phone number
       const userResult = await pool.query(
         "SELECT user_id, email, phone_number FROM users_auth WHERE phone_number = $1",
         [mobile],
       );
 
-      // If no user found, still return success (security best practice)
       if (userResult.rows.length === 0) {
+        logger.info(
+          "requestPasswordReset - User not found, returning generic response",
+          { mobile },
+        );
         await this._addDelay(1000);
         return genericResponse;
       }
 
       const user = userResult.rows[0];
 
-      // Check if user has email
       if (!user.email) {
+        logger.info(
+          "requestPasswordReset - No email on file, returning generic response",
+          {
+            user_id: user.user_id,
+          },
+        );
         await this._addDelay(1000);
         return genericResponse;
       }
 
-      // Check rate limiting (3 requests per 24 hours)
+      // Check rate limit (3 requests per 24 hours)
       const rateLimitExceeded = await this._checkRateLimit(user.user_id);
       if (rateLimitExceeded) {
-        console.log(`Rate limit exceeded for user ${user.user_id}`);
+        logger.error("requestPasswordReset - Rate limit exceeded", {
+          user_id: user.user_id,
+        });
         return genericResponse;
       }
 
-      // Generate secure reset token
+      // Generate and hash secure reset token
       const resetToken = crypto.randomBytes(32).toString("hex");
       const tokenHash = crypto
         .createHash("sha256")
         .update(resetToken)
         .digest("hex");
-
-      // Token expires in 1 hour
       const expiresAt = new Date(Date.now() + 3600000);
 
-      // Store token in database
+      // Store token in DB
       await pool.query(
         `INSERT INTO password_reset_tokens (
-          user_id, 
-          token_hash, 
-          expires_at,
-          ip_address,
-          user_agent
+          user_id, token_hash, expires_at, ip_address, user_agent
         ) VALUES ($1, $2, $3, $4, $5)`,
         [user.user_id, tokenHash, expiresAt, ipAddress, userAgent],
       );
 
-      // Get username from user_details table
+      logger.info("requestPasswordReset - Reset token stored", {
+        user_id: user.user_id,
+        expiresAt,
+      });
+
+      // Fetch username for email
       const userDetailsResult = await pool.query(
         "SELECT name FROM user_details WHERE user_id = $1",
         [user.user_id],
       );
-
       const username =
         userDetailsResult.rows.length > 0
           ? userDetailsResult.rows[0].name
           : "User";
 
-      // Mask email for response
       const maskedEmail = this._maskEmail(user.email);
 
-      // Send email using emailService
+      // Send reset email (non-critical, catch separately)
       try {
         await emailService.sendPasswordResetEmail({
           to: user.email,
-          username: username,
-          resetToken: resetToken,
-          mobile: mobile,
-          ipAddress: ipAddress,
+          username,
+          resetToken,
+          mobile,
+          ipAddress,
+        });
+        logger.info("requestPasswordReset - Reset email sent", {
+          user_id: user.user_id,
+          maskedEmail,
         });
       } catch (emailError) {
-        console.error(
-          `Failed to send password reset email to ${user.email}:`,
+        logger.error("requestPasswordReset - Failed to send reset email", {
+          user_id: user.user_id,
           emailError,
-        );
-        // Still return success to prevent email enumeration
+        });
       }
 
       return {
@@ -103,15 +112,15 @@ class ForgotPasswordService {
         emailHint: maskedEmail,
       };
     } catch (error) {
-      console.error("Request password reset error:", error);
+      logger.error("requestPasswordReset - Error:", error);
       throw error;
     }
   }
 
-  /**
-   * Verify reset token
-   */
+  // Verify if reset token is valid and not expired
   async verifyResetToken(token) {
+    logger.info("verifyResetToken - Verifying token");
+
     try {
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
@@ -130,39 +139,36 @@ class ForgotPasswordService {
       );
 
       if (result.rows.length === 0) {
-        return {
-          success: false,
-          message: "Invalid or expired reset token",
-        };
+        logger.error("verifyResetToken - Invalid or expired token");
+        return { success: false, message: "Invalid or expired reset token" };
       }
 
       const data = result.rows[0];
+      logger.info("verifyResetToken - Token valid", { user_id: data.user_id });
 
       return {
         success: true,
         message: "Token is valid",
         mobile: data.phone_number
-          ? `${data.phone_number.slice(0, 2)}******${data.phone_number.slice(
-              -2,
-            )}`
+          ? `${data.phone_number.slice(0, 2)}******${data.phone_number.slice(-2)}`
           : null,
       };
     } catch (error) {
-      console.error("Verify reset token error:", error);
+      logger.error("verifyResetToken - Error:", error);
       throw error;
     }
   }
 
-  /**
-   * Reset password
-   */
+  // Reset password using valid token
   async resetPassword({ token, newPassword, ipAddress }) {
+    logger.info("resetPassword - Attempt", { ipAddress });
+
     try {
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
       await pool.query("BEGIN");
 
-      // Find and lock the token
+      // Fetch and lock token row
       const tokenResult = await pool.query(
         `SELECT user_id, used, expires_at
         FROM password_reset_tokens
@@ -173,26 +179,25 @@ class ForgotPasswordService {
 
       if (tokenResult.rows.length === 0) {
         await pool.query("ROLLBACK");
-        return {
-          success: false,
-          message: "Invalid reset token",
-        };
+        logger.error("resetPassword - Token not found");
+        return { success: false, message: "Invalid reset token" };
       }
 
       const tokenData = tokenResult.rows[0];
 
-      // Check if token expired
       if (new Date(tokenData.expires_at) < new Date()) {
         await pool.query("ROLLBACK");
-        return {
-          success: false,
-          message: "Reset token has expired",
-        };
+        logger.error("resetPassword - Token expired", {
+          user_id: tokenData.user_id,
+        });
+        return { success: false, message: "Reset token has expired" };
       }
 
-      // Check if already used
       if (tokenData.used) {
         await pool.query("ROLLBACK");
+        logger.error("resetPassword - Token already used", {
+          user_id: tokenData.user_id,
+        });
         return {
           success: false,
           message: "This reset link has already been used",
@@ -201,16 +206,13 @@ class ForgotPasswordService {
 
       const userId = tokenData.user_id;
 
-      // Hash new password
+      // Hash and update new password
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-      // Update password in users_auth table
       await pool.query(
         "UPDATE users_auth SET password = $1 WHERE user_id = $2",
         [hashedPassword, userId],
       );
 
-      // Update updated_at in user_details table
       await pool.query(
         "UPDATE user_details SET updated_at = NOW() WHERE user_id = $1",
         [userId],
@@ -223,25 +225,23 @@ class ForgotPasswordService {
       );
 
       await pool.query("COMMIT");
+      logger.info("resetPassword - Password reset successful", { userId });
 
-      // Send confirmation email (async, don't wait)
+      // Send confirmation email async (non-blocking)
       this._sendPasswordChangedEmail(userId, ipAddress);
 
-      return {
-        success: true,
-        message: "Password reset successfully",
-      };
+      return { success: true, message: "Password reset successfully" };
     } catch (error) {
       await pool.query("ROLLBACK");
-      console.error("Reset password error:", error);
+      logger.error("resetPassword - Error:", error);
       throw error;
     }
   }
 
-  /**
-   * Check reset status (rate limit info)
-   */
+  // Check remaining reset attempts for a mobile number
   async checkResetStatus(mobile) {
+    logger.info("checkResetStatus - Checking", { mobile });
+
     try {
       const userResult = await pool.query(
         "SELECT user_id FROM users_auth WHERE phone_number = $1",
@@ -249,11 +249,10 @@ class ForgotPasswordService {
       );
 
       if (userResult.rows.length === 0) {
-        return {
-          success: true,
-          canRequest: true,
-          attemptsRemaining: 3,
-        };
+        logger.info("checkResetStatus - User not found, returning default", {
+          mobile,
+        });
+        return { success: true, canRequest: true, attemptsRemaining: 3 };
       }
 
       const userId = userResult.rows[0].user_id;
@@ -269,6 +268,12 @@ class ForgotPasswordService {
       const attempts = parseInt(attemptsResult.rows[0].count);
       const remaining = Math.max(0, 3 - attempts);
 
+      logger.info("checkResetStatus - Status fetched", {
+        userId,
+        attempts,
+        remaining,
+      });
+
       return {
         success: true,
         canRequest: remaining > 0,
@@ -276,14 +281,12 @@ class ForgotPasswordService {
         attemptsUsed: attempts,
       };
     } catch (error) {
-      console.error("Check reset status error:", error);
+      logger.error("checkResetStatus - Error:", error);
       throw error;
     }
   }
 
-  /**
-   * Check rate limiting (3 requests per 24 hours)
-   */
+  // Check if user exceeded 3 reset requests in 24 hours
   async _checkRateLimit(userId) {
     try {
       const result = await pool.query(
@@ -295,19 +298,17 @@ class ForgotPasswordService {
       );
 
       const count = parseInt(result.rows[0].count);
+      logger.info("_checkRateLimit", { userId, count });
       return count >= 3;
     } catch (error) {
-      console.error("Rate limit check error:", error);
+      logger.error("_checkRateLimit - Error:", error);
       return false;
     }
   }
 
-  /**
-   * Send password changed confirmation email
-   */
+  // Send password changed confirmation email
   async _sendPasswordChangedEmail(userId, ipAddress) {
     try {
-      // Get user info from both tables
       const result = await pool.query(
         `SELECT ua.email, ud.name
         FROM users_auth ua
@@ -322,24 +323,25 @@ class ForgotPasswordService {
 
         await emailService.sendPasswordChangedEmail({
           to: user.email,
-          username: username,
-          ipAddress: ipAddress,
+          username,
+          ipAddress,
           timestamp: new Date().toLocaleString("en-IN", {
             timeZone: "Asia/Kolkata",
             dateStyle: "medium",
             timeStyle: "short",
           }),
         });
+
+        logger.info("_sendPasswordChangedEmail - Confirmation email sent", {
+          userId,
+        });
       }
     } catch (error) {
-      console.error("Send password changed email error:", error);
-      // Don't throw - this is non-critical
+      logger.error("_sendPasswordChangedEmail - Error (non-critical):", error);
     }
   }
 
-  /**
-   * Mask email for display
-   */
+  // Mask email for safe display
   _maskEmail(email) {
     if (!email) return null;
     return email.replace(
@@ -348,9 +350,7 @@ class ForgotPasswordService {
     );
   }
 
-  /**
-   * Add artificial delay (prevent timing attacks)
-   */
+  // Add artificial delay to prevent timing attacks
   async _addDelay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

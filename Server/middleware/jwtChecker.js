@@ -37,8 +37,6 @@ const jwtChecker = (req, res, next) => {
     if (store) {
       store.userId = req.user_id;
     }
-
-    console.log("jwtChecker: user_id set in AsyncLocalStorage =", req.user_id);
     next();
   });
 };

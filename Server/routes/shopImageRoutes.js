@@ -1,32 +1,29 @@
-// routes/shopImageRoutes.js
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-
 const jwtChecker = require("../middleware/jwtChecker");
 const shopImageService = require("../services/shopImageServices");
+const logger = require("../utils/logger");
 
-// Ensure uploads/shop_images exists
+// Setup shop images upload directory
 const uploadsDir = path.join(__dirname, "..", "uploads", "shop_images");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log(`✅ Created uploads directory: ${uploadsDir}`);
+  logger.server(`Created shop images directory: ${uploadsDir}`);
 }
 
-// Multer storage for shop images
+// Multer disk storage config
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
+  destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-    cb(null, filename);
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
   },
 });
 
+// Accept only JPEG and PNG files up to 10MB
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -35,68 +32,55 @@ const upload = multer({
     const ok =
       allowed.includes(file.mimetype.toLowerCase()) ||
       /\.(jpg|jpeg|png)$/i.test(file.originalname.toLowerCase());
-    if (ok) return cb(null, true);
-    console.log("❌ Invalid shop image:", file.mimetype, file.originalname);
-    return cb(null, false);
+    cb(null, ok);
   },
 });
 
-/**
- * POST /api/shop-images/upload
- * form-data:
- *   - retailer_id (text)
- *   - image (file)
- *
- * 1) Save file to uploads/shop_images
- * 2) Insert into images
- * 3) Update retailers.image_id
- */
-router.post(
-  "/upload",
-  jwtChecker,
-  upload.single("image"), // field name in form-data
-  async (req, res) => {
-    try {
-      if (!req.user_id) {
-        return res
-          .status(401)
-          .json({ success: false, error: "Authentication failed" });
-      }
+// Upload shop image for retailer
+router.post("/upload", jwtChecker, upload.single("image"), async (req, res) => {
+  
+  try {
+    if (!req.user_id) {
+      return res
+        .status(401)
+        .json({ success: false, error: "Authentication failed" });
+    }
 
-      const { retailer_id } = req.body;
-      const file = req.file;
+    const { retailer_id } = req.body;
 
-      if (!retailer_id) {
-        return res
-          .status(400)
-          .json({ success: false, error: "retailer_id is required" });
-      }
-      if (!file) {
-        return res
-          .status(400)
-          .json({ success: false, error: "No image file provided" });
-      }
+    if (!retailer_id) {
+      return res
+        .status(400)
+        .json({ success: false, error: "retailer_id is required" });
+    }
 
-      const result = await shopImageService.saveShopImageForRetailer(
-        file,
-        retailer_id
-      );
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ success: false, error: "No image file provided" });
+    }
 
-      return res.status(200).json({
-        success: true,
-        image_id: result.image_id,
-        image_url: result.image_url,
-        retailer: result.retailer,
-      });
-    } catch (error) {
-      console.error("shop-image upload error:", error);
-      res.status(500).json({
+    const result = await shopImageService.saveShopImageForRetailer(
+      req.file,
+      retailer_id,
+    );
+
+    return res.status(200).json({
+      success: true,
+      image_id: result.image_id,
+      image_url: result.image_url,
+      retailer: result.retailer,
+    });
+  } catch (error) {
+    logger.error("POST /upload - Error:", error);
+    res
+      .status(500)
+      .json({
         success: false,
         error: "Internal server error",
         message: error.message,
       });
-    }
   }
-);
+});
 
 module.exports = router;

@@ -1,73 +1,59 @@
 const express = require("express");
 const router = express.Router();
-
 const farmStoreService = require("../services/farmStoreServices");
 const jwtChecker = require("../middleware/jwtChecker");
+const logger = require("../utils/logger");
 
-// ========== FARMER SHOP PLACES ==========
+// Farmer shop location routes
+router.post("/add-farmer-shop-places", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.addFarmerShopPlace(req, res, next);
+});
 
-// Add or update farmer shop location
-router.post(
-  "/add-farmer-shop-places",
-  jwtChecker,
-  farmStoreService.addFarmerShopPlace,
-);
+router.get("/farmer-shop-places/:farmerId", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.getFarmerShopPlaces(req, res, next);
+});
 
-// Get farmer shop location by farmer ID
-router.get(
-  "/farmer-shop-places/:farmerId",
-  jwtChecker,
-  farmStoreService.getFarmerShopPlaces,
-);
+// Farm product routes (specific paths before :id)
+router.post("/farm-products", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.createFarmProduct(req, res, next);
+});
 
-// ========== FARM PRODUCTS ==========
+router.get("/farm-products/nearby", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.getNearbyFarmProducts(req, res, next);
+});
 
-// Create new farm product
-router.post("/farm-products", jwtChecker, farmStoreService.createFarmProduct);
+router.get("/farm-products/farmer/:farmerId", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.getFarmProductsByFarmer(req, res, next);
+});
 
-// Get nearby farm products (must be before /:id route)
-router.get(
-  "/farm-products/nearby",
-  jwtChecker,
-  farmStoreService.getNearbyFarmProducts,
-);
+router.get("/farm-products", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.getAllFarmProducts(req, res, next);
+});
 
-// Get all farm products by farmer ID
-router.get(
-  "/farm-products/farmer/:farmerId",
-  jwtChecker,
-  farmStoreService.getFarmProductsByFarmer,
-);
+router.get("/farm-products/:id", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.getFarmProductById(req, res, next);
+});
 
-// Get single farm product by ID
-router.get(
-  "/farm-products/:id",
-  jwtChecker,
-  farmStoreService.getFarmProductById,
-);
+router.put("/farm-products/:id", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.updateFarmProduct(req, res, next);
+});
 
-// Get all farm products with optional filters
-router.get("/farm-products", jwtChecker, farmStoreService.getAllFarmProducts);
+router.put("/farm-products/:id/toggle-status", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.toggleFarmProductStatus(req, res, next);
+});
 
-// Update farm product
-router.put(
-  "/farm-products/:id",
-  jwtChecker,
-  farmStoreService.updateFarmProduct,
-);
-
-// Toggle farm product availability status
-router.put(
-  "/farm-products/:id/toggle-status",
-  jwtChecker,
-  farmStoreService.toggleFarmProductStatus,
-);
-
-// Delete farm product
-router.delete(
-  "/farm-products/:id",
-  jwtChecker,
-  farmStoreService.deleteFarmProduct,
-);
+router.delete("/farm-products/:id", jwtChecker, (req, res, next) => {
+  
+  farmStoreService.deleteFarmProduct(req, res, next);
+});
 
 module.exports = router;

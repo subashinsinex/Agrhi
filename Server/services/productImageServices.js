@@ -1,40 +1,45 @@
-// Server/services/productImageServices.js
+// Product image services (retail + farm)
 const fs = require("fs");
 const path = require("path");
 const { query } = require("../db/database");
-const { v4: uuidv4 } = require("uuid");
 const { compressImageInPlace } = require("../utils/imageCompressor");
+const logger = require("../utils/logger");
 
-// ---------- Retailer product image ----------
+// Shared UUID validator
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-exports.saveProductImage = async (file, productId) => {
-  // Basic validations
+// Shared input validator for file and productId
+function validateInput(file, productId, context) {
   if (!file) {
+    logger.error(`${context} - No file provided`);
     throw new Error("No file provided");
   }
   if (!productId || typeof productId !== "string") {
+    logger.error(`${context} - Invalid product_id`, { productId });
     throw new Error("Valid product_id string (UUID) is required");
   }
-
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (!uuidRegex.test(productId)) {
+    logger.error(`${context} - Invalid UUID format`, { productId });
     throw new Error("Invalid product_id: must be valid UUID format");
   }
-
   if (!file.filename || typeof file.filename !== "string") {
-    console.error("saveProductImage: invalid file.filename =", file.filename);
+    logger.error(`${context} - Invalid file.filename`, {
+      filename: file.filename,
+    });
     throw new Error("Uploaded file is missing filename");
   }
+}
+
+// Save/replace image for retail product
+exports.saveProductImage = async (file, productId) => {
+  validateInput(file, productId, "saveProductImage");
 
   const newImageUrl = `/uploads/product_image/${String(file.filename)}`;
-  console.log("saveProductImage: START");
-  console.log("  productId =", productId);
-  console.log("  file.filename =", file.filename);
-  console.log("  newImageUrl =", newImageUrl);
+  logger.info("saveProductImage - Start", { productId, newImageUrl });
 
   try {
-    // 1) Get current image_id and image_url for this product
+    // Fetch current product image info
     const productRes = await query(
       `SELECT 
          rp.image_id,
@@ -45,7 +50,10 @@ exports.saveProductImage = async (file, productId) => {
       [productId],
     );
 
-    console.log("saveProductImage: productRes.rows =", productRes.rows);
+    logger.info("saveProductImage - Product fetched", {
+      productId,
+      rows: productRes.rows,
+    });
 
     if (productRes.rowCount === 0) {
       throw new Error("Product not found for given product_id");
@@ -57,84 +65,63 @@ exports.saveProductImage = async (file, productId) => {
       throw new Error("Product does not have an associated image_id");
     }
 
-    // 2) Compress uploaded file
+    // Compress new image
     const fullPath = path.join(__dirname, "..", newImageUrl);
-    console.log("saveProductImage: fullPath to compress =", fullPath);
+    logger.info("saveProductImage - Compressing image", { fullPath });
     await compressImageInPlace(fullPath);
 
-    // 3) Delete old image file if it exists (and is not NULL/placeholder)
+    // Delete old image file if exists
     if (oldImageUrl && oldImageUrl !== "no-image") {
       const absolutePath = path.join(__dirname, "..", oldImageUrl);
-      console.log("saveProductImage: deleting old image at =", absolutePath);
+      logger.info("saveProductImage - Deleting old image", { absolutePath });
       fs.unlink(absolutePath, (err) => {
         if (err) {
-          console.error("Error deleting old product image:", err);
+          logger.error("saveProductImage - Failed to delete old image", {
+            absolutePath,
+            err,
+          });
         } else {
-          console.log("Old image deleted successfully");
+          logger.info("saveProductImage - Old image deleted", { absolutePath });
         }
       });
     }
 
-    // 4) Update the existing image record with new URL
+    // Update image record with new URL
     const imageUpdateRes = await query(
       "UPDATE images SET image_url = $2::text WHERE image_id = $1::uuid RETURNING *",
       [image_id, newImageUrl],
     );
-    console.log("saveProductImage: imageUpdateRes.rows =", imageUpdateRes.rows);
 
     if (imageUpdateRes.rowCount === 0) {
       throw new Error("Failed to update image record");
     }
 
-    console.log("saveProductImage: DONE");
+    logger.info("saveProductImage - Done", {
+      productId,
+      image_id,
+      image_url: imageUpdateRes.rows[0].image_url,
+    });
+
     return {
       image_id,
       image_url: imageUpdateRes.rows[0].image_url,
       product: productRes.rows[0],
     };
   } catch (error) {
-    console.error("saveProductImage ERROR:", error);
+    logger.error("saveProductImage - Error:", error);
     throw error;
   }
 };
 
-// ---------- Farmer product image ----------
-
+// Save/replace image for farm product
 exports.saveFarmProductImage = async (file, productId) => {
-  if (!file) {
-    throw new Error("No file provided");
-  }
-  if (!productId || typeof productId !== "string") {
-    throw new Error("Valid product_id string (UUID) is required");
-  }
-
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(productId)) {
-    throw new Error("Invalid product_id: must be valid UUID format");
-  }
-
-  if (!file.filename || typeof file.filename !== "string") {
-    console.error(
-      "saveFarmProductImage: invalid file.filename =",
-      file.filename,
-    );
-    throw new Error("Uploaded file is missing filename");
-  }
-
-  console.log("🔍 saveFarmProductImage: productId type =", typeof productId);
-  console.log("🔍 saveFarmProductImage: productId value =", productId);
-  console.log("🔍 saveFarmProductImage: productId length =", productId.length);
-  console.log(
-    "🔍 saveFarmProductImage: uuidRegex.test =",
-    uuidRegex.test(productId),
-  );
-  console.log("🔍 saveFarmProductImage: file.filename =", file.filename);
+  validateInput(file, productId, "saveFarmProductImage");
 
   const newImageUrl = `/uploads/product_image/${String(file.filename)}`;
+  logger.info("saveFarmProductImage - Start", { productId, newImageUrl });
 
   try {
-    // 1) Load existing farmer_product row
+    // Fetch current farm product image info
     const productRes = await query(
       `SELECT 
          fp.image_id,
@@ -145,7 +132,10 @@ exports.saveFarmProductImage = async (file, productId) => {
       [productId],
     );
 
-    console.log("🔍 saveFarmProductImage: productRes.rows =", productRes.rows);
+    logger.info("saveFarmProductImage - Farm product fetched", {
+      productId,
+      rows: productRes.rows,
+    });
 
     if (productRes.rowCount === 0) {
       throw new Error("Farm product not found for given product_id");
@@ -157,40 +147,46 @@ exports.saveFarmProductImage = async (file, productId) => {
       throw new Error("Farm product does not have an associated image_id");
     }
 
-    // 2) Compress uploaded file
+    // Compress new image
     const fullPath = path.join(__dirname, "..", newImageUrl);
-    console.log("🔍 saveFarmProductImage: fullPath to compress =", fullPath);
+    logger.info("saveFarmProductImage - Compressing image", { fullPath });
     await compressImageInPlace(fullPath);
 
-    // 3) Delete old image file if exists
+    // Delete old image file if exists
     if (oldImageUrl && oldImageUrl !== "no-image") {
       const absolutePath = path.join(__dirname, "..", oldImageUrl);
-      console.log(
-        "🔍 saveFarmProductImage: deleting old image at =",
+      logger.info("saveFarmProductImage - Deleting old image", {
         absolutePath,
-      );
+      });
       fs.unlink(absolutePath, (err) => {
         if (err) {
-          console.error("Error deleting old farm product image:", err);
+          logger.error("saveFarmProductImage - Failed to delete old image", {
+            absolutePath,
+            err,
+          });
         } else {
-          console.log("Old farm image deleted successfully");
+          logger.info("saveFarmProductImage - Old image deleted", {
+            absolutePath,
+          });
         }
       });
     }
 
-    // 4) Update the existing image record
+    // Update image record with new URL
     const imageUpdateRes = await query(
       "UPDATE images SET image_url = $2::text WHERE image_id = $1::uuid RETURNING *",
       [image_id, newImageUrl],
-    );
-    console.log(
-      "🔍 saveFarmProductImage: imageUpdateRes.rows =",
-      imageUpdateRes.rows,
     );
 
     if (imageUpdateRes.rowCount === 0) {
       throw new Error("Failed to update farm image record");
     }
+
+    logger.info("saveFarmProductImage - Done", {
+      productId,
+      image_id,
+      image_url: imageUpdateRes.rows[0].image_url,
+    });
 
     return {
       image_id,
@@ -198,7 +194,7 @@ exports.saveFarmProductImage = async (file, productId) => {
       product: productRes.rows[0],
     };
   } catch (error) {
-    console.error("saveFarmProductImage ERROR:", error);
+    logger.error("saveFarmProductImage - Error:", error);
     throw error;
   }
 };
