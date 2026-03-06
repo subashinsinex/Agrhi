@@ -29,6 +29,7 @@ import '../../src/services/retail_service.dart';
 import '../../screens/features/farm_store/setup_screen.dart';
 import '../../screens/features/farm_store/farm_product_screen.dart';
 import '../../screens/features/market_place/market_place_screen.dart';
+import '../features/ai_chat/ai_chat_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -106,7 +107,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'My Produce',
       'Map',
       'This feature requires internet connection',
-      'Language', // ✅ ADD THIS
+      'Language',
+      'AGRHI Assistant',
+      'AI Chat',
     ], highPriority: true);
   }
 
@@ -313,6 +316,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: 'Subsidy',
         icon: Icons.monetization_on,
         onTap: () => _navigateWithOnlineCheck(const SubsidyScreen()),
+      ),
+      FeatureItem(
+        title: 'AI Assistant',
+        icon: Icons.smart_toy_outlined,
+        onTap: () => _navigateWithOnlineCheck(const AiChatScreen()),
       ),
     ];
   }
