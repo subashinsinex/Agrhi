@@ -11,6 +11,33 @@ const emailService = require("./utils/emailSender");
 
 const app = express();
 
+// Add at the top of server.js
+const { spawn } = require("child_process");
+
+// Auto-start Python embedding service
+const embeddingProcess = spawn(
+  "python",
+  [
+    "-m",
+    "uvicorn",
+    "embedding_service:app",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8001",
+  ],
+  {
+    cwd: path.join(__dirname, "services"), // points to Server/services/
+    stdio: "inherit", // shows Python logs in same terminal
+  },
+);
+
+embeddingProcess.on("error", (err) => {
+  console.error("[Embedding Service] Failed to start:", err.message);
+});
+
+console.log("[Embedding Service] Started on port 8001");
+
 // Trust proxy
 app.set("trust proxy", true);
 
