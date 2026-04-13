@@ -2,8 +2,18 @@
 const Groq = require("groq-sdk");
 const { v4: uuidv4 } = require("uuid");
 const { query } = require("../db/database");
+const { getEmbedding } = require("./embeddingService");
+const {
+  searchCache,
+  insertCache,
+  incrementHitCount,
+  isQualityAnswer,
+  isFollowUpQuestion,
+  RETRIEVAL_THRESHOLD,
+  INSERTION_THRESHOLD,
+} = require("./semanticCache");
 
-const groq = new Groq({ apiKey: process.env.GEMINI_API_KEY });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const MODEL = "llama-3.1-8b-instant";
 
 const SYSTEM_PROMPT = `You are AGRHI, an AI agricultural advisor built into the AGRHI app for Indian farmers.
@@ -28,7 +38,7 @@ const estimateTokens = (text) => Math.ceil(text.length / 4);
 
 const SYSTEM_TOKENS = estimateTokens(SYSTEM_PROMPT);
 const MAX_HISTORY_TOKENS = 3000;
-const WINDOW_LIMIT = 6; // last 6 messages = 3 exchanges
+const WINDOW_LIMIT = 6;
 
 const trimHistoryToTokenBudget = (messages) => {
   let total = 0;
@@ -113,7 +123,7 @@ const saveMessage = async (sessionId, role, content) => {
 // ─── Core Chat with Memory ────────────────────────────────────────────────────
 
 const chat = async (user_Id, sessionId, userMessage) => {
-  // Validate session belongs to this user
+  // 1. Validate session
   const sessionCheck = await query(
     `SELECT session_id FROM chat_sessions
      WHERE session_id = $1 AND user_id = $2 AND is_active = TRUE`,
@@ -123,40 +133,71 @@ const chat = async (user_Id, sessionId, userMessage) => {
     throw new Error("Session not found or unauthorized");
   }
 
-  // Load last 6 messages only (sliding window)
+  // 2. Get embedding + detect follow-up
+  const embedding = await getEmbedding(userMessage);
+  const followUp = isFollowUpQuestion(userMessage);
+
+  // 3. Search cache only for standalone questions
+  let cached = null;
+  if (!followUp) {
+    cached = await searchCache(embedding);
+
+    if (cached && parseFloat(cached.similarity) >= RETRIEVAL_THRESHOLD) {
+      await incrementHitCount(cached.id);
+      console.log(
+        `[Cache HIT] Similarity: ${parseFloat(cached.similarity).toFixed(3)} | Saved 1 Groq API call`,
+      );
+
+      const savedUserMsg = await saveMessage(sessionId, "user", userMessage);
+      const savedAssistMsg = await saveMessage(
+        sessionId,
+        "assistant",
+        cached.answer,
+      );
+
+      return {
+        sessionId,
+        userMessageId: savedUserMsg.message_id,
+        assistantMessageId: savedAssistMsg.message_id,
+        reply: cached.answer,
+        source: "cache",
+        usage: null,
+      };
+    }
+  }
+
+  // 4. Follow-up OR cache miss → call Groq with session history
+  console.log(
+    followUp
+      ? `[Follow-up detected] Skipping cache`
+      : `[Cache MISS] Calling Groq`,
+  );
+
   const historyResult = await query(
-    `SELECT role, content
-     FROM chat_messages
+    `SELECT role, content FROM chat_messages
      WHERE session_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
+     ORDER BY created_at DESC LIMIT $2`,
     [sessionId, WINDOW_LIMIT],
   );
-  const rawHistory = historyResult.rows.reverse(); // restore chronological order
-
-  // Apply token budget trim as safety net
+  const rawHistory = historyResult.rows.reverse();
   const history = trimHistoryToTokenBudget(rawHistory);
 
-  // Build Groq messages: system + trimmed history + new user message
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
     ...history,
     { role: "user", content: userMessage },
   ];
 
-  // Log estimated token usage
   const estimatedInputTokens =
     SYSTEM_TOKENS +
     history.reduce((sum, m) => sum + estimateTokens(m.content), 0) +
     estimateTokens(userMessage);
   console.log(
-    `[Token Estimate] Input: ~${estimatedInputTokens} tokens | History messages used: ${history.length}`,
+    `[Token Estimate] Input: ~${estimatedInputTokens} tokens | History: ${history.length} messages`,
   );
 
-  // Save user message first
   const savedUserMsg = await saveMessage(sessionId, "user", userMessage);
 
-  // Call Groq API
   const response = await groq.chat.completions.create({
     model: MODEL,
     messages,
@@ -165,13 +206,24 @@ const chat = async (user_Id, sessionId, userMessage) => {
   });
 
   const assistantReply = response.choices[0].message.content;
-
-  // Save assistant reply
   const savedAssistantMsg = await saveMessage(
     sessionId,
     "assistant",
     assistantReply,
   );
+
+  // 5. Cache only if NOT a follow-up AND quality + unique answer
+  if (!followUp && isQualityAnswer(assistantReply)) {
+    if (!cached || parseFloat(cached.similarity) < INSERTION_THRESHOLD) {
+      await insertCache(userMessage, assistantReply, embedding);
+      console.log(`[Cache INSERT] New unique Q&A cached`);
+    } else {
+      await incrementHitCount(cached.id);
+      console.log(
+        `[Cache REUSE] Score in buffer zone: ${parseFloat(cached.similarity).toFixed(3)}`,
+      );
+    }
+  }
 
   console.log(
     `[Groq Usage] Prompt: ${response.usage.prompt_tokens} | Completion: ${response.usage.completion_tokens} | Total: ${response.usage.total_tokens}`,
@@ -182,6 +234,7 @@ const chat = async (user_Id, sessionId, userMessage) => {
     userMessageId: savedUserMsg.message_id,
     assistantMessageId: savedAssistantMsg.message_id,
     reply: assistantReply,
+    source: "llm",
     usage: response.usage,
   };
 };
