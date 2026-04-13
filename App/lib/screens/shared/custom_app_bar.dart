@@ -18,8 +18,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onBackPressed;
   final VoidCallback? onMenuPressed;
   final bool showOnlineStatus;
-  final bool
-  translateTitle;
+  final bool translateTitle;
+  final TabBar? bottom; // ✅ Now optional
 
   const CustomAppBar({
     super.key,
@@ -36,6 +36,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.onMenuPressed,
     this.showOnlineStatus = true,
     this.translateTitle = true,
+    this.bottom,
   });
 
   @override
@@ -53,25 +54,17 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       centerTitle: centerTitle,
       surfaceTintColor: Colors.transparent,
       toolbarHeight: 70,
+      bottom: bottom, // ✅ Passed directly — AppBar accepts TabBar? natively
     );
   }
 
-  // Builds action buttons (online status + custom actions)
   List<Widget>? _buildActions() {
     final actionsList = <Widget>[];
-
-    if (showOnlineStatus) {
-      actionsList.add(const _OnlineStatusIcon());
-    }
-
-    if (actions != null) {
-      actionsList.addAll(actions!);
-    }
-
+    if (showOnlineStatus) actionsList.add(const _OnlineStatusIcon());
+    if (actions != null) actionsList.addAll(actions!);
     return actionsList.isEmpty ? null : actionsList;
   }
 
-  // Builds title — skips translation if translateTitle is false
   Widget? _buildTitle(BuildContext context) {
     if (title == null && subtitle == null) return null;
 
@@ -91,7 +84,6 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         fontSize: 22,
         letterSpacing: 0.15,
       );
-
       return translateTitle
           ? _TranslatedText(text: title!, style: titleStyle)
           : Text(
@@ -105,7 +97,6 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     return null;
   }
 
-  // Builds leading icon — menu or back button
   Widget? _buildLeading(BuildContext context) {
     if (onMenuPressed != null) {
       return _IconButtonWidget(
@@ -115,7 +106,6 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         color: foregroundColor,
       );
     }
-
     if (onBackPressed != null ||
         (automaticallyImplyLeading && Navigator.of(context).canPop())) {
       return _IconButtonWidget(
@@ -125,15 +115,17 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         color: foregroundColor,
       );
     }
-
     return null;
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(70);
+  Size get preferredSize => Size.fromHeight(
+    70 + (bottom?.preferredSize.height ?? 0), // ✅ Accounts for TabBar height
+  );
 }
 
-// Displays text with automatic language translation
+// ─── Translated Text ────────────────────────────────────────────────────────
+
 class _TranslatedText extends StatelessWidget {
   final String text;
   final TextStyle? style;
@@ -155,7 +147,6 @@ class _TranslatedText extends StatelessWidget {
       context,
       listen: false,
     );
-
     return FutureBuilder<String>(
       future: languageService.translate(text),
       builder: (context, snapshot) {
@@ -170,7 +161,8 @@ class _TranslatedText extends StatelessWidget {
   }
 }
 
-// Displays a translated title and subtitle stacked vertically
+// ─── Title with Subtitle ────────────────────────────────────────────────────
+
 class _TitleWithSubtitle extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -216,7 +208,8 @@ class _TitleWithSubtitle extends StatelessWidget {
   }
 }
 
-// Reusable icon button for leading/action slots
+// ─── Icon Button ─────────────────────────────────────────────────────────────
+
 class _IconButtonWidget extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
@@ -241,7 +234,8 @@ class _IconButtonWidget extends StatelessWidget {
   }
 }
 
-// Shows animated online/offline/syncing status pill in the app bar
+// ─── Online Status Pill ───────────────────────────────────────────────────────
+
 class _OnlineStatusIcon extends StatelessWidget {
   const _OnlineStatusIcon();
 
@@ -269,9 +263,8 @@ class _OnlineStatusIcon extends StatelessWidget {
               ),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, animation) {
-                  return ScaleTransition(scale: animation, child: child);
-                },
+                transitionBuilder: (child, animation) =>
+                    ScaleTransition(scale: animation, child: child),
                 child: _buildStatusIcon(isOnline, isSyncing),
               ),
             ),
@@ -281,7 +274,6 @@ class _OnlineStatusIcon extends StatelessWidget {
     );
   }
 
-  // Returns the icon based on connectivity state
   Widget _buildStatusIcon(bool isOnline, bool isSyncing) {
     if (isSyncing) {
       return const SizedBox(
@@ -310,14 +302,12 @@ class _OnlineStatusIcon extends StatelessWidget {
     }
   }
 
-  // Returns pill background color based on connectivity state
   Color _getBackgroundColor(bool isOnline, bool isSyncing) {
     if (isSyncing) return Colors.blue.shade600.withOpacity(0.9);
     if (isOnline) return AppColors.secondaryGreen.withOpacity(0.9);
     return AppColors.errorColor.withOpacity(0.9);
   }
 
-  // Returns tooltip text based on connectivity state
   String _getTooltipMessage(bool isOnline, bool isSyncing) {
     if (isSyncing) return 'Syncing data with server...';
     if (isOnline) return 'Connected to internet';
@@ -325,7 +315,8 @@ class _OnlineStatusIcon extends StatelessWidget {
   }
 }
 
-// AppBar for the dashboard with settings dropdown
+// ─── Dashboard AppBar ─────────────────────────────────────────────────────────
+
 class DashboardAppBar extends CustomAppBar {
   DashboardAppBar.withSettings({
     super.key,
@@ -351,7 +342,8 @@ class DashboardAppBar extends CustomAppBar {
        );
 }
 
-// Popup settings menu with language, sync, help, and logout options
+// ─── Settings Dropdown ────────────────────────────────────────────────────────
+
 class _SettingsDropdownButton extends StatelessWidget {
   final VoidCallback? onSyncPressed;
   final VoidCallback onHelpPressed;
@@ -384,7 +376,7 @@ class _SettingsDropdownButton extends StatelessWidget {
         elevation: 8,
         splashRadius: 24,
         padding: EdgeInsets.zero,
-        itemBuilder: (BuildContext context) => [
+        itemBuilder: (context) => [
           _buildLanguageMenuItem(context),
           const PopupMenuDivider(height: 1),
           _buildSyncMenuItem(context),
@@ -392,7 +384,7 @@ class _SettingsDropdownButton extends StatelessWidget {
           const PopupMenuDivider(height: 1),
           _buildLogoutMenuItem(context),
         ],
-        onSelected: (String value) {
+        onSelected: (value) {
           switch (value) {
             case 'language':
               onLanguagePressed();
@@ -412,7 +404,6 @@ class _SettingsDropdownButton extends StatelessWidget {
     );
   }
 
-  // Language selector menu item with current language shown as subtitle
   PopupMenuItem<String> _buildLanguageMenuItem(BuildContext context) {
     return PopupMenuItem<String>(
       value: 'language',
@@ -420,27 +411,12 @@ class _SettingsDropdownButton extends StatelessWidget {
       child: Consumer<LanguageService>(
         builder: (context, langService, _) {
           final languageCode = langService.currentLocale.languageCode;
-
           return FutureBuilder<String>(
             future: langService.translate('Language'),
             builder: (context, snapshot) {
               return Row(
                 children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: Colors.purple.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.language_outlined,
-                        color: Colors.purple,
-                        size: 20,
-                      ),
-                    ),
-                  ),
+                  _menuIcon(Icons.language_outlined, Colors.purple),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -479,13 +455,11 @@ class _SettingsDropdownButton extends StatelessWidget {
     );
   }
 
-  // Sync menu item — disabled while syncing or offline
   PopupMenuItem<String> _buildSyncMenuItem(BuildContext context) {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
-
     return PopupMenuItem<String>(
       value: 'sync',
       enabled: !isSyncing && onSyncPressed != null,
@@ -495,13 +469,14 @@ class _SettingsDropdownButton extends StatelessWidget {
           return FutureBuilder<String>(
             future: languageService.translate('Sync'),
             builder: (context, snapshot) {
+              final disabled = isSyncing || onSyncPressed == null;
               return Row(
                 children: [
                   Container(
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: (isSyncing || onSyncPressed == null)
+                      color: disabled
                           ? AppColors.textSecondary.withOpacity(0.1)
                           : AppColors.primaryGreen.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -518,7 +493,7 @@ class _SettingsDropdownButton extends StatelessWidget {
                             )
                           : Icon(
                               Icons.sync_outlined,
-                              color: onSyncPressed == null
+                              color: disabled
                                   ? AppColors.textSecondary
                                   : AppColors.primaryGreen,
                               size: 20,
@@ -534,7 +509,7 @@ class _SettingsDropdownButton extends StatelessWidget {
                         Text(
                           snapshot.data ?? 'Sync',
                           style: TextStyle(
-                            color: (isSyncing || onSyncPressed == null)
+                            color: disabled
                                 ? AppColors.textSecondary.withOpacity(0.5)
                                 : AppColors.textPrimary,
                             fontSize: 15,
@@ -560,13 +535,11 @@ class _SettingsDropdownButton extends StatelessWidget {
     );
   }
 
-  // Help & Support menu item
   PopupMenuItem<String> _buildHelpMenuItem(BuildContext context) {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
-
     return PopupMenuItem<String>(
       value: 'help',
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -575,17 +548,7 @@ class _SettingsDropdownButton extends StatelessWidget {
         builder: (context, snapshot) {
           return Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Center(
-                  child: Icon(Icons.help_outline, color: Colors.blue, size: 20),
-                ),
-              ),
+              _menuIcon(Icons.help_outline, Colors.blue),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -604,13 +567,11 @@ class _SettingsDropdownButton extends StatelessWidget {
     );
   }
 
-  // Logout menu item styled in red
   PopupMenuItem<String> _buildLogoutMenuItem(BuildContext context) {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
-
     return PopupMenuItem<String>(
       value: 'logout',
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -619,21 +580,7 @@ class _SettingsDropdownButton extends StatelessWidget {
         builder: (context, snapshot) {
           return Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: AppColors.errorColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.logout,
-                    color: AppColors.errorColor,
-                    size: 20,
-                  ),
-                ),
-              ),
+              _menuIcon(Icons.logout, AppColors.errorColor),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -652,7 +599,19 @@ class _SettingsDropdownButton extends StatelessWidget {
     );
   }
 
-  // Maps language code to display name
+  // ── Shared menu icon helper ──────────────────────────────────────────────
+  Widget _menuIcon(IconData icon, Color color) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Center(child: Icon(icon, color: color, size: 20)),
+    );
+  }
+
   String _getLanguageDisplayName(String languageCode) {
     switch (languageCode.toLowerCase()) {
       case 'en':
@@ -675,7 +634,8 @@ class _SettingsDropdownButton extends StatelessWidget {
   }
 }
 
-// AppBar for screens with a back button — supports optional translation disable
+// ─── Back AppBar ──────────────────────────────────────────────────────────────
+
 class BackAppBar extends CustomAppBar {
   const BackAppBar({
     super.key,

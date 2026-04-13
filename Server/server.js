@@ -41,6 +41,7 @@ const marketPlaceRoutes = require("./routes/marketPlaceRoutes");
 const shopImageRoutes = require("./routes/shopImageRoutes");
 const productImageRoutes = require("./routes/productImageRoutes");
 const aiChatRoutes = require("./routes/aiChatRoutes");
+const communityRoutes = require("./routes/communityRoutes");
 
 // AI Chatbot route (before jwtChecker because it's /api/chatbot)
 app.use("/api/chatbot", aiChatRoutes);
@@ -61,6 +62,7 @@ app.use("/api/developer", developerRoutes);
 app.use("/api/farmstore", farmStoreRoutes);
 app.use("/api/retail", retailManagementRoutes);
 app.use("/api/marketplace", marketPlaceRoutes);
+app.use("/api/community", communityRoutes);
 
 // Static files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

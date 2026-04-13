@@ -8,7 +8,7 @@ import '../../../utils/colors.dart';
 import '../../../screens/shared/custom_app_bar.dart';
 import '../../../screens/shared/smart_retranslator.dart';
 import 'chat_models.dart';
-import 'chat_service.dart';
+import '../../../src/services/chat_service.dart';
 
 class AiChatScreen extends StatefulWidget {
   const AiChatScreen({super.key});
@@ -1421,7 +1421,9 @@ class _PulsingDotsState extends State<_PulsingDots>
 
   @override
   void dispose() {
-    for (final c in _ctrls) c.dispose();
+    for (final c in _ctrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 

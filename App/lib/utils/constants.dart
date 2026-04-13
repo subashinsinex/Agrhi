@@ -4,7 +4,7 @@ class AppConstants {
   // production url = http://14.139.161.69:8000/api
 
   // API Configuration
-  static const String baseUrl = 'http://10.21.69.186:5000/api';
+  static const String baseUrl = 'http://10.21.79.141:5000/api';
 
   // Validation Constants
   static const int minPasswordLength = 4;

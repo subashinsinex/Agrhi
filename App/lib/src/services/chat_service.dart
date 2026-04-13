@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../src/services/api_service.dart';
-import 'chat_models.dart';
+import 'api_service.dart';
+import '../../screens/features/ai_chat/chat_models.dart';
 
 // Sliding window rate limiter — respects 30 req/min & 14000 req/day free tier
 class ChatRateLimiter {

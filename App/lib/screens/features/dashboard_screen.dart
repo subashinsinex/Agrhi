@@ -29,6 +29,7 @@ import '../../src/services/retail_service.dart';
 import '../../screens/features/farm_store/setup_screen.dart';
 import '../../screens/features/farm_store/farm_product_screen.dart';
 import '../../screens/features/market_place/market_place_screen.dart';
+import '../features/community/community_screen.dart';
 import '../features/ai_chat/ai_chat_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -109,6 +110,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'This feature requires internet connection',
       'Language',
       'AGRHI Assistant',
+      'Community',
       'AI Chat',
     ], highPriority: true);
   }
@@ -272,10 +274,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       FeatureItem(
         title: 'Marketplace',
         icon: Icons.shopping_cart,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const MarketplaceScreen()),
-        ),
+        onTap: () => _navigateWithOnlineCheck(MarketplaceScreen()),
       ),
       if (!isConsumer)
         FeatureItem(
@@ -321,6 +320,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: 'AI Assistant',
         icon: Icons.smart_toy_outlined,
         onTap: () => _navigateWithOnlineCheck(const AiChatScreen()),
+      ),
+      FeatureItem(
+        title: 'Community',
+        icon: Icons.people_alt_outlined,
+        onTap: () => _navigateWithOnlineCheck(const CommunityScreen()),
       ),
     ];
   }
