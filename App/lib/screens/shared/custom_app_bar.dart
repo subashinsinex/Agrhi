@@ -324,6 +324,7 @@ class DashboardAppBar extends CustomAppBar {
     required VoidCallback onHelpPressed,
     required VoidCallback onLogoutPressed,
     required VoidCallback onLanguagePressed,
+    required VoidCallback onAboutPressed,
     required bool isSyncing,
   }) : super(
          title: 'Welcome',
@@ -335,6 +336,7 @@ class DashboardAppBar extends CustomAppBar {
              onSyncPressed: onSyncPressed,
              onHelpPressed: onHelpPressed,
              onLogoutPressed: onLogoutPressed,
+             onAboutPressed: onAboutPressed,
              onLanguagePressed: onLanguagePressed,
              isSyncing: isSyncing,
            ),
@@ -349,6 +351,7 @@ class _SettingsDropdownButton extends StatelessWidget {
   final VoidCallback onHelpPressed;
   final VoidCallback onLogoutPressed;
   final VoidCallback onLanguagePressed;
+  final VoidCallback onAboutPressed;
   final bool isSyncing;
 
   const _SettingsDropdownButton({
@@ -356,6 +359,7 @@ class _SettingsDropdownButton extends StatelessWidget {
     required this.onHelpPressed,
     required this.onLogoutPressed,
     required this.onLanguagePressed,
+    required this.onAboutPressed,
     required this.isSyncing,
   });
 
@@ -381,6 +385,7 @@ class _SettingsDropdownButton extends StatelessWidget {
           const PopupMenuDivider(height: 1),
           _buildSyncMenuItem(context),
           _buildHelpMenuItem(context),
+          _buildAboutMenuItem(context),
           const PopupMenuDivider(height: 1),
           _buildLogoutMenuItem(context),
         ],
@@ -394,6 +399,9 @@ class _SettingsDropdownButton extends StatelessWidget {
               break;
             case 'help':
               onHelpPressed();
+              break;
+            case 'about':
+              onAboutPressed();
               break;
             case 'logout':
               onLogoutPressed();
@@ -553,6 +561,53 @@ class _SettingsDropdownButton extends StatelessWidget {
               Expanded(
                 child: Text(
                   snapshot.data ?? 'Help & Support',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _buildAboutMenuItem(BuildContext context) {
+    final languageService = Provider.of<LanguageService>(
+      context,
+      listen: false,
+    );
+
+    return PopupMenuItem<String>(
+      value: 'about',
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: FutureBuilder<String>(
+        future: languageService.translate('About Us'),
+        builder: (context, snapshot) {
+          return Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.info_outline,
+                    color: Colors.orange,
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  snapshot.data ?? 'About Us',
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 15,

@@ -10,6 +10,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../utils/colors.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
+import '../../shared/disclaimer_banner.dart';
 import '../../../src/services/language_service.dart';
 import '../../../src/services/farm_store_service.dart';
 
@@ -838,7 +839,10 @@ class _SetupScreenState extends State<SetupScreen> {
                 ],
               ),
             ),
-
+          DisclaimerBanner(
+            'Your selling location is visible to nearby users and cannot be changed later. Set it carefully — AGRHI is not responsible for consequences of sharing your location.',
+          ),
+          const SizedBox(height: 16),
           if (_currentPosition == null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),

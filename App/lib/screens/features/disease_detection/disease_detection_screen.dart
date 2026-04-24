@@ -17,6 +17,7 @@ import '../../../src/services/language_service.dart';
 import '../../../src/services/model_download_service.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
+import '../../shared/disclaimer_banner.dart';
 import '../../../utils/colors.dart';
 import 'smart_camera_screen.dart';
 
@@ -1581,7 +1582,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
                         const SizedBox(height: 16),
                       ],
                       if (result != null && !_isLoading) _buildResults(),
-                      const SizedBox(height: 32),
+                      DisclaimerBanner(
+                        'AI results are for reference only. Accuracy depends on image quality and conditions. Always consult an Expert before taking action. AGRHI is not liable for crop losses based on these predictions.',
+                      ),
                       const Expanded(child: SizedBox.shrink()),
                     ],
                   ),

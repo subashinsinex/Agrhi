@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../utils/colors.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
+import '../../shared/disclaimer_banner.dart';
 import '../../../src/services/retail_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../utils/constants.dart';
@@ -440,7 +441,8 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Shop number is required';
                           }
-                          if (value.trim().length < 7 || value.trim().length > 15) {
+                          if (value.trim().length < 7 ||
+                              value.trim().length > 15) {
                             return 'Enter a valid phone number';
                           }
                           return null;
@@ -491,8 +493,11 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
                         hint: 'Enter license number (Optional)',
                         isRequired: false,
                       ),
-
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 8),
+                      DisclaimerBanner(
+                        'Your selling location is visible to nearby users and cannot be changed later. Set it carefully — AGRHI is not responsible for consequences of sharing your location.',
+                      ),
+                      const SizedBox(height: 8),
 
                       SizedBox(
                         width: double.infinity,

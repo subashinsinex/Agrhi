@@ -106,7 +106,7 @@ class MyApp extends StatelessWidget {
       child: Consumer<LanguageService>(
         builder: (context, languageService, _) {
           return MaterialApp(
-            title: 'AGRHI - Smart Farming Solutions',
+            title: 'AGRHI - Smart Farming Assistant',
             debugShowCheckedModeBanner: false,
 
             // ✅ Theme Configuration

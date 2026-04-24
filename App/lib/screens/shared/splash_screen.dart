@@ -328,7 +328,7 @@ Future<void> _proceedWithAuth() async {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Smart Farm App',
+            'Smart Farm Assistant',
             style: TextStyle(
               fontSize: 15,
               color: AppColors.primaryGreen,

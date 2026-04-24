@@ -66,7 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
       'Password',
       "Don't have an account?",
       'Sign Up',
-      'Smart Farm App',
+      'Smart Farm Assistant',
       'Invalid phone number or password',
       'Server error. Please try again later',
       'Login failed',
@@ -463,7 +463,7 @@ Future<void> _handleLogin() async {
                                 ),
                                 const SizedBox(height: 8),
                                 const SmartReTranslator(
-                                  text: 'Smart Farm App',
+                                  text: 'Smart Farm Assistant',
                                   style: TextStyle(
                                     fontSize: 16,
                                     color: AppColors.textSecondary,

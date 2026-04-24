@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../shared/language_switcher.dart';
 import '../shared/smart_retranslator.dart';
+import '../features/about_screen.dart';
 import '../../utils/colors.dart';
 import '../../utils/routes.dart';
 import '../../utils/validators.dart';
@@ -32,6 +33,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _agreedToTerms = false;
   DateTime? _selectedDate;
   String? _selectedCategoryId;
 
@@ -152,6 +154,13 @@ class _SignupScreenState extends State<SignupScreen> {
   Future<void> _handleSignup() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
       _showErrorSnackBar('Please fill all required fields correctly');
+      return;
+    }
+
+    if (!_agreedToTerms) {
+      _showErrorSnackBar(
+        'Please accept the Terms & Conditions and Privacy Policy',
+      );
       return;
     }
 
@@ -433,6 +442,8 @@ class _SignupScreenState extends State<SignupScreen> {
                               enabled: !_isLoading,
                             ),
                             const SizedBox(height: 32),
+                            _buildTermsCheckbox(),
+                            const SizedBox(height: 32),
 
                             // Sign Up Button
                             SizedBox(
@@ -590,6 +601,104 @@ class _SignupScreenState extends State<SignupScreen> {
       return 'Please select a category';
     }
     return null;
+  }
+
+  Widget _buildTermsCheckbox() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(
+            value: _agreedToTerms,
+            onChanged: _isLoading
+                ? null
+                : (value) => setState(() => _agreedToTerms = value ?? false),
+            activeColor: AppColors.primaryGreen,
+            fillColor: WidgetStateProperty.resolveWith<Color>((states) {
+              if (states.contains(WidgetState.selected)) {
+                return AppColors.primaryGreen;
+              }
+              return Colors.white;
+            }),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
+            ),
+            side: BorderSide(
+              color: _agreedToTerms
+                  ? AppColors.primaryGreen
+                  : AppColors.cardBackgroundGrey,
+              width: 1.5,
+            ),
+          )
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: GestureDetector(
+            onTap: _isLoading
+                ? null
+                : () => setState(() => _agreedToTerms = !_agreedToTerms),
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+                children: [
+                  const TextSpan(text: 'I have read and agree to the '),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.baseline,
+                    baseline: TextBaseline.alphabetic,
+                    child: GestureDetector(
+                      onTap: () => _openLegalSheet(context, openTerms: true),
+                      child: const Text(
+                        'Terms & Conditions',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.primaryGreen,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppColors.primaryGreen,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const TextSpan(text: ' and '),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.baseline,
+                    baseline: TextBaseline.alphabetic,
+                    child: GestureDetector(
+                      onTap: () => _openLegalSheet(context, openTerms: false),
+                      child: const Text(
+                        'Privacy Policy',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.primaryGreen,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppColors.primaryGreen,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const TextSpan(text: ' of AGRHI.'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openLegalSheet(BuildContext context, {required bool openTerms}) {
+    if (openTerms) {
+      AboutScreen.showTermsSheet(context);
+    } else {
+      AboutScreen.showPrivacySheet(context);
+    }
   }
 }
 

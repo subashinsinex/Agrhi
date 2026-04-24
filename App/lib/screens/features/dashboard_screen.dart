@@ -29,6 +29,7 @@ import '../../src/services/retail_service.dart';
 import '../../screens/features/farm_store/setup_screen.dart';
 import '../../screens/features/farm_store/farm_product_screen.dart';
 import '../../screens/features/market_place/market_place_screen.dart';
+import '../features/about_screen.dart';
 import '../features/community/community_screen.dart';
 import '../features/ai_chat/ai_chat_screen.dart';
 
@@ -107,6 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'My Shops',
       'My Produce',
       'Map',
+      'About Us',
       'This feature requires internet connection',
       'Language',
       'AGRHI Assistant',
@@ -404,27 +406,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showSyncSuccessSnackBar(Map<String, dynamic> result) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: const SmartReTranslator(
-        text: '✅ Full sync completed',
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const SmartReTranslator(
+          text: '✅ Full sync completed',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
         ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.successColor,
+        duration: const Duration(seconds: 3),
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: AppColors.successColor,
-      duration: const Duration(seconds: 3),
-      margin: const EdgeInsets.all(16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
-    ),
-  );
-}
-
+    );
+  }
 
   Future<void> _performBackgroundCleanup() async {
     try {
@@ -651,6 +650,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const FeedbackScreen()),
+          );
+        },
+        onAboutPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AboutScreen()),
           );
         },
         onLogoutPressed: _showLogoutConfirmation,

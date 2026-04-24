@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../utils/colors.dart';
 import '../shared/smart_retranslator.dart';
 import '../shared/custom_app_bar.dart';
+import '../shared/disclaimer_banner.dart';
 import '../../src/services/auth_service.dart';
 import '../../src/services/api_service.dart';
 import '../../src/services/language_service.dart';
@@ -766,10 +767,7 @@ class SubsidyDetailScreen extends StatelessWidget {
     final descriptionText = subsidy.description.replaceAll(r'\n', '\n');
 
     return Scaffold(
-      appBar: CustomAppBar(
-        title: subsidy.title,
-        showOnlineStatus: true,
-      ),
+      appBar: CustomAppBar(title: subsidy.title, showOnlineStatus: true),
       backgroundColor: AppColors.backgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -821,6 +819,10 @@ class SubsidyDetailScreen extends StatelessWidget {
                             fontSize: 13,
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 10),
+                      DisclaimerBanner(
+                        'Subsidy information is for reference only. Eligibility and availability are governed by government authorities. \'More Info\' links redirect to official external websites.',
                       ),
                       const Spacer(),
                       if (subsidy.link.isNotEmpty)

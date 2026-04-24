@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../utils/colors.dart';
 import '../../../src/database/database_helper.dart';
 import '../../shared/custom_app_bar.dart';
+import '../../shared/disclaimer_banner.dart';
 import '../../../utils/storage_helper.dart';
 import '../../shared/smart_retranslator.dart';
 
@@ -346,6 +347,14 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
                             ),
                           );
                         }, childCount: _filteredHistory.length),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          child: DisclaimerBanner(
+                            'AI results are for reference only. Accuracy depends on image quality and conditions. Always consult an expert before taking action. AGRHI is not liable for crop losses based on these predictions.',
+                          ),
+                        )
                       ),
                     ],
                   );
