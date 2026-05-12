@@ -74,6 +74,10 @@ dependencies:
   # Internationalisation
   intl: ^0.20.2
 
+  # Notifications & Background Tasks
+  workmanager: ^0.9.0+3
+  flutter_local_notifications: ^17.2.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

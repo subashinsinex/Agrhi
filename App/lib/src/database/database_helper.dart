@@ -1,4 +1,5 @@
 // lib/src/database/database_helper.dart
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:uuid/uuid.dart';
@@ -1098,7 +1099,7 @@ class DatabaseHelper {
     return rows.isNotEmpty ? rows.first['diseaseid'] as String : null;
   }
 
-  Future<String> saveDetectionUsingCatalog({
+Future<String> saveDetectionUsingCatalog({
     required String userId,
     required String plantId,
     required String detectedLabel,
@@ -1112,11 +1113,45 @@ class DatabaseHelper {
       throw StateError('Unknown disease label: $detectedLabel');
     }
 
+    final imageId = const Uuid().v4();
+
+    String finalImagePath = localImagePath;
+    try {
+      final plantRows = await db.query(
+        'plants',
+        columns: ['plantname'],
+        where: 'plantid = ?',
+        whereArgs: [plantId],
+        limit: 1,
+      );
+      final plantName = plantRows.isNotEmpty
+          ? (plantRows.first['plantname'] as String)
+          : 'plant';
+
+      String sanitize(String s) =>
+          s.replaceAll(RegExp(r'[^\w]'), '_').toLowerCase();
+
+      final appDir = await getApplicationDocumentsDirectory();
+      final imagesDir = Directory('${appDir.path}/disease_images');
+      if (!await imagesDir.exists()) {
+        await imagesDir.create(recursive: true);
+      }
+
+      final newFileName =
+          '${sanitize(plantName)}_${sanitize(detectedLabel)}_$imageId.jpg';
+      final newPath = '${imagesDir.path}/$newFileName';
+
+      await File(localImagePath).copy(newPath);
+      await File(localImagePath).delete();
+      finalImagePath = newPath;
+    } catch (e) {
+      print('⚠️ Image rename failed (using original): $e');
+    }
+
     return await db.transaction((txn) async {
-      final imageId = const Uuid().v4();
       await txn.insert('images', {
         'image_id': imageId,
-        'local_path': localImagePath,
+        'local_path': finalImagePath,
         'server_image_url': null,
         'is_uploaded': 0,
         'created_at': DateTime.now().toIso8601String(),
@@ -1134,6 +1169,7 @@ class DatabaseHelper {
         'is_uploaded': 0,
         'is_dirty': 1,
       });
+
       return analysisId;
     });
   }
@@ -1197,6 +1233,7 @@ class DatabaseHelper {
       {'is_uploaded': 1, 'is_dirty': 0},
       where: 'id = ?',
       whereArgs: [analysisId],
+      
     );
     if (serverImageUrl != null) {
       await db.update(
