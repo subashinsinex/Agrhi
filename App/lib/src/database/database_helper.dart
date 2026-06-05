@@ -39,17 +39,18 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
     print('DB path: $path');
+
     final db = await openDatabase(
       path,
-      version: 5, // ✅ UPDATED to version 5 for soft delete
+      version: 1,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         final res = await db.rawQuery('PRAGMA foreign_keys');
         print('FK enforcement: ${res.first.values.first}');
       },
       onCreate: _createDB,
-      onUpgrade: _upgradeDB,
     );
+
     return db;
   }
 
@@ -99,7 +100,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // ✅ UPDATED: Added isdeleted column
     await db.execute('''
       CREATE TABLE farms (
         farmid TEXT PRIMARY KEY,
@@ -142,7 +142,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // ✅ UPDATED: Added isdeleted column
     await db.execute('''
       CREATE TABLE usercrops (
         usercropid TEXT PRIMARY KEY,
@@ -161,6 +160,17 @@ class DatabaseHelper {
         FOREIGN KEY (farmid) REFERENCES farms(farmid) ON DELETE CASCADE,
         FOREIGN KEY (plantid) REFERENCES plants(plantid) ON DELETE RESTRICT,
         FOREIGN KEY (soiltypeid) REFERENCES soiltypes(soiltypeid) ON DELETE RESTRICT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE cropreminders (
+        cropid TEXT PRIMARY KEY,
+        plantname TEXT NOT NULL,
+        harvestreminderdate TEXT,
+        notificationids TEXT,
+        createdat TEXT,
+        FOREIGN KEY (cropid) REFERENCES usercrops(usercropid) ON DELETE CASCADE
       )
     ''');
 
@@ -227,7 +237,18 @@ class DatabaseHelper {
       )
     ''');
 
-    // ✅ UPDATED: Added indexes for soft delete
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS subsidies_cache (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        description TEXT,
+        category TEXT,
+        amount TEXT,
+        link TEXT,
+        cached_at TEXT
+      )
+    ''');
+
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_farms_pending ON farms(isdirty, isuploaded)',
     );
@@ -240,6 +261,7 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_farms_date ON farms(createdat)',
     );
+
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_crops_pending ON usercrops(isdirty, isuploaded)',
     );
@@ -255,6 +277,11 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_crops_date ON usercrops(createdat)',
     );
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_cropreminders_harvest ON cropreminders(harvestreminderdate)',
+    );
+
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_dar_pending ON disease_analysis_results(is_dirty, is_uploaded)',
     );
@@ -273,254 +300,127 @@ class DatabaseHelper {
       'diseases_plants',
       'disease_remedy',
     ];
+
     for (var table in tables) {
       await db.insert('reference_table_versions', {
         'ref_table_name': table,
         'updated_at': '2000-01-01T00:00:00Z',
       });
     }
-    print('✅ DB created with soft delete support');
+
+    print('✅ DB created with final schema');
   }
 
-  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      print('🔄 Upgrading database from v$oldVersion to v$newVersion');
+  // ==================== REMINDER METHODS ====================
 
-      try {
-        await db.execute(
-          'ALTER TABLE farms ADD COLUMN isuploaded INTEGER DEFAULT 0',
-        );
-        await db.execute(
-          'ALTER TABLE farms ADD COLUMN isdirty INTEGER DEFAULT 1',
-        );
-      } catch (e) {
-        print('ℹ️ Farms sync columns may already exist');
-      }
+  Future<void> upsertCropReminder({
+    required String cropId,
+    required String plantName,
+    DateTime? harvestReminderDate,
+    required String notificationIds,
+  }) async {
+    final db = await database;
 
-      try {
-        await db.execute(
-          'ALTER TABLE usercrops ADD COLUMN isuploaded INTEGER DEFAULT 0',
-        );
-        await db.execute(
-          'ALTER TABLE usercrops ADD COLUMN isdirty INTEGER DEFAULT 1',
-        );
-      } catch (e) {
-        print('ℹ️ Crops sync columns may already exist');
-      }
+    await db.insert('cropreminders', {
+      'cropid': cropId,
+      'plantname': plantName,
+      'harvestreminderdate': harvestReminderDate?.toIso8601String(),
+      'notificationids': notificationIds,
+      'createdat': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
 
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_farms_pending ON farms(isdirty, isuploaded)',
-      );
-      await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_crops_pending ON usercrops(isdirty, isuploaded)',
-      );
+  Future<void> deleteCropReminder(String cropId) async {
+    final db = await database;
+    await db.delete('cropreminders', where: 'cropid = ?', whereArgs: [cropId]);
+  }
 
-      print('✅ Database upgraded to v2 successfully');
-    }
+  Future<Map<String, dynamic>?> getCropReminder(String cropId) async {
+    final db = await database;
+    final rows = await db.query(
+      'cropreminders',
+      where: 'cropid = ?',
+      whereArgs: [cropId],
+      limit: 1,
+    );
 
-    if (oldVersion < 3) {
-      print('🔄 Upgrading to v3: Adding junction tables');
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
 
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS farm_soiltypes (
-          farm_id TEXT NOT NULL,
-          soil_type_id TEXT NOT NULL,
-          PRIMARY KEY (farm_id, soil_type_id),
-          FOREIGN KEY (farm_id) REFERENCES farms(farmid) ON DELETE CASCADE,
-          FOREIGN KEY (soil_type_id) REFERENCES soiltypes(soiltypeid) ON DELETE CASCADE
-        )
-      ''');
+  Future<List<Map<String, dynamic>>> getAllActiveCropReminders() async {
+    final db = await database;
 
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS farm_irrigations (
-          farm_id TEXT NOT NULL,
-          irrigation_id TEXT NOT NULL,
-          PRIMARY KEY (farm_id, irrigation_id),
-          FOREIGN KEY (farm_id) REFERENCES farms(farmid) ON DELETE CASCADE,
-          FOREIGN KEY (irrigation_id) REFERENCES irrigationmethod(irrigationid) ON DELETE CASCADE
-        )
-      ''');
+    return await db.rawQuery('''
+      SELECT
+        cr.cropid,
+        cr.plantname,
+        cr.harvestreminderdate,
+        cr.notificationids,
+        uc.isactive,
+        uc.isdeleted
+      FROM cropreminders cr
+      INNER JOIN usercrops uc
+        ON uc.usercropid = cr.cropid
+      WHERE uc.isactive = 1
+        AND uc.isdeleted = 0
+      ORDER BY cr.createdat DESC
+    ''');
+  }
 
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS farm_watersources (
-          farm_id TEXT NOT NULL,
-          water_src_id TEXT NOT NULL,
-          PRIMARY KEY (farm_id, water_src_id),
-          FOREIGN KEY (farm_id) REFERENCES farms(farmid) ON DELETE CASCADE,
-          FOREIGN KEY (water_src_id) REFERENCES watersrc(watersrcid) ON DELETE CASCADE
-        )
-      ''');
+  Future<int> getActiveCropRemindersCount() async {
+    final db = await database;
 
-      await db.transaction((txn) async {
-        final farms = await txn.query('farms');
-        for (final farm in farms) {
-          final farmId = farm['farmid'] as String;
+    final result = await db.rawQuery('''
+      SELECT COUNT(*) AS count
+      FROM cropreminders cr
+      INNER JOIN usercrops uc
+        ON uc.usercropid = cr.cropid
+      WHERE uc.isactive = 1
+        AND uc.isdeleted = 0
+    ''');
 
-          if (farm['soiltypeid'] != null) {
-            await txn.insert('farm_soiltypes', {
-              'farm_id': farmId,
-              'soil_type_id': farm['soiltypeid'],
-            }, conflictAlgorithm: ConflictAlgorithm.ignore);
-          }
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
 
-          if (farm['irrigationid'] != null) {
-            await txn.insert('farm_irrigations', {
-              'farm_id': farmId,
-              'irrigation_id': farm['irrigationid'],
-            }, conflictAlgorithm: ConflictAlgorithm.ignore);
-          }
+  Future<List<Map<String, dynamic>>> getUpcomingReminders({
+    int daysAhead = 7,
+  }) async {
+    final db = await database;
 
-          if (farm['watersrcid'] != null) {
-            await txn.insert('farm_watersources', {
-              'farm_id': farmId,
-              'water_src_id': farm['watersrcid'],
-            }, conflictAlgorithm: ConflictAlgorithm.ignore);
-          }
-        }
+    final now = DateTime.now();
+    final end = now.add(Duration(days: daysAhead));
 
-        await txn.execute('''
-          CREATE TABLE farms_new (
-            farmid TEXT PRIMARY KEY,
-            farmsize REAL NOT NULL,
-            surveynumber TEXT NOT NULL UNIQUE,
-            createdat TEXT,
-            isuploaded INTEGER DEFAULT 0,
-            isdirty INTEGER DEFAULT 1
-          )
-        ''');
-
-        await txn.execute('''
-          INSERT INTO farms_new (farmid, farmsize, surveynumber, createdat, isuploaded, isdirty)
-          SELECT farmid, farmsize, surveynumber, createdat, isuploaded, isdirty FROM farms
-        ''');
-
-        await txn.execute('DROP TABLE farms');
-        await txn.execute('ALTER TABLE farms_new RENAME TO farms');
-
-        await txn.execute(
-          'CREATE INDEX IF NOT EXISTS idx_farms_pending ON farms(isdirty, isuploaded)',
-        );
-        await txn.execute(
-          'CREATE INDEX IF NOT EXISTS idx_farms_survey ON farms(surveynumber)',
-        );
-        await txn.execute(
-          'CREATE INDEX IF NOT EXISTS idx_farms_date ON farms(createdat)',
-        );
-      });
-
-      print('✅ Junction tables migration complete');
-    }
-
-    if (oldVersion < 4) {
-      print(
-        '🔄 Upgrading to v4: Fixing column names for images and analysis tables',
-      );
-
-      await db.transaction((txn) async {
-        final tables = await txn.rawQuery(
-          "SELECT name FROM sqlite_master WHERE type='table' AND (name='images' OR name='diseaseanalysisresults')",
-        );
-
-        if (tables.any((t) => t['name'] == 'images')) {
-          await txn.execute('ALTER TABLE images RENAME TO images_old');
-
-          await txn.execute('''
-            CREATE TABLE images (
-              image_id TEXT PRIMARY KEY,
-              local_path TEXT NOT NULL,
-              server_image_url TEXT,
-              is_uploaded INTEGER DEFAULT 0,
-              created_at TEXT
-            )
-          ''');
-
-          await txn.execute('''
-            INSERT INTO images (image_id, local_path, server_image_url, is_uploaded, created_at)
-            SELECT imageid, localpath, serverimageurl, isuploaded, createdat FROM images_old
-          ''');
-
-          await txn.execute('DROP TABLE images_old');
-          print('✅ Images table migrated');
-        }
-
-        if (tables.any((t) => t['name'] == 'diseaseanalysisresults')) {
-          await txn.execute(
-            'ALTER TABLE diseaseanalysisresults RENAME TO disease_analysis_results_old',
-          );
-
-          await txn.execute('''
-            CREATE TABLE disease_analysis_results (
-              id TEXT PRIMARY KEY,
-              user_id TEXT NOT NULL,
-              plant_id TEXT NOT NULL,
-              image_id TEXT NOT NULL,
-              disease_id TEXT NOT NULL,
-              confidence REAL,
-              created_at TEXT,
-              is_uploaded INTEGER DEFAULT 0,
-              is_dirty INTEGER DEFAULT 1,
-              FOREIGN KEY (plant_id) REFERENCES plants(plantid),
-              FOREIGN KEY (image_id) REFERENCES images(image_id),
-              FOREIGN KEY (disease_id) REFERENCES diseases(diseaseid)
-            )
-          ''');
-
-          await txn.execute('''
-            INSERT INTO disease_analysis_results 
-            (id, user_id, plant_id, image_id, disease_id, confidence, created_at, is_uploaded, is_dirty)
-            SELECT id, userid, plantid, imageid, diseaseid, confidence, createdat, isuploaded, isdirty 
-            FROM disease_analysis_results_old
-          ''');
-
-          await txn.execute('DROP TABLE disease_analysis_results_old');
-          print('✅ Disease analysis results table migrated');
-        }
-
-        await txn.execute(
-          'CREATE INDEX IF NOT EXISTS idx_dar_pending ON disease_analysis_results(is_dirty, is_uploaded)',
-        );
-        await txn.execute(
-          'CREATE INDEX IF NOT EXISTS idx_dar_user ON disease_analysis_results(user_id)',
-        );
-      });
-
-      print('✅ Column names migration complete');
-    }
-
-    // ✅ NEW: Version 5 migration for soft delete
-    if (oldVersion < 5) {
-      print('🔄 Upgrading to v5: Adding isdeleted columns');
-
-      try {
-        await db.execute(
-          'ALTER TABLE farms ADD COLUMN isdeleted INTEGER DEFAULT 0',
-        );
-        await db.execute(
-          'ALTER TABLE usercrops ADD COLUMN isdeleted INTEGER DEFAULT 0',
-        );
-
-        await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_farms_deleted ON farms(isdeleted)',
-        );
-        await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_crops_deleted ON usercrops(isdeleted)',
-        );
-
-        print('✅ Soft delete columns added');
-      } catch (e) {
-        print('ℹ️ isdeleted columns may already exist: $e');
-      }
-    }
+    return await db.rawQuery(
+      '''
+      SELECT
+        cr.cropid,
+        cr.plantname,
+        cr.harvestreminderdate,
+        'harvest' AS remindertype,
+        NULL AS daysuntilfollowup,
+        CAST(julianday(cr.harvestreminderdate) - julianday(?) AS INTEGER) AS daysuntilharvest,
+        cr.harvestreminderdate AS sortdate
+      FROM cropreminders cr
+      INNER JOIN usercrops uc
+        ON uc.usercropid = cr.cropid
+      WHERE uc.isactive = 1
+        AND uc.isdeleted = 0
+        AND cr.harvestreminderdate IS NOT NULL
+        AND datetime(cr.harvestreminderdate) >= datetime(?)
+        AND datetime(cr.harvestreminderdate) <= datetime(?)
+      ORDER BY datetime(sortdate) ASC
+    ''',
+      [now.toIso8601String(), now.toIso8601String(), end.toIso8601String()],
+    );
   }
 
   // ==================== SOFT DELETE METHODS ====================
 
-  /// Mark farm as deleted with validation and cascade logic
   Future<Map<String, dynamic>> markFarmAsDeleted(String farmId) async {
     final db = await database;
 
     return await db.transaction((txn) async {
-      // 1. Check if farm exists
       final farmRows = await txn.query(
         'farms',
         where: 'farmid = ? AND isdeleted = 0',
@@ -538,7 +438,6 @@ class DatabaseHelper {
       final farm = farmRows.first;
       final wasUploaded = farm['isuploaded'] == 1;
 
-      // 2. Check for active crops
       final activeCrops = await txn.query(
         'usercrops',
         where: 'farmid = ? AND isdeleted = 0',
@@ -555,7 +454,6 @@ class DatabaseHelper {
       }
 
       if (wasUploaded) {
-        // 3a. SOFT DELETE: Mark as deleted (will sync to server)
         await txn.update(
           'farms',
           {'isdeleted': 1, 'isdirty': 1},
@@ -572,9 +470,6 @@ class DatabaseHelper {
           'farmId': farmId,
         };
       } else {
-        // 3b. HARD DELETE: Remove completely (never synced)
-
-        // Delete junction table entries
         await txn.delete(
           'farm_soiltypes',
           where: 'farm_id = ?',
@@ -591,7 +486,6 @@ class DatabaseHelper {
           whereArgs: [farmId],
         );
 
-        // Delete the farm
         await txn.delete('farms', where: 'farmid = ?', whereArgs: [farmId]);
 
         print('✅ Farm hard deleted (local only): $farmId');
@@ -606,12 +500,10 @@ class DatabaseHelper {
     });
   }
 
-  /// Mark crop as deleted
   Future<Map<String, dynamic>> markCropAsDeleted(String cropId) async {
     final db = await database;
 
     return await db.transaction((txn) async {
-      // 1. Check if crop exists
       final cropRows = await txn.query(
         'usercrops',
         where: 'usercropid = ? AND isdeleted = 0',
@@ -630,7 +522,6 @@ class DatabaseHelper {
       final wasUploaded = crop['isuploaded'] == 1;
 
       if (wasUploaded) {
-        // SOFT DELETE: Mark as deleted (will sync to server)
         await txn.update(
           'usercrops',
           {'isdeleted': 1, 'isdirty': 1},
@@ -647,7 +538,6 @@ class DatabaseHelper {
           'cropId': cropId,
         };
       } else {
-        // HARD DELETE: Remove completely (never synced)
         await txn.delete(
           'usercrops',
           where: 'usercropid = ?',
@@ -666,7 +556,6 @@ class DatabaseHelper {
     });
   }
 
-  /// Get pending deletions for sync
   Future<List<Map<String, dynamic>>> getPendingFarmDeletions() async {
     final db = await database;
     return await db.query('farms', where: 'isdeleted = 1 AND isdirty = 1');
@@ -677,12 +566,10 @@ class DatabaseHelper {
     return await db.query('usercrops', where: 'isdeleted = 1 AND isdirty = 1');
   }
 
-  /// Cleanup after successful server deletion sync
   Future<void> cleanupDeletedFarm(String farmId) async {
     final db = await database;
 
     await db.transaction((txn) async {
-      // Remove junction table entries
       await txn.delete(
         'farm_soiltypes',
         where: 'farm_id = ?',
@@ -698,8 +585,6 @@ class DatabaseHelper {
         where: 'farm_id = ?',
         whereArgs: [farmId],
       );
-
-      // Remove the farm
       await txn.delete('farms', where: 'farmid = ?', whereArgs: [farmId]);
     });
 
@@ -747,7 +632,7 @@ class DatabaseHelper {
         'createdat': isUpdate ? existingFarm.first['createdat'] : now,
         'isuploaded': wasUploaded ? 1 : 0,
         'isdirty': 1,
-        'isdeleted': 0, // ✅ Ensure not deleted on upsert
+        'isdeleted': 0,
       };
 
       if (isUpdate) {
@@ -761,7 +646,6 @@ class DatabaseHelper {
         await txn.insert('farms', farmData);
       }
 
-      // Clear existing junction table relations
       await txn.delete('farm_soiltypes', where: 'farm_id = ?', whereArgs: [id]);
       await txn.delete(
         'farm_irrigations',
@@ -774,7 +658,6 @@ class DatabaseHelper {
         whereArgs: [id],
       );
 
-      // Insert new relations
       for (final soilTypeId in soilTypeIds) {
         await txn.insert('farm_soiltypes', {
           'farm_id': id,
@@ -800,12 +683,11 @@ class DatabaseHelper {
     });
   }
 
-  // ✅ UPDATED: Filter out deleted farms
   Future<List<Map<String, dynamic>>> getAllFarmsWithRelations() async {
     final db = await database;
     final farms = await db.query(
       'farms',
-      where: 'isdeleted = 0', // ✅ Filter deleted
+      where: 'isdeleted = 0',
       orderBy: 'createdat DESC',
     );
 
@@ -943,28 +825,26 @@ class DatabaseHelper {
       'createdat': DateTime.now().toIso8601String(),
       'isuploaded': 0,
       'isdirty': 1,
-      'isdeleted': 0, // ✅ Default not deleted
+      'isdeleted': 0,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     return id;
   }
 
-  // ✅ UPDATED: Filter out deleted farms
   Future<List<Map<String, dynamic>>> getAllFarms() async {
     final db = await database;
     return await db.rawQuery('''
-      SELECT f.* 
+      SELECT f.*
       FROM farms f
       WHERE f.isdeleted = 0
       ORDER BY f.createdat DESC
     ''');
   }
 
-  // ✅ UPDATED: Filter out deleted crops
   Future<List<Map<String, dynamic>>> getAllCrops() async {
     final db = await database;
     return await db.rawQuery('''
-      SELECT 
+      SELECT
         uc.*,
         p.plantname as plant_name,
         ct.name as crop_type,
@@ -984,8 +864,7 @@ class DatabaseHelper {
     final db = await database;
     return await db.query(
       'farms',
-      where:
-          '(isdirty = 1 OR isuploaded = 0) AND isdeleted = 0', // ✅ Exclude deleted
+      where: '(isdirty = 1 OR isuploaded = 0) AND isdeleted = 0',
       orderBy: 'createdat DESC',
     );
   }
@@ -994,8 +873,7 @@ class DatabaseHelper {
     final db = await database;
     return await db.query(
       'usercrops',
-      where:
-          '(isdirty = 1 OR isuploaded = 0) AND isdeleted = 0', // ✅ Exclude deleted
+      where: '(isdirty = 1 OR isuploaded = 0) AND isdeleted = 0',
       orderBy: 'createdat DESC',
     );
   }
@@ -1044,12 +922,14 @@ class DatabaseHelper {
         .where((c) => c != pk)
         .map((c) => '$c = excluded.$c')
         .join(', ');
+
     final sql =
         '''
       INSERT INTO $table (${cols.join(', ')})
       VALUES ($placeholders)
       ON CONFLICT($pk) DO UPDATE SET $assignments
     ''';
+
     await db.rawInsert(sql, cols.map((c) => row[c]).toList());
   }
 
@@ -1061,12 +941,14 @@ class DatabaseHelper {
     final db = await database;
     await db.transaction((txn) async {
       final serverIds = <String>{};
+
       for (final row in rows) {
         final id = (row[pk] ?? '').toString();
         if (id.isEmpty) continue;
         await _upsert(txn, table, row, pk);
         serverIds.add(id);
       }
+
       if (serverIds.isEmpty) {
         final n = await txn.delete(table);
         print('🗑️ snapshot cleared $table: $n rows');
@@ -1099,7 +981,7 @@ class DatabaseHelper {
     return rows.isNotEmpty ? rows.first['diseaseid'] as String : null;
   }
 
-Future<String> saveDetectionUsingCatalog({
+  Future<String> saveDetectionUsingCatalog({
     required String userId,
     required String plantId,
     required String detectedLabel,
@@ -1107,8 +989,8 @@ Future<String> saveDetectionUsingCatalog({
     required String localImagePath,
   }) async {
     final db = await database;
-
     final diseaseId = await findDiseaseIdByLabel(detectedLabel);
+
     if (diseaseId == null) {
       throw StateError('Unknown disease label: $detectedLabel');
     }
@@ -1179,7 +1061,7 @@ Future<String> saveDetectionUsingCatalog({
   Future<List<Map<String, dynamic>>> getPendingAnalyses() async {
     final db = await database;
     return await db.rawQuery('''
-      SELECT 
+      SELECT
         dar.*,
         d.name as disease_name,
         d.severity,
@@ -1203,7 +1085,7 @@ Future<String> saveDetectionUsingCatalog({
     final db = await database;
     return await db.rawQuery(
       '''
-      SELECT 
+      SELECT
         dar.*,
         d.name as disease_name,
         d.severity,
@@ -1233,8 +1115,8 @@ Future<String> saveDetectionUsingCatalog({
       {'is_uploaded': 1, 'is_dirty': 0},
       where: 'id = ?',
       whereArgs: [analysisId],
-      
     );
+
     if (serverImageUrl != null) {
       await db.update(
         'images',
@@ -1273,16 +1155,21 @@ Future<String> saveDetectionUsingCatalog({
             headers: {'Authorization': 'Bearer $accessToken'},
           )
           .timeout(const Duration(seconds: 10));
+
       print('📡 rtv: ${response.statusCode}');
+
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         final serverVersions = <String, String>{};
+
         for (var item in data) {
           serverVersions[item['ref_table_name']] = item['updated_at'];
         }
+
         print('🧾 rtv tables: ${serverVersions.length}');
         return serverVersions;
       }
+
       return {};
     } catch (e) {
       print('❌ rtv error: $e');
@@ -1296,6 +1183,7 @@ Future<String> saveDetectionUsingCatalog({
     try {
       final localVersions = await getReferenceTableVersions();
       final needsUpdate = <String, bool>{};
+
       for (var local in localVersions) {
         final tableName = local['ref_table_name'] as String;
         final localTime = DateTime.parse(local['updated_at'] as String);
@@ -1303,11 +1191,13 @@ Future<String> saveDetectionUsingCatalog({
             serverVersions[tableName] ?? '2000-01-01T00:00:00Z';
         final serverTime = DateTime.parse(serverTimeStr);
         final need = serverTime.isAfter(localTime);
+
         needsUpdate[tableName] = need;
         print(
           '${need ? '⬇️' : '✅'} $tableName (local: $localTime, server: $serverTime)',
         );
       }
+
       return needsUpdate;
     } catch (e) {
       print('❌ version compare error: $e');
@@ -1318,6 +1208,7 @@ Future<String> saveDetectionUsingCatalog({
   List<dynamic> _extractRecords(dynamic data) {
     try {
       if (data is List) return data;
+
       if (data is Map<String, dynamic>) {
         if (data.containsKey('data') && data['data'] is List) {
           return data['data'];
@@ -1327,6 +1218,7 @@ Future<String> saveDetectionUsingCatalog({
         }
         return data.values.toList();
       }
+
       return [];
     } catch (_) {
       return [];
@@ -1343,14 +1235,17 @@ Future<String> saveDetectionUsingCatalog({
         print('❌ No endpoint for $tableName');
         return false;
       }
+
       print('🔗 [$tableName] GET $endpoint');
       final t0 = DateTime.now();
+
       final response = await http
           .get(
             Uri.parse(endpoint),
             headers: {'Authorization': 'Bearer $accessToken'},
           )
           .timeout(const Duration(seconds: 15));
+
       final ms = DateTime.now().difference(t0).inMilliseconds;
       print(
         '📡 [$tableName] ${response.statusCode} in ${ms}ms, ${response.bodyBytes.length} bytes',
@@ -1362,6 +1257,7 @@ Future<String> saveDetectionUsingCatalog({
         final preview = records.isNotEmpty && records.first is Map
             ? (records.first as Map).keys.take(6).join(', ')
             : 'n/a';
+
         print(
           '🧾 [$tableName] records=${records.length}, firstKeys=[$preview]',
         );
@@ -1401,6 +1297,7 @@ Future<String> saveDetectionUsingCatalog({
             await syncDiseaseRemedy(records);
             break;
         }
+
         await updateTableVersion(tableName, updatedAt);
         print('✅ [$tableName] applied, version=$updatedAt');
         return true;
@@ -1408,6 +1305,7 @@ Future<String> saveDetectionUsingCatalog({
         print('ℹ️ [$tableName] 404 not found; skipping');
         return true;
       }
+
       print('⚠️ [$tableName] HTTP ${response.statusCode}');
       return false;
     } catch (e) {
@@ -1420,10 +1318,12 @@ Future<String> saveDetectionUsingCatalog({
     try {
       print('🔄 smartSyncCatalogs starting...');
       final serverVersions = await fetchServerTableVersions(accessToken);
+
       if (serverVersions.isEmpty) {
         print('⚠️ table versions empty');
         return {'success': false, 'message': 'Failed to get server versions'};
       }
+
       final needsUpdate = await compareVersionsClientSide(serverVersions);
       if (needsUpdate.isEmpty) {
         print('✅ no table needs update');
@@ -1436,6 +1336,7 @@ Future<String> saveDetectionUsingCatalog({
 
       int updatedCount = 0;
       final failedTables = <String>[];
+
       final order = [
         'crop_types',
         'soil_types',
@@ -1447,6 +1348,7 @@ Future<String> saveDetectionUsingCatalog({
         'water_src',
         'irrigation_method',
       ];
+
       for (final table in order) {
         if (needsUpdate[table] == true) {
           final ok = await _fetchAndUpdateTable(table, accessToken);
@@ -1480,18 +1382,22 @@ Future<String> saveDetectionUsingCatalog({
   Future<void> syncDiseases(List<dynamic> rows) async {
     final mapped = <Map<String, Object?>>[];
     int skip = 0;
+
     for (final item in rows) {
       if (item is! Map) {
         skip++;
         continue;
       }
+
       final rec = item;
       final id = _s(rec['diseaseid'] ?? rec['disease_id']);
       final name = _s(rec['name']);
+
       if (id.isEmpty || name.isEmpty) {
         skip++;
         continue;
       }
+
       mapped.add({
         'diseaseid': id,
         'name': name,
@@ -1500,6 +1406,7 @@ Future<String> saveDetectionUsingCatalog({
             : _s(rec['severity']),
       });
     }
+
     await _reconcileSnapshot(table: 'diseases', pk: 'diseaseid', rows: mapped);
     print('✅ diseases reconcile: kept=${mapped.length}, skipped=$skip');
   }
@@ -1507,24 +1414,29 @@ Future<String> saveDetectionUsingCatalog({
   Future<void> syncRemedies(List<dynamic> rows) async {
     final mapped = <Map<String, Object?>>[];
     int skip = 0;
+
     for (final item in rows) {
       if (item is! Map) {
         skip++;
         continue;
       }
+
       final rec = item;
       final id = _s(rec['remedyid'] ?? rec['remedy_id']);
       final remedy = _s(rec['remedy']);
+
       if (id.isEmpty || remedy.isEmpty) {
         skip++;
         continue;
       }
+
       mapped.add({
         'remedyid': id,
         'remedy': remedy,
         'prevention': _s(rec['prevention']),
       });
     }
+
     await _reconcileSnapshot(table: 'remedies', pk: 'remedyid', rows: mapped);
     print('✅ remedies reconcile: kept=${mapped.length}, skipped=$skip');
   }
@@ -1532,11 +1444,13 @@ Future<String> saveDetectionUsingCatalog({
   Future<void> syncPlants(List<dynamic> rows) async {
     final mapped = <Map<String, Object?>>[];
     int skip = 0;
+
     for (final item in rows) {
       if (item is! Map) {
         skip++;
         continue;
       }
+
       final rec = item;
       final plantId = _firstNonEmpty(rec, [
         'plantid',
@@ -1566,10 +1480,12 @@ Future<String> saveDetectionUsingCatalog({
         'water',
         'water_req',
       ]);
+
       if (plantId.isEmpty || plantName.isEmpty || cropType.isEmpty) {
         skip++;
         continue;
       }
+
       mapped.add({
         'plantid': plantId,
         'plantname': plantName,
@@ -1577,6 +1493,7 @@ Future<String> saveDetectionUsingCatalog({
         'waterrequirement': waterReq.isEmpty ? 'Medium' : waterReq,
       });
     }
+
     await _reconcileSnapshot(table: 'plants', pk: 'plantid', rows: mapped);
     print('✅ plants reconcile: kept=${mapped.length}, skipped=$skip');
   }
@@ -1584,20 +1501,25 @@ Future<String> saveDetectionUsingCatalog({
   Future<void> syncSoilTypes(List<dynamic> rows) async {
     final mapped = <Map<String, Object?>>[];
     int skip = 0;
+
     for (final item in rows) {
       if (item is! Map) {
         skip++;
         continue;
       }
+
       final rec = item;
       final id = _s(rec['soiltypeid'] ?? rec['soil_type_id']);
       final name = _s(rec['name']);
+
       if (id.isEmpty || name.isEmpty) {
         skip++;
         continue;
       }
+
       mapped.add({'soiltypeid': id, 'name': name});
     }
+
     await _reconcileSnapshot(
       table: 'soiltypes',
       pk: 'soiltypeid',
@@ -1609,20 +1531,25 @@ Future<String> saveDetectionUsingCatalog({
   Future<void> syncCropTypes(List<dynamic> rows) async {
     final mapped = <Map<String, Object?>>[];
     int skip = 0;
+
     for (final item in rows) {
       if (item is! Map) {
         skip++;
         continue;
       }
+
       final rec = item;
       final id = _s(rec['croptypeid'] ?? rec['crop_type_id']);
       final name = _s(rec['name']);
+
       if (id.isEmpty || name.isEmpty) {
         skip++;
         continue;
       }
+
       mapped.add({'croptypeid': id, 'name': name});
     }
+
     await _reconcileSnapshot(
       table: 'croptypes',
       pk: 'croptypeid',
@@ -1634,20 +1561,25 @@ Future<String> saveDetectionUsingCatalog({
   Future<void> syncWaterSources(List<dynamic> rows) async {
     final mapped = <Map<String, Object?>>[];
     int skip = 0;
+
     for (final item in rows) {
       if (item is! Map) {
         skip++;
         continue;
       }
+
       final rec = item;
       final id = _s(rec['watersrcid'] ?? rec['water_src_id']);
       final src = _s(rec['source']);
+
       if (id.isEmpty || src.isEmpty) {
         skip++;
         continue;
       }
+
       mapped.add({'watersrcid': id, 'source': src});
     }
+
     await _reconcileSnapshot(table: 'watersrc', pk: 'watersrcid', rows: mapped);
     print('✅ water_src reconcile: kept=${mapped.length}, skipped=$skip');
   }
@@ -1655,25 +1587,31 @@ Future<String> saveDetectionUsingCatalog({
   Future<void> syncIrrigationMethods(List<dynamic> rows) async {
     final mapped = <Map<String, Object?>>[];
     int skip = 0;
+
     for (final item in rows) {
       if (item is! Map) {
         skip++;
         continue;
       }
+
       final rec = item;
       final id = _s(rec['irrigationid'] ?? rec['irrigation_id']);
       final name = _s(rec['methodname'] ?? rec['method_name']);
+
       if (id.isEmpty || name.isEmpty) {
         skip++;
         continue;
       }
+
       mapped.add({'irrigationid': id, 'methodname': name});
     }
+
     await _reconcileSnapshot(
       table: 'irrigationmethod',
       pk: 'irrigationid',
       rows: mapped,
     );
+
     print(
       '✅ irrigation_method reconcile: kept=${mapped.length}, skipped=$skip',
     );
@@ -1811,12 +1749,15 @@ Future<String> saveDetectionUsingCatalog({
   ) async {
     try {
       final path = analysis['local_path'] as String?;
-      if (path == null || !File(path).existsSync()) return {'success': false};
+      if (path == null || !File(path).existsSync()) {
+        return {'success': false};
+      }
 
       final req = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/disease/analysis/sync'),
       );
+
       req.headers['Authorization'] = 'Bearer $accessToken';
       req.files.add(await http.MultipartFile.fromPath('image', path));
       req.fields.addAll({
@@ -1831,6 +1772,7 @@ Future<String> saveDetectionUsingCatalog({
 
       final streamed = await req.send().timeout(const Duration(seconds: 30));
       final resp = await http.Response.fromStream(streamed);
+
       if (resp.statusCode == 200 || resp.statusCode == 201) {
         String? serverUrl;
         try {
@@ -1839,8 +1781,10 @@ Future<String> saveDetectionUsingCatalog({
               (body['server_image_url'] ?? body['imageUrl'] ?? body['url'])
                   ?.toString();
         } catch (_) {}
+
         return {'success': true, 'serverImageUrl': serverUrl};
       }
+
       return {'success': false};
     } catch (_) {
       return {'success': false};
@@ -1854,6 +1798,7 @@ Future<String> saveDetectionUsingCatalog({
     final pendingFarms = await getPendingFarms();
     final pendingCrops = await getPendingCrops();
     final stats = await getDatabaseStats();
+
     return {
       'pendingCount': pending.length,
       'pendingFarms': pendingFarms.length,
@@ -1867,16 +1812,19 @@ Future<String> saveDetectionUsingCatalog({
 
   Future<Map<String, int>> getDatabaseStats() async {
     final db = await database;
+
     final analysisCount =
         Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM disease_analysis_results'),
         ) ??
         0;
+
     final imagesCount =
         Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM images'),
         ) ??
         0;
+
     final cropsCount =
         Sqflite.firstIntValue(
           await db.rawQuery(
@@ -1884,16 +1832,19 @@ Future<String> saveDetectionUsingCatalog({
           ),
         ) ??
         0;
+
     final farmsCount =
         Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM farms WHERE isdeleted = 0'),
         ) ??
         0;
+
     final diseasesCount =
         Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM diseases'),
         ) ??
         0;
+
     return {
       'analyses': analysisCount,
       'images': imagesCount,
@@ -1959,28 +1910,26 @@ Future<String> saveDetectionUsingCatalog({
     return await db.query('plants');
   }
 
-  // ✅ UPDATED: Filter out deleted crops
   Future<List<Map<String, dynamic>>> getCropsByFarmId(String farmId) async {
     final db = await database;
     return await db.rawQuery(
       '''
-    SELECT 
-      uc.*,
-      p.plantname as plantname,
-      ct.name as croptype,
-      st.name as soiltype
-    FROM usercrops uc
-    LEFT JOIN plants p ON uc.plantid = p.plantid
-    LEFT JOIN croptypes ct ON p.croptypeid = ct.croptypeid
-    LEFT JOIN soiltypes st ON uc.soiltypeid = st.soiltypeid
-    WHERE uc.farmid = ? AND uc.isdeleted = 0
-    ORDER BY uc.createdat DESC
-  ''',
+      SELECT
+        uc.*,
+        p.plantname as plantname,
+        ct.name as croptype,
+        st.name as soiltype
+      FROM usercrops uc
+      LEFT JOIN plants p ON uc.plantid = p.plantid
+      LEFT JOIN croptypes ct ON p.croptypeid = ct.croptypeid
+      LEFT JOIN soiltypes st ON uc.soiltypeid = st.soiltypeid
+      WHERE uc.farmid = ? AND uc.isdeleted = 0
+      ORDER BY uc.createdat DESC
+      ''',
       [farmId],
     );
   }
 
-  /// Update crop active status
   Future<void> updateCropActiveStatus({
     required String cropId,
     required int isActive,
@@ -1989,19 +1938,15 @@ Future<String> saveDetectionUsingCatalog({
 
     await db.update(
       'usercrops',
-      {
-        'isactive': isActive,
-        'isdirty': 1, // Mark as dirty for sync
-      },
+      {'isactive': isActive, 'isdirty': 1},
       where: 'usercropid = ?',
       whereArgs: [cropId],
     );
   }
 
-  /// Cache subsidies
   Future<void> cacheSubsidies(List<Map<String, dynamic>> subsidies) async {
     final db = await database;
-    await db.delete('subsidies_cache'); // Clear old cache
+    await db.delete('subsidies_cache');
 
     for (final subsidy in subsidies) {
       await db.insert('subsidies_cache', {
@@ -2011,7 +1956,6 @@ Future<String> saveDetectionUsingCatalog({
     }
   }
 
-  /// Get cached subsidies
   Future<List<Map<String, dynamic>>> getCachedSubsidies() async {
     final db = await database;
     return await db.query('subsidies_cache', orderBy: 'title ASC');

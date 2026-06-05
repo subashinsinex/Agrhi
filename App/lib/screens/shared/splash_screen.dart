@@ -1,18 +1,22 @@
-// lib/src/screens/splash/splash_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../utils/colors.dart';
-import '../../utils/routes.dart';
-import '../../src/services/app_config_service.dart';
-import '../../src/database/database_helper.dart';
-import '../shared/update_screen.dart';
-import '../../src/services/sync_service.dart';
-import '../../src/services/connectivity_manager.dart';
 import 'package:provider/provider.dart';
 
+import '../../../utils/colors.dart';
+import '../../../utils/routes.dart';
+import '../../../src/services/app_config_service.dart';
+import '../../../src/database/database_helper.dart';
+import '../shared/update_screen.dart';
+import '../../../src/services/sync_service.dart';
+import '../../../src/services/connectivity_manager.dart';
+import '../../../src/services/reminders_manager.dart';
+import '../../../src/services/notification_service.dart';
+
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  final String? initialNotificationPayload;
+
+  const SplashScreen({super.key, this.initialNotificationPayload});
+
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
@@ -21,15 +25,15 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late AnimationController _pulseController;
-
   late Animation<double> _fadeAnimation;
   late Animation<double> _pulseAnimation;
 
   String _statusMessage = 'Initializing...';
   final bool _showOfflineBadge = false;
   bool _configChecked = false;
+  bool _hasNavigated = false;
 
-  static const _storage = FlutterSecureStorage(
+  static const storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.first_unlock,
@@ -69,7 +73,6 @@ class _SplashScreenState extends State<SplashScreen>
   Future<bool> _hasUnsyncedData() async {
     try {
       final db = DatabaseHelper.instance;
-
       final pendingFarms = await db.getPendingFarms();
       final pendingCrops = await db.getPendingCrops();
       final pendingAnalyses = await db.getPendingAnalyses();
@@ -83,16 +86,16 @@ class _SplashScreenState extends State<SplashScreen>
           pendingFarmDeletions.isNotEmpty ||
           pendingCropDeletions.isNotEmpty;
 
-      debugPrint('📊 Unsynced data check:');
-      debugPrint('  Farms: ${pendingFarms.length}');
-      debugPrint('  Crops: ${pendingCrops.length}');
-      debugPrint('  Analyses: ${pendingAnalyses.length}');
-      debugPrint('  Farm deletions: ${pendingFarmDeletions.length}');
-      debugPrint('  Crop deletions: ${pendingCropDeletions.length}');
+      debugPrint('Unsynced data check:');
+      debugPrint('Farms: ${pendingFarms.length}');
+      debugPrint('Crops: ${pendingCrops.length}');
+      debugPrint('Analyses: ${pendingAnalyses.length}');
+      debugPrint('Farm deletions: ${pendingFarmDeletions.length}');
+      debugPrint('Crop deletions: ${pendingCropDeletions.length}');
 
       return hasUnsynced;
     } catch (e) {
-      debugPrint('❌ Error checking unsynced data: $e');
+      debugPrint('Error checking unsynced data: $e');
       return false;
     }
   }
@@ -100,19 +103,24 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _checkAuthAndNavigate() async {
     await Future.delayed(const Duration(seconds: 2));
 
-    if (!mounted) return;
+    if (!mounted || _hasNavigated) return;
 
     if (_configChecked) {
-      debugPrint('⚠️ Config already checked, skipping...');
+      debugPrint('Config already checked, skipping...');
       return;
     }
+
     _configChecked = true;
 
-    setState(() => _statusMessage = 'Checking for updates...');
+    setState(() {
+      _statusMessage = 'Checking for updates...';
+    });
 
     final serverConfig = await AppConfigService.checkAppConfig();
 
-    if (serverConfig != null && mounted) {
+    if (!mounted || _hasNavigated) return;
+
+    if (serverConfig != null) {
       final needsUpdate = serverConfig['needs_update'] == true;
 
       if (needsUpdate) {
@@ -121,21 +129,23 @@ class _SplashScreenState extends State<SplashScreen>
       }
     }
 
-    if (!mounted) return;
+    if (!mounted || _hasNavigated) return;
+
     await _proceedWithAuth();
   }
 
   Future<void> _handleUpdateFlow(Map<String, dynamic> config) async {
     try {
-      setState(
-        () => _statusMessage = 'Update required. Checking offline data...',
-      );
-      await Future.delayed(const Duration(milliseconds: 500));
+      setState(() {
+        _statusMessage = 'Update required. Checking offline data...';
+      });
 
+      await Future.delayed(const Duration(milliseconds: 500));
       final hasUnsynced = await _hasUnsyncedData();
 
-      if (!mounted) return;
+      if (!mounted || _hasNavigated) return;
 
+      _hasNavigated = true;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (context) =>
@@ -143,8 +153,10 @@ class _SplashScreenState extends State<SplashScreen>
         ),
       );
     } catch (e) {
-      debugPrint('❌ Error in update flow: $e');
-      if (mounted) {
+      debugPrint('Error in update flow: $e');
+
+      if (mounted && !_hasNavigated) {
+        _hasNavigated = true;
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) =>
@@ -155,58 +167,151 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-Future<void> _proceedWithAuth() async {
-  if (!mounted) return;
-  
-  setState(() => _statusMessage = 'Loading...');
-  await Future.delayed(const Duration(milliseconds: 500));
+  Future<void> _proceedWithAuth() async {
+    if (!mounted || _hasNavigated) return;
 
-  // ✅ Simple token existence check - no validation, no refresh
-  final hasTokens = await _hasStoredTokens();
+    setState(() {
+      _statusMessage = 'Loading...';
+    });
 
-  if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 500));
 
-  if (hasTokens) {
-    setState(() => _statusMessage = 'Welcome back!');
-    await Future.delayed(const Duration(milliseconds: 300));
+    final hasTokens = await _hasStoredTokens();
 
-    // 🔁 Start full sync in background (non-blocking)
-    final accessToken = await _storage.read(key: 'access_token');
-    if (accessToken != null && accessToken.isNotEmpty) {
-      // Don't await - let it run in background
-      SyncService.instance.performFullSync(accessToken).then((fullSyncResult) {
-        debugPrint('🔁 Full sync from splash: $fullSyncResult');
-        
-        if (fullSyncResult['success'] == true && mounted) {
-          try {
-            final connectivityManager = context.read<ConnectivityManager>();
-            connectivityManager.updateLastSyncTime(DateTime.now());
-          } catch (e) {
-            debugPrint('⚠️ Could not update sync time: $e');
-          }
-        }
-      }).catchError((e) {
-        debugPrint('❌ Full sync from splash failed: $e');
+    if (!mounted || _hasNavigated) return;
+
+    final payload = widget.initialNotificationPayload;
+
+    if (payload != null && payload.isNotEmpty) {
+      debugPrint('Splash notification payload found: $payload');
+
+      setState(() {
+        _statusMessage = 'Opening notification...';
       });
-    } else {
-      debugPrint('⚠️ No access token found, skipping full sync');
+
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted || _hasNavigated) return;
+
+      _hasNavigated = true;
+
+      switch (payload) {
+        case Routes.modelManager:
+          if (hasTokens) {
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
+            Navigator.of(context).pushNamed(Routes.modelManager);
+          } else {
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
+          }
+          return;
+
+        case Routes.dashboard:
+          if (hasTokens) {
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
+          } else {
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
+          }
+          return;
+
+        case Routes.login:
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
+          return;
+
+        case Routes.signup:
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.signup, (route) => false);
+          return;
+
+        default:
+          if (hasTokens) {
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
+          } else {
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
+          }
+          return;
+      }
     }
 
-    // Navigate immediately without waiting for sync
-    if (mounted) Routes.navigateToDashboard(context);
-  } else {
-    setState(() => _statusMessage = 'Redirecting to login...');
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (mounted) Routes.navigateToLogin(context);
+    if (hasTokens) {
+      setState(() {
+        _statusMessage = 'Welcome back!';
+      });
+
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      final accessToken = await storage.read(key: 'access_token');
+
+      if (accessToken != null && accessToken.isNotEmpty) {
+        SyncService.instance
+            .performFullSync(accessToken)
+            .then((fullSyncResult) async {
+              debugPrint('Full sync from splash: $fullSyncResult');
+              if (fullSyncResult['success'] == true && mounted) {
+                try {
+                  final connectivityManager = context
+                      .read<ConnectivityManager>();
+                  connectivityManager.updateLastSyncTime(DateTime.now());
+
+                  // ✅ NEW: Restore reminders and schedule weekly check-in
+                  await RemindersManager.instance.rescheduleAllCropReminders();
+                  await NotificationService.scheduleWeeklyCheckIn();
+                  debugPrint('✅ Reminders restored and check-in scheduled');
+                } catch (e) {
+                  debugPrint('Error restoring reminders: $e');
+                }
+              }
+            })
+            .catchError((e) {
+              debugPrint('Full sync from splash failed: $e');
+            });
+      } else {
+        debugPrint('No access token found, skipping full sync');
+        // Still try to restore reminders even if sync fails
+        try {
+          await RemindersManager.instance.rescheduleAllCropReminders();
+          await NotificationService.scheduleWeeklyCheckIn();
+        } catch (e) {
+          debugPrint('Error restoring reminders offline: $e');
+        }
+      }
+
+      if (!mounted || _hasNavigated) return;
+
+      _hasNavigated = true;
+      Routes.navigateToDashboard(context);
+    } else {
+      setState(() {
+        _statusMessage = 'Redirecting to login...';
+      });
+
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (!mounted || _hasNavigated) return;
+
+      _hasNavigated = true;
+      Routes.navigateToLogin(context);
+    }
   }
-}
 
-
-  // ✅ NEW: Simple token existence check - no validation
   Future<bool> _hasStoredTokens() async {
     try {
-      final accessToken = await _storage.read(key: 'access_token');
-      final refreshToken = await _storage.read(key: 'refresh_token');
+      final accessToken = await storage.read(key: 'access_token');
+      final refreshToken = await storage.read(key: 'refresh_token');
 
       final hasTokens =
           accessToken != null &&
@@ -214,20 +319,13 @@ Future<void> _proceedWithAuth() async {
           refreshToken != null &&
           refreshToken.isNotEmpty;
 
-      debugPrint('🔐 Token check: ${hasTokens ? "Found" : "Not found"}');
-
+      debugPrint('Token check: ${hasTokens ? 'Found' : 'Not found'}');
       return hasTokens;
     } catch (e) {
-      debugPrint('❌ Error checking tokens: $e');
+      debugPrint('Error checking tokens: $e');
       return false;
     }
   }
-
-  // ❌ REMOVED: _getValidAccessTokenForSync()
-  // ❌ REMOVED: _performBackgroundSync()
-  // ❌ REMOVED: _readWithRetry()
-  // ❌ REMOVED: _decodeJwtPayload()
-  // ❌ REMOVED: _getJwtExpiryUtc()
 
   @override
   void dispose() {
@@ -300,7 +398,7 @@ Future<void> _proceedWithAuth() async {
   }
 
   Widget _buildTitle() {
-    return Text(
+    return const Text(
       'AGRHI',
       textAlign: TextAlign.center,
       style: TextStyle(
@@ -324,7 +422,7 @@ Future<void> _proceedWithAuth() async {
           width: 1.5,
         ),
       ),
-      child: Row(
+      child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
@@ -382,7 +480,7 @@ Future<void> _proceedWithAuth() async {
             child: Text(
               _statusMessage,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 16,
                 color: AppColors.textSecondary,
                 fontWeight: FontWeight.w600,
@@ -402,7 +500,7 @@ Future<void> _proceedWithAuth() async {
               color: AppColors.primaryGreen.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: Center(
+            child: const Center(
               child: SizedBox(
                 width: 32,
                 height: 32,
@@ -423,7 +521,7 @@ Future<void> _proceedWithAuth() async {
 
   Widget _buildOfflineBadge() {
     return Container(
-      key: const ValueKey('offline_badge'),
+      key: const ValueKey('offline-badge'),
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.primaryWhite,
@@ -439,15 +537,19 @@ Future<void> _proceedWithAuth() async {
           Container(
             width: 12,
             height: 12,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.warningColor,
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 12),
-          Icon(Icons.wifi_off_rounded, size: 20, color: AppColors.warningColor),
+          const Icon(
+            Icons.wifi_off_rounded,
+            size: 20,
+            color: AppColors.warningColor,
+          ),
           const SizedBox(width: 10),
-          Text(
+          const Text(
             'Offline Mode',
             style: TextStyle(
               fontSize: 16,

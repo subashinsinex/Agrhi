@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import '../../../src/services/model_manager_provider.dart';
 import '../../../src/services/model_download_service.dart';
 import '../../../src/services/language_service.dart';
+import '../../../src/services/notification_service.dart';
 import '../../shared/smart_retranslator.dart';
-import '../../shared/custom_app_bar.dart'; // ✅ ADD CustomAppBar
+import '../../shared/custom_app_bar.dart';
 import '../../../utils/colors.dart';
+import '../../../utils/routes.dart';
 
 class ModelManagerScreen extends StatefulWidget {
   const ModelManagerScreen({super.key});
@@ -38,7 +40,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
     });
   }
 
-  // ✅ Preload all translations
   Future<void> _preloadPhrases() async {
     final languageService = Provider.of<LanguageService>(
       context,
@@ -67,7 +68,10 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
       'model deleted successfully',
       'model downloaded successfully',
       'Download failed',
-      // Add all crop names
+      'Tap to open Model Library',
+      'Model download failed',
+      'Tap to retry.',
+      'model ready',
       'Corn',
       'Rice',
       'Cotton',
@@ -181,7 +185,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             }
           },
           child: Scaffold(
-            // ✅ USE CUSTOM APP BAR
             appBar: CustomAppBar(
               title: 'Model Library',
               showOnlineStatus: true,
@@ -223,7 +226,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // Animated Storage Header
           SliverToBoxAdapter(
             child: FadeTransition(
               opacity: _headerAnimation,
@@ -240,8 +242,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
               ),
             ),
           ),
-
-          // Section Header
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
@@ -278,8 +278,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
               ),
             ),
           ),
-
-          // Model List
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(
@@ -302,8 +300,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
               }, childCount: totalCount),
             ),
           ),
-
-          // Bottom Spacing
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
@@ -338,7 +334,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
         children: [
           Row(
             children: [
-              // Icon Container
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -359,7 +354,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                 ),
               ),
               const SizedBox(width: 20),
-              // Stats
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,7 +384,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                   ],
                 ),
               ),
-              // Circular Progress
               SizedBox(
                 width: 50,
                 height: 50,
@@ -404,7 +397,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             ],
           ),
           const SizedBox(height: 20),
-          // Linear Progress
           Row(
             children: [
               Expanded(
@@ -492,7 +484,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // Content
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -611,10 +602,7 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
                     ],
                   ),
                 ),
-
                 const SizedBox(width: 12),
-
-                // Action Button
                 if (!isDownloading)
                   _buildActionButton(context, cropName, status, provider),
               ],
@@ -651,19 +639,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
         ),
       ),
     );
-  }
-
-  Color _getStatusColor(ModelDownloadStatus status) {
-    switch (status) {
-      case ModelDownloadStatus.downloaded:
-        return AppColors.successColor;
-      case ModelDownloadStatus.downloading:
-        return AppColors.infoColor;
-      case ModelDownloadStatus.error:
-        return AppColors.errorColor;
-      default:
-        return AppColors.primaryGreen;
-    }
   }
 
   Future<void> _handleAction(
@@ -784,6 +759,7 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
     } else if (status == ModelDownloadStatus.notDownloaded) {
       try {
         await provider.downloadModel(cropName);
+
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -816,6 +792,13 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             ),
           );
         }
+
+        await NotificationService.showNotification(
+          id: cropName.hashCode,
+          title: '$cropName model ready',
+          body: 'Tap to open Model Library',
+          payload: Routes.modelManager,
+        );
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -849,6 +832,13 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
             ),
           );
         }
+
+        await NotificationService.showNotification(
+          id: cropName.hashCode + 50000,
+          title: 'Model download failed',
+          body: '$cropName download failed. Tap to retry.',
+          payload: Routes.modelManager,
+        );
       }
     }
   }

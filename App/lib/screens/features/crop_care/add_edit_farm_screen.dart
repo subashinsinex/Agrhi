@@ -1,6 +1,7 @@
 // lib/screens/features/add_farm_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../../utils/colors.dart';
 import '../../../src/database/database_helper.dart';
 import '../../shared/custom_app_bar.dart';
@@ -36,10 +37,6 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
     super.initState();
     _isEditing = widget.farm != null;
     _loadReferenceData();
-
-    if (_isEditing) {
-      _populateFormData();
-    }
   }
 
   Future<void> _populateFormData() async {
@@ -48,7 +45,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
     _farmSizeController.text = farm['farmsize']?.toString() ?? '';
 
     final db = DatabaseHelper.instance;
-    final farmWithRelations = await db.getFarmWithRelations(farm['farmid']);
+    final farmWithRelations = await db.getFarmWithRelations(
+      farm['farmid'].toString(),
+    );
 
     if (farmWithRelations != null && mounted) {
       setState(() {
@@ -73,11 +72,17 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
       final irrigationTypes = await db.getAllIrrigationTypes();
       final waterSources = await db.getAllWaterSources();
 
+      if (!mounted) return;
+
       setState(() {
         _soilTypes = soilTypes;
         _irrigationTypes = irrigationTypes;
         _waterSources = waterSources;
       });
+
+      if (_isEditing) {
+        await _populateFormData();
+      }
     } catch (e) {
       debugPrint('❌ Error loading reference data: $e');
       if (mounted) {
@@ -89,7 +94,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -215,6 +222,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
       context: context,
       builder: (context) {
         List<String> tempSelected = List.from(selectedIds);
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -245,7 +253,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                       onChanged: (bool? value) {
                         setDialogState(() {
                           if (value == true) {
-                            tempSelected.add(id);
+                            if (!tempSelected.contains(id)) {
+                              tempSelected.add(id);
+                            }
                           } else {
                             tempSelected.remove(id);
                           }
@@ -294,8 +304,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                 item['irrigationid']?.toString() ??
                 item['watersrcid']?.toString()) ==
             id,
-        orElse: () => {},
+        orElse: () => <String, dynamic>{},
       );
+
       return item['name']?.toString() ??
           item['methodname']?.toString() ??
           item['source']?.toString() ??
@@ -335,9 +346,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SmartReTranslator(
+                      const SmartReTranslator(
                         text: 'Survey Number',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                           color: Colors.black,
@@ -361,9 +372,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SmartReTranslator(
+                      const SmartReTranslator(
                         text: 'Farm Size (Acres)',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                           color: Colors.black,
@@ -400,9 +411,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SmartReTranslator(
+                      const SmartReTranslator(
                         text: 'Soil Types',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                           color: Colors.black,
@@ -432,9 +443,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SmartReTranslator(
+                      const SmartReTranslator(
                         text: 'Irrigation Methods',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                           color: Colors.black,
@@ -464,9 +475,9 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SmartReTranslator(
+                      const SmartReTranslator(
                         text: 'Water Sources',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                           color: Colors.black,
@@ -528,7 +539,11 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
       children: [
         SmartReTranslator(
           text: title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18 , color: Colors.black),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            color: Colors.black,
+          ),
         ),
         const SizedBox(height: 6),
       ],
@@ -609,10 +624,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
             Expanded(
               child: SmartReTranslator(
                 text: selectedText.isEmpty ? 'None selected' : selectedText,
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontSize: 14,
-                ),
+                style: const TextStyle(color: Colors.black87, fontSize: 14),
               ),
             ),
             Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),

@@ -7,10 +7,13 @@ import 'connectivity_service.dart';
 import 'sync_service.dart';
 import 'crop_care_sync_service.dart';
 import 'auth_service.dart';
+import 'notification_service.dart';
+import '../../utils/routes.dart';
 
 /// Manages connectivity status and triggers async sync (non-blocking UI)
 class ConnectivityManager extends ChangeNotifier {
   static final ConnectivityManager instance = ConnectivityManager._();
+
   ConnectivityManager._() {
     _initialize();
   }
@@ -31,16 +34,13 @@ class ConnectivityManager extends ChangeNotifier {
   Timer? _periodicSyncTimer;
   static const Duration _syncInterval = Duration(minutes: 30);
 
-  // ✅ NEW: Track connectivity stream subscription
   StreamSubscription<bool>? _connectivitySubscription;
 
   void _initialize() {
-    // Check initial connectivity
     _connectivityService.hasInternetConnection().then((online) {
       _updateStatus(online, isInitial: true);
     });
 
-    // ✅ Listen for real-time changes with subscription tracking
     _connectivitySubscription = _connectivityService.onConnectivityChanged
         .listen(
           (online) {
@@ -48,15 +48,11 @@ class ConnectivityManager extends ChangeNotifier {
           },
           onError: (error) {
             debugPrint('❌ Connectivity stream error: $error');
-            // ✅ Assume offline on stream error
             _updateStatus(false);
           },
         );
 
-    // Load last sync time from storage
     _loadLastSyncTime();
-
-    // Start periodic sync timer
     _startPeriodicSync();
   }
 
@@ -76,20 +72,17 @@ class ConnectivityManager extends ChangeNotifier {
     if (_isOnline != online) {
       _isOnline = online;
 
-      // ✅ Clear connectivity cache when status changes
       _connectivityService.clearCache();
 
       debugPrint('🌐 Connectivity changed: ${online ? "ONLINE" : "OFFLINE"}');
       notifyListeners();
 
       if (online && !isInitial) {
-        // ✅ Auto-sync when coming back online
         _triggerAutoSync();
       }
     }
   }
 
-  /// Start periodic sync timer
   void _startPeriodicSync() {
     _periodicSyncTimer = Timer.periodic(_syncInterval, (timer) {
       if (!_isOnline) {
@@ -124,7 +117,6 @@ class ConnectivityManager extends ChangeNotifier {
       return;
     }
 
-    // Check if we synced recently (avoid excessive syncs)
     if (_lastSyncTime != null) {
       final timeSinceSync = DateTime.now().difference(_lastSyncTime!);
       if (timeSinceSync.inMinutes < 5) {
@@ -141,7 +133,6 @@ class ConnectivityManager extends ChangeNotifier {
     try {
       debugPrint('🔄 Auto-sync started (async, non-blocking)...');
 
-      // ✅ STEP 1: Check authentication and refresh token if needed
       final authService = AuthService();
       final authStatus = await authService.checkAuthStatus();
 
@@ -155,7 +146,6 @@ class ConnectivityManager extends ChangeNotifier {
         return;
       }
 
-      // ✅ STEP 2: Get fresh token (may have been refreshed by checkAuthStatus)
       final token = await _storage.read(key: 'access_token');
 
       if (token == null || token.isEmpty) {
@@ -165,13 +155,12 @@ class ConnectivityManager extends ChangeNotifier {
 
       debugPrint('✅ Token validated, starting sync...');
 
-      // ✅ STEP 3: Run sync with timeout
       final results =
           await Future.wait([
             SyncService.instance.performFullSync(token),
             CropCareSyncService.instance.performFullSync(token),
-          ]).timeout(
-            const Duration(seconds: 90), // 90s timeout for slow networks
+          ], eagerError: false).timeout(
+            const Duration(seconds: 90),
             onTimeout: () {
               debugPrint('⚠️ Auto-sync timed out after 90 seconds');
               return [
@@ -183,6 +172,8 @@ class ConnectivityManager extends ChangeNotifier {
 
       final diseaseSuccess = results[0]['success'] as bool? ?? false;
       final cropCareSuccess = results[1]['success'] as bool? ?? false;
+      final cropCarePartialSuccess =
+          results[1]['partialSuccess'] as bool? ?? false;
       final diseaseTimeout = results[0]['timeout'] as bool? ?? false;
       final cropCareTimeout = results[1]['timeout'] as bool? ?? false;
 
@@ -190,6 +181,14 @@ class ConnectivityManager extends ChangeNotifier {
         debugPrint('⚠️ Auto-sync timed out - will retry later');
       } else if (diseaseSuccess && cropCareSuccess) {
         debugPrint('✅ Auto-sync completed successfully');
+        _lastSyncTime = DateTime.now();
+        await _storage.write(
+          key: 'last_sync_time',
+          value: _lastSyncTime!.toIso8601String(),
+        );
+        notifyListeners();
+      } else if (cropCarePartialSuccess || diseaseSuccess) {
+        debugPrint('⚠️ Auto-sync completed with partial success');
         _lastSyncTime = DateTime.now();
         await _storage.write(
           key: 'last_sync_time',
@@ -210,6 +209,13 @@ class ConnectivityManager extends ChangeNotifier {
   /// Manual sync trigger (for user-initiated sync)
   Future<Map<String, dynamic>> performManualSync() async {
     if (!_isOnline) {
+      await NotificationService.showNotification(
+        id: _generateNotificationId(),
+        title: 'Sync Failed',
+        body: 'No internet connection. Please try again later.',
+        payload: Routes.dashboard,
+      );
+
       return {'success': false, 'error': 'No internet connection'};
     }
 
@@ -223,33 +229,52 @@ class ConnectivityManager extends ChangeNotifier {
     try {
       debugPrint('🔄 Manual sync started...');
 
-      // ✅ Check auth and refresh token if needed
       final authService = AuthService();
       final authStatus = await authService.checkAuthStatus();
 
       if (authStatus == AuthStatus.unauthenticated) {
+        await NotificationService.showNotification(
+          id: _generateNotificationId(),
+          title: 'Sync Failed',
+          body: 'You are not logged in. Please sign in again.',
+          payload: Routes.dashboard,
+        );
+
         return {'success': false, 'error': 'Not authenticated'};
       }
 
       if (authStatus == AuthStatus.authenticatedOffline) {
+        await NotificationService.showNotification(
+          id: _generateNotificationId(),
+          title: 'Sync Failed',
+          body: 'No internet connection. Please try again later.',
+          payload: Routes.dashboard,
+        );
+
         return {'success': false, 'error': 'No internet connection'};
       }
 
       final token = await _storage.read(key: 'access_token');
 
       if (token == null || token.isEmpty) {
+        await NotificationService.showNotification(
+          id: _generateNotificationId(),
+          title: 'Sync Failed',
+          body: 'Session expired. Please log in again.',
+          payload: Routes.dashboard,
+        );
+
         return {'success': false, 'error': 'No access token'};
       }
 
       debugPrint('✅ Token validated, starting manual sync...');
 
-      // ✅ Run sync with timeout
       final results =
           await Future.wait([
             SyncService.instance.performFullSync(token),
             CropCareSyncService.instance.performFullSync(token),
-          ]).timeout(
-            const Duration(seconds: 120), // 2 minutes for manual sync
+          ], eagerError: false).timeout(
+            const Duration(seconds: 120),
             onTimeout: () {
               return [
                 {'success': false, 'error': 'Sync timeout'},
@@ -263,18 +288,59 @@ class ConnectivityManager extends ChangeNotifier {
 
       final diseaseSuccess = diseaseSync['success'] as bool? ?? false;
       final cropCareSuccess = cropCareSync['success'] as bool? ?? false;
+      final cropCarePartialSuccess =
+          cropCareSync['partialSuccess'] as bool? ?? false;
+      final allSuccess = diseaseSuccess && cropCareSuccess;
 
-      if (diseaseSuccess && cropCareSuccess) {
+      if (allSuccess) {
         _lastSyncTime = DateTime.now();
         await _storage.write(
           key: 'last_sync_time',
           value: _lastSyncTime!.toIso8601String(),
         );
         notifyListeners();
+
+        await NotificationService.showNotification(
+          id: _generateNotificationId(),
+          title: 'Sync Successful',
+          body: 'Your AGRHI data was synced successfully.',
+          payload: Routes.dashboard,
+        );
+      } else if (cropCarePartialSuccess || diseaseSuccess) {
+        _lastSyncTime = DateTime.now();
+        await _storage.write(
+          key: 'last_sync_time',
+          value: _lastSyncTime!.toIso8601String(),
+        );
+        notifyListeners();
+
+        await NotificationService.showNotification(
+          id: _generateNotificationId(),
+          title: 'Sync Partially Successful',
+          body: 'Some of your AGRHI data was synced. Tap to check details.',
+          payload: Routes.dashboard,
+        );
+      } else {
+        String failureMessage = 'Some data could not be synced. Tap to check.';
+
+        if (!diseaseSuccess && !cropCareSuccess) {
+          failureMessage = 'Sync failed for all modules. Tap to retry.';
+        } else if (!diseaseSuccess) {
+          failureMessage = 'Disease data sync failed. Tap to check.';
+        } else if (!cropCareSuccess) {
+          failureMessage = 'Crop care data sync failed. Tap to check.';
+        }
+
+        await NotificationService.showNotification(
+          id: _generateNotificationId(),
+          title: 'Sync Failed',
+          body: failureMessage,
+          payload: Routes.dashboard,
+        );
       }
 
       return {
-        'success': diseaseSuccess && cropCareSuccess,
+        'success': allSuccess,
         'disease_success': diseaseSuccess,
         'crop_care_success': cropCareSuccess,
         'disease_sync': diseaseSync,
@@ -282,6 +348,13 @@ class ConnectivityManager extends ChangeNotifier {
         'timestamp': DateTime.now().toIso8601String(),
       };
     } catch (e) {
+      await NotificationService.showNotification(
+        id: _generateNotificationId(),
+        title: 'Sync Failed',
+        body: 'An unexpected error occurred during sync. Tap to retry.',
+        payload: Routes.dashboard,
+      );
+
       return {'success': false, 'error': e.toString()};
     } finally {
       _isSyncing = false;
@@ -289,7 +362,6 @@ class ConnectivityManager extends ChangeNotifier {
     }
   }
 
-  // ✅ NEW: Get human-readable sync status
   String get syncStatusMessage {
     if (_isSyncing) {
       return 'Syncing...';
@@ -317,16 +389,18 @@ class ConnectivityManager extends ChangeNotifier {
   }
 
   void updateLastSyncTime(DateTime time) async {
-  _lastSyncTime = time;
-  await _storage.write(
-    key: 'last_sync_time',
-    value: _lastSyncTime!.toIso8601String(),
-  );
-  notifyListeners();
-}
+    _lastSyncTime = time;
+    await _storage.write(
+      key: 'last_sync_time',
+      value: _lastSyncTime!.toIso8601String(),
+    );
+    notifyListeners();
+  }
 
+  int _generateNotificationId() {
+    return (DateTime.now().millisecondsSinceEpoch % 2147483647).toInt();
+  }
 
-  /// ✅ Cleanup all resources on dispose
   @override
   void dispose() {
     debugPrint('🗑️ Disposing ConnectivityManager...');

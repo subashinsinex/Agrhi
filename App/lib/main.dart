@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+
+import 'src/services/navigation_service.dart';
+import 'src/services/notification_service.dart';
 import 'screens/shared/splash_screen.dart';
 import 'utils/colors.dart';
 import 'utils/routes.dart';
@@ -11,17 +14,14 @@ import 'src/services/model_manager_provider.dart';
 import 'src/services/connectivity_manager.dart';
 import 'src/database/database_helper.dart';
 
-void main() async {
-  // ✅ Ensure Flutter bindings are initialized
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Lock orientation to portrait mode
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // ✅ Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -31,11 +31,10 @@ void main() async {
     ),
   );
 
-  // ✅ Initialize services with better error handling
   bool initSuccess = true;
+  String? initialNotificationPayload;
 
   try {
-    // Initialize Hive for caching
     await Hive.initFlutter();
     await Hive.openBox('translation_cache');
     debugPrint('✅ Hive cache initialized successfully.');
@@ -46,7 +45,6 @@ void main() async {
   }
 
   try {
-    // Initialize SQLite database
     await DatabaseHelper.instance.database;
     debugPrint('✅ Database initialized successfully.');
   } catch (e, stackTrace) {
@@ -56,7 +54,6 @@ void main() async {
   }
 
   try {
-    // Initialize connectivity manager (singleton, no await needed)
     ConnectivityManager.instance;
     debugPrint('✅ Connectivity manager initialized.');
   } catch (e, stackTrace) {
@@ -64,41 +61,60 @@ void main() async {
     debugPrint('Stack trace: $stackTrace');
   }
 
+  try {
+    await NotificationService.initialize();
+
+    await NotificationService.debugPendingNotifications();
+
+    final notificationAppLaunchDetails = await NotificationService.plugin
+        .getNotificationAppLaunchDetails();
+
+    if (notificationAppLaunchDetails?.didNotificationLaunchApp ?? false) {
+      initialNotificationPayload =
+          notificationAppLaunchDetails?.notificationResponse?.payload;
+
+      debugPrint(
+        'AGRHI_NOTIFICATION_LAUNCH payload: $initialNotificationPayload',
+      );
+    }
+
+    debugPrint('✅ Notifications initialized successfully.');
+  } catch (e, stackTrace) {
+    debugPrint('❌ Notification initialization failed: $e');
+    debugPrint('Stack trace: $stackTrace');
+    initSuccess = false;
+  }
+
   if (!initSuccess) {
     debugPrint('⚠️ App starting with partial initialization');
   }
 
-  // ✅ Handle global Flutter errors
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     debugPrint('❌ Flutter Error: ${details.exception}');
     debugPrint('Stack trace: ${details.stack}');
   };
 
-  // ✅ Handle errors outside of Flutter framework
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('❌ Platform Error: $error');
     debugPrint('Stack trace: $stack');
-    return true; // Return true to indicate error was handled
+    return true;
   };
 
-  runApp(const MyApp());
+  runApp(MyApp(initialNotificationPayload: initialNotificationPayload));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final String? initialNotificationPayload;
+
+  const MyApp({super.key, this.initialNotificationPayload});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // ✅ Language Service
         ChangeNotifierProvider(create: (_) => LanguageService()),
-
-        // ✅ Model Manager
         ChangeNotifierProvider(create: (_) => ModelManagerProvider()),
-
-        // ✅ Connectivity Manager (singleton)
         ChangeNotifierProvider<ConnectivityManager>.value(
           value: ConnectivityManager.instance,
         ),
@@ -106,14 +122,11 @@ class MyApp extends StatelessWidget {
       child: Consumer<LanguageService>(
         builder: (context, languageService, _) {
           return MaterialApp(
+            navigatorKey: NavigationService.navigatorKey,
             title: 'AGRHI - Smart Farming Assistant',
             debugShowCheckedModeBanner: false,
-
-            // ✅ Theme Configuration
             theme: ThemeData(
               useMaterial3: true,
-
-              // Primary color
               primarySwatch:
                   MaterialColor(AppColors.primaryGreen.value, <int, Color>{
                     50: AppColors.primaryGreen.withOpacity(0.1),
@@ -127,16 +140,11 @@ class MyApp extends StatelessWidget {
                     800: AppColors.primaryGreen.withOpacity(0.9),
                     900: AppColors.primaryGreen,
                   }),
-
-              // Color scheme for Material 3
               colorScheme: ColorScheme.fromSeed(
                 seedColor: AppColors.primaryGreen,
                 brightness: Brightness.light,
               ),
-
-              // Typography
               fontFamily: 'Roboto',
-
               textTheme: const TextTheme(
                 displayLarge: TextStyle(
                   fontSize: 32,
@@ -157,8 +165,6 @@ class MyApp extends StatelessWidget {
                   color: AppColors.textSecondary,
                 ),
               ),
-
-              // AppBar theme
               appBarTheme: const AppBarTheme(
                 backgroundColor: AppColors.primaryGreen,
                 foregroundColor: AppColors.textWhite,
@@ -172,8 +178,6 @@ class MyApp extends StatelessWidget {
                   letterSpacing: 0.15,
                 ),
               ),
-
-              // Button themes
               elevatedButtonTheme: ElevatedButtonThemeData(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
@@ -193,8 +197,6 @@ class MyApp extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // Input decoration theme
               inputDecorationTheme: InputDecorationTheme(
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -229,8 +231,6 @@ class MyApp extends StatelessWidget {
                   vertical: 16,
                 ),
               ),
-
-              // Card theme
               cardTheme: CardThemeData(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -238,8 +238,6 @@ class MyApp extends StatelessWidget {
                 ),
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
-
-              // SnackBar theme
               snackBarTheme: SnackBarThemeData(
                 backgroundColor: Colors.grey.shade800,
                 contentTextStyle: const TextStyle(
@@ -251,16 +249,12 @@ class MyApp extends StatelessWidget {
                 ),
                 behavior: SnackBarBehavior.floating,
               ),
-
-              // Dialog theme
               dialogTheme: DialogThemeData(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
                 elevation: 8,
               ),
-
-              // Bottom sheet theme
               bottomSheetTheme: const BottomSheetThemeData(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -268,26 +262,19 @@ class MyApp extends StatelessWidget {
                 elevation: 8,
               ),
             ),
-
-            // Navigation
-            initialRoute: Routes.splash,
+            home: SplashScreen(
+              initialNotificationPayload: initialNotificationPayload,
+            ),
             routes: Routes.routes,
-
-            // Error handling
             onUnknownRoute: (settings) {
               debugPrint('⚠️ Unknown route: ${settings.name}');
               return MaterialPageRoute(builder: (_) => const SplashScreen());
             },
-
-            // Route debugging
             onGenerateRoute: (settings) {
               debugPrint('📍 Navigating to: ${settings.name}');
               return null;
             },
-
-            // Builder for global overlays/error handling
             builder: (context, child) {
-              // ✅ Prevent text scaling beyond reasonable limits
               return MediaQuery(
                 data: MediaQuery.of(context).copyWith(
                   textScaler: MediaQuery.of(

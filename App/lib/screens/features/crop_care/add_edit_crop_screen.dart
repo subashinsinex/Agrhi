@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
+
 import '../../../utils/colors.dart';
 import '../../../src/database/database_helper.dart';
 import '../../shared/custom_app_bar.dart';
@@ -30,7 +31,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
 
   List<Map<String, dynamic>> _farms = [];
   List<Map<String, dynamic>> _plants = [];
-  List<Map<String, dynamic>> _soilTypes = [];
+  List<Map<String, dynamic>> _farmSoilTypes = [];
 
   double _availableAcres = 0.0;
   double _totalFarmSize = 0.0;
@@ -49,21 +50,30 @@ class _AddCropScreenState extends State<AddCropScreen> {
     final crop = widget.crop!;
     _selectedFarmId = crop['farmid']?.toString();
     _selectedPlantId = crop['plantid']?.toString();
-    _selectedSoilTypeId = crop['soiltypeid']?.toString();
     _fieldSizeController.text = crop['fieldsize']?.toString() ?? '';
     _status = crop['status']?.toString() ?? 'Planted';
     _isActive = (crop['isactive'] == 1);
 
     if (crop['plantingdate'] != null) {
-      _plantingDate = DateTime.tryParse(crop['plantingdate']);
+      _plantingDate = DateTime.tryParse(crop['plantingdate'].toString());
     }
     if (crop['harvestdate'] != null) {
-      _harvestDate = DateTime.tryParse(crop['harvestdate']);
+      _harvestDate = DateTime.tryParse(crop['harvestdate'].toString());
     }
 
-    // ✅ Load available acres after farms are loaded
     if (_selectedFarmId != null) {
+      _updateFarmSoilTypes(_selectedFarmId);
       _loadAvailableAcres(_selectedFarmId!);
+    }
+
+    final incomingSoilTypeId = crop['soiltypeid']?.toString();
+    if (incomingSoilTypeId != null &&
+        _farmSoilTypes.any(
+          (s) => s['soiltypeid']?.toString() == incomingSoilTypeId,
+        )) {
+      _selectedSoilTypeId = incomingSoilTypeId;
+    } else {
+      _selectedSoilTypeId = null;
     }
   }
 
@@ -71,17 +81,14 @@ class _AddCropScreenState extends State<AddCropScreen> {
     setState(() => _isLoading = true);
     try {
       final db = DatabaseHelper.instance;
-      final farms = await db.getAllFarms();
+      final farms = await db.getAllFarmsWithRelations();
       final plants = await db.getAllPlants();
-      final soilTypes = await db.getAllSoilTypes();
 
       setState(() {
         _farms = farms;
         _plants = plants;
-        _soilTypes = soilTypes;
       });
 
-      // ✅ Populate form data AFTER farms are loaded
       if (_isEditing) {
         _populateFormData();
       }
@@ -96,18 +103,58 @@ class _AddCropScreenState extends State<AddCropScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-/// ✅ Load available acres excluding current crop in edit mode and inactive crops
+  void _updateFarmSoilTypes(String? farmId) {
+    if (farmId == null) {
+      setState(() {
+        _farmSoilTypes = [];
+        _selectedSoilTypeId = null;
+      });
+      return;
+    }
+
+    try {
+      final farm = _farms.firstWhere((f) => f['farmid']?.toString() == farmId);
+
+      final soilTypes =
+          (farm['soil_types'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          [];
+
+      final exists = soilTypes.any(
+        (s) => s['soiltypeid']?.toString() == _selectedSoilTypeId,
+      );
+
+      setState(() {
+        _farmSoilTypes = soilTypes;
+        if (!exists) {
+          _selectedSoilTypeId = null;
+        }
+      });
+    } catch (e) {
+      debugPrint('❌ Error updating farm soil types: $e');
+      setState(() {
+        _farmSoilTypes = [];
+        _selectedSoilTypeId = null;
+      });
+    }
+  }
+
   Future<void> _loadAvailableAcres(String farmId) async {
     try {
       final db = DatabaseHelper.instance;
       final farm = _farms.firstWhere((f) => f['farmid'].toString() == farmId);
       _totalFarmSize = (farm['farmsize'] ?? 0).toDouble();
+
       final allCrops = await db.getCropsByFarmId(farmId);
       double usedAcres = 0.0;
+
       for (final crop in allCrops) {
         if (_isEditing &&
             crop['usercropid'].toString() ==
@@ -119,6 +166,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         }
         usedAcres += (crop['fieldsize'] ?? 0).toDouble();
       }
+
       setState(() {
         _availableAcres = _totalFarmSize - usedAcres;
       });
@@ -173,7 +221,6 @@ class _AddCropScreenState extends State<AddCropScreen> {
 
     try {
       final db = DatabaseHelper.instance;
-
       final cropId = _isEditing
           ? widget.crop!['usercropid'].toString()
           : const Uuid().v4();
@@ -197,7 +244,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: SmartReTranslator(
-              text: _isEditing ? 'Crop updated' : 'Crop updated',
+              text: _isEditing ? 'Crop updated' : 'Crop created',
             ),
             backgroundColor: AppColors.successColor,
           ),
@@ -251,7 +298,6 @@ class _AddCropScreenState extends State<AddCropScreen> {
 
     try {
       final db = DatabaseHelper.instance;
-
       final result = await db.markCropAsDeleted(widget.crop!['usercropid']);
 
       if (mounted) {
@@ -373,6 +419,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                             .toList(),
                         onChanged: (value) {
                           setState(() => _selectedFarmId = value);
+                          _updateFarmSoilTypes(value);
                           if (value != null) {
                             _loadAvailableAcres(value);
                           }
@@ -427,7 +474,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
-                          color: Colors.black,
+                              color: Colors.black,
                             ),
                           ),
                           if (_selectedFarmId != null)
@@ -465,7 +512,6 @@ class _AddCropScreenState extends State<AddCropScreen> {
                           if (size == null || size <= 0) {
                             return 'Enter a valid field size';
                           }
-                          // ✅ Validate against available acres
                           if (_selectedFarmId != null &&
                               size > _availableAcres) {
                             return 'Exceeds available acres ($_availableAcres)';
@@ -535,7 +581,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                         label: null,
                         icon: Icons.terrain,
                         value: _selectedSoilTypeId,
-                        items: _soilTypes
+                        items: _farmSoilTypes
                             .map(
                               (s) => {
                                 'id': s['soiltypeid']?.toString(),
@@ -601,7 +647,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
       children: [
         SmartReTranslator(
           text: title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            color: Colors.black,
+          ),
         ),
         const SizedBox(height: 6),
       ],
@@ -688,7 +738,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
                     text: 'Select date',
                     style: TextStyle(color: Colors.black, fontSize: 14),
                   ),
-            Icon(Icons.arrow_drop_down, color: Colors.black),
+            const Icon(Icons.arrow_drop_down, color: Colors.black),
           ],
         ),
       ),
