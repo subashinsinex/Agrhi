@@ -174,14 +174,26 @@ class NotificationService {
 
   static Future<void> cancelNotification(int id) async {
     await _ensureInitialized();
-    await _plugin.cancel(id);
-    debugPrint('AGRHI_NOTIFICATION_CANCELLED id=$id');
+    try {
+      await _plugin.cancel(id);
+      debugPrint('AGRHI_NOTIFICATION_CANCELLED id=$id');
+    } catch (e, stackTrace) {
+      debugPrint('AGRHI_NOTIFICATION_CANCEL_FAILED id=$id error=$e');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   static Future<void> cancelAllNotifications() async {
     await _ensureInitialized();
-    await _plugin.cancelAll();
-    debugPrint('AGRHI_ALL_NOTIFICATIONS_CANCELLED');
+    try {
+      await _plugin.cancelAll();
+      debugPrint('AGRHI_ALL_NOTIFICATIONS_CANCELLED');
+    } catch (e, stackTrace) {
+      debugPrint('AGRHI_ALL_NOTIFICATIONS_CANCEL_FAILED error=$e');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   static Future<void> scheduleWeeklyCheckIn({

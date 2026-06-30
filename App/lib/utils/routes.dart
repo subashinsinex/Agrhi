@@ -4,6 +4,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/signup_screen.dart';
 import '../screens/features/dashboard_screen.dart';
 import '../screens/features/disease_detection/model_manager_screen.dart';
+import '../screens/features/crop_care/crop_care_screen.dart';
 
 class Routes {
   static const String splash = '/splash';
@@ -11,6 +12,7 @@ class Routes {
   static const String signup = '/signup';
   static const String dashboard = '/dashboard';
   static const String modelManager = '/model-manager';
+  static const String cropCare = '/crop-care';
 
   static Map<String, WidgetBuilder> routes = {
     splash: (context) => const SplashScreen(),
@@ -18,6 +20,7 @@ class Routes {
     signup: (context) => const SignupScreen(),
     dashboard: (context) => const DashboardScreen(),
     modelManager: (context) => const ModelManagerScreen(),
+    cropCare: (context) => const CropCareScreen(),
   };
 
   static void navigateToLogin(BuildContext context) {

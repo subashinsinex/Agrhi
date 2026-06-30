@@ -25,35 +25,62 @@ class RemindersManager {
     final db = DatabaseHelper.instance;
 
     DateTime? harvestReminderDate;
+    DateTime? harvestDayReminderDate;
+
     if (harvestDate != null) {
       harvestReminderDate = harvestDate.subtract(const Duration(days: 3));
+      harvestDayReminderDate = harvestDate;
     }
 
     final List<int> scheduledNotificationIds = [];
     final now = DateTime.now();
 
     try {
+      await NotificationService.cancelNotification(baseId + 1);
       await NotificationService.cancelNotification(baseId + 2);
 
       if (harvestReminderDate != null && harvestReminderDate.isAfter(now)) {
         try {
           await NotificationService.scheduleReminder(
-            id: baseId + 2,
+            id: baseId + 1,
             title: 'Harvest Reminder',
-            body: '$plantName may be ready for harvest soon.',
+            body: '$plantName may be ready for harvest in 3 days.',
             scheduledDate: harvestReminderDate,
             payload: Routes.dashboard,
           );
-          scheduledNotificationIds.add(baseId + 2);
+          scheduledNotificationIds.add(baseId + 1);
         } catch (e, stackTrace) {
           debugPrint(
-            '❌ Failed to schedule harvest reminder for crop $cropId: $e',
+            '❌ Failed to schedule pre-harvest reminder for crop $cropId: $e',
           );
           debugPrintStack(stackTrace: stackTrace);
         }
       } else if (harvestReminderDate != null) {
         debugPrint(
-          'AGRHI_HARVEST_SKIPPED cropId=$cropId harvestReminderDate=$harvestReminderDate now=$now',
+          'AGRHI_PREHARVEST_SKIPPED cropId=$cropId harvestReminderDate=$harvestReminderDate now=$now',
+        );
+      }
+
+      if (harvestDayReminderDate != null &&
+          harvestDayReminderDate.isAfter(now)) {
+        try {
+          await NotificationService.scheduleReminder(
+            id: baseId + 2,
+            title: 'Harvest Today',
+            body: '$plantName is ready for harvest today.',
+            scheduledDate: harvestDayReminderDate,
+            payload: Routes.dashboard,
+          );
+          scheduledNotificationIds.add(baseId + 2);
+        } catch (e, stackTrace) {
+          debugPrint(
+            '❌ Failed to schedule harvest-day reminder for crop $cropId: $e',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+        }
+      } else if (harvestDayReminderDate != null) {
+        debugPrint(
+          'AGRHI_HARVESTDAY_SKIPPED cropId=$cropId harvestDayReminderDate=$harvestDayReminderDate now=$now',
         );
       }
 
@@ -77,6 +104,7 @@ class RemindersManager {
 
       return {
         'harvestReminderDate': harvestReminderDate,
+        'harvestDayReminderDate': harvestDayReminderDate,
         'scheduledNotificationIds': scheduledNotificationIds,
       };
     } catch (e, stackTrace) {
@@ -117,6 +145,7 @@ class RemindersManager {
         }
       } else {
         final int baseId = _baseReminderId(cropId);
+        await NotificationService.cancelNotification(baseId + 1);
         await NotificationService.cancelNotification(baseId + 2);
       }
 
@@ -143,7 +172,7 @@ class RemindersManager {
             reminder['plant_name'] as String? ??
             'Crop';
 
-        final harvestReminderDate = DateTime.tryParse(
+        final DateTime? harvestReminderDate = DateTime.tryParse(
           reminder['harvestreminderdate'] as String? ??
               reminder['harvest_reminder_date'] as String? ??
               '',
@@ -157,18 +186,36 @@ class RemindersManager {
         final List<int> rescheduledIds = [];
 
         try {
+          await NotificationService.cancelNotification(baseId + 1);
           await NotificationService.cancelNotification(baseId + 2);
 
-          if (harvestReminderDate != null &&
-              harvestReminderDate.isAfter(DateTime.now())) {
-            await NotificationService.scheduleReminder(
-              id: baseId + 2,
-              title: 'Harvest Reminder',
-              body: '$plantName may be ready for harvest soon.',
-              scheduledDate: harvestReminderDate,
-              payload: Routes.dashboard,
+          if (harvestReminderDate != null) {
+            final preHarvestDate = harvestReminderDate;
+            final harvestDayReminderDate = preHarvestDate.add(
+              const Duration(days: 3),
             );
-            rescheduledIds.add(baseId + 2);
+
+            if (preHarvestDate.isAfter(DateTime.now())) {
+              await NotificationService.scheduleReminder(
+                id: baseId + 1,
+                title: 'Harvest Reminder',
+                body: '$plantName may be ready for harvest in 3 days.',
+                scheduledDate: preHarvestDate,
+                payload: Routes.dashboard,
+              );
+              rescheduledIds.add(baseId + 1);
+            }
+
+            if (harvestDayReminderDate.isAfter(DateTime.now())) {
+              await NotificationService.scheduleReminder(
+                id: baseId + 2,
+                title: 'Harvest Today',
+                body: '$plantName is ready for harvest today.',
+                scheduledDate: harvestDayReminderDate,
+                payload: Routes.dashboard,
+              );
+              rescheduledIds.add(baseId + 2);
+            }
           }
 
           if (rescheduledIds.isEmpty) {
@@ -194,135 +241,37 @@ class RemindersManager {
     }
   }
 
-  Future<void> sendWeeklyCheckIn() async {
+  Future<void> clearAllNotificationsOnLogout() async {
     final db = DatabaseHelper.instance;
 
     try {
-      final upcomingReminders = await db.getUpcomingReminders(daysAhead: 7);
-      final totalCount = await db.getActiveCropRemindersCount();
+      final reminders = await db.getAllCropReminders();
 
-      if (upcomingReminders.isEmpty) {
-        if (totalCount > 0) {
-          await NotificationService.showNotification(
-            id: 999,
-            title: '✓ Crop Reminders Active',
-            body:
-                'All crop reminders on track. You have $totalCount active reminder${totalCount > 1 ? 's' : ''}.',
-            payload: Routes.dashboard,
-          );
+      for (final reminder in reminders) {
+        final cropId =
+            reminder['cropid']?.toString() ?? reminder['crop_id']?.toString();
+
+        if (cropId == null || cropId.isEmpty) {
+          continue;
         }
-      } else if (upcomingReminders.length == 1) {
-        final reminder = upcomingReminders.first;
-        final plantName = reminder['plantname'] as String? ?? 'Crop';
-        final reminderType =
-            reminder['remindertype'] as String? ??
-            reminder['reminder_type'] as String?;
-        final daysUntil = _getDaysUntilReminder(reminder);
 
-        final body = _buildReminderBody(
-          plantName,
-          reminderType,
-          daysUntil,
-          reminder,
-        );
-
-        await NotificationService.showNotification(
-          id: 999,
-          title: '🌾 Upcoming Crop Reminder',
-          body: body,
-          payload: Routes.dashboard,
-        );
-      } else {
-        final firstReminder = upcomingReminders[0];
-        final secondReminder = upcomingReminders[1];
-
-        final plantName1 = firstReminder['plantname'] as String? ?? 'Crop';
-        final reminderType1 =
-            firstReminder['remindertype'] as String? ??
-            firstReminder['reminder_type'] as String?;
-        final daysUntil1 = _getDaysUntilReminder(firstReminder);
-
-        final plantName2 = secondReminder['plantname'] as String? ?? 'Crop';
-        final reminderType2 =
-            secondReminder['remindertype'] as String? ??
-            secondReminder['reminder_type'] as String?;
-        final daysUntil2 = _getDaysUntilReminder(secondReminder);
-
-        final body1 = _buildReminderBody(
-          plantName1,
-          reminderType1,
-          daysUntil1,
-          firstReminder,
-        );
-        final body2 = _buildReminderBody(
-          plantName2,
-          reminderType2,
-          daysUntil2,
-          secondReminder,
-        );
-
-        await NotificationService.showNotification(
-          id: 999,
-          title: '🌾 Multiple Crop Reminders',
-          body: '$body1\n$body2',
-          payload: Routes.dashboard,
-        );
+        try {
+          await cancelCropReminders(cropId);
+        } catch (e, stackTrace) {
+          debugPrint('❌ Failed to clear reminders for crop $cropId: $e');
+          debugPrintStack(stackTrace: stackTrace);
+        }
       }
 
-      debugPrint('✅ Weekly check-in notification sent');
+      await NotificationService.cancelWeeklyCheckIn();
+      await NotificationService.cancelAllNotifications();
+      await NotificationService.debugPendingNotifications();
+
+      debugPrint('✅ All crop notifications cleared on logout');
     } catch (e, stackTrace) {
-      debugPrint('❌ Error sending weekly check-in: $e');
+      debugPrint('❌ Error clearing all notifications on logout: $e');
       debugPrintStack(stackTrace: stackTrace);
+      rethrow;
     }
-  }
-
-  int _getDaysUntilReminder(Map<String, dynamic> reminder) {
-    final dynamic daysHarvestRaw =
-        reminder['daysuntilharvest'] ?? reminder['days_until_harvest'];
-
-    if (daysHarvestRaw is int && daysHarvestRaw >= 0) {
-      return daysHarvestRaw;
-    }
-    if (daysHarvestRaw is num && daysHarvestRaw >= 0) {
-      return daysHarvestRaw.toInt();
-    }
-    return 0;
-  }
-
-  String _buildReminderBody(
-    String plantName,
-    String? reminderType,
-    int daysUntil,
-    Map<String, dynamic> reminder,
-  ) {
-    final type = 'Harvest reminder';
-    final dateStr = _formatDateFromReminder(reminder, reminderType);
-
-    if (daysUntil == 0) {
-      return '$plantName: $type due TODAY ($dateStr)';
-    } else if (daysUntil == 1) {
-      return '$plantName: $type due TOMORROW ($dateStr)';
-    } else {
-      return '$plantName: $type due in $daysUntil days ($dateStr)';
-    }
-  }
-
-  String _formatDateFromReminder(
-    Map<String, dynamic> reminder,
-    String? reminderType,
-  ) {
-    try {
-      final harvestDate = DateTime.tryParse(
-        reminder['harvestreminderdate'] as String? ??
-            reminder['harvest_reminder_date'] as String? ??
-            '',
-      );
-      if (harvestDate != null) {
-        return '${harvestDate.month}/${harvestDate.day}';
-      }
-    } catch (e) {
-      debugPrint('Error formatting date: $e');
-    }
-    return 'soon';
   }
 }

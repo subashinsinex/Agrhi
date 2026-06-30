@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
-
+import '../../../src/services/reminders_manager.dart';
 import '../../../utils/colors.dart';
 import '../../../src/database/database_helper.dart';
 import '../../shared/custom_app_bar.dart';
@@ -48,6 +48,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
 
   void _populateFormData() {
     final crop = widget.crop!;
+
     _selectedFarmId = crop['farmid']?.toString();
     _selectedPlantId = crop['plantid']?.toString();
     _fieldSizeController.text = crop['fieldsize']?.toString() ?? '';
@@ -57,6 +58,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
     if (crop['plantingdate'] != null) {
       _plantingDate = DateTime.tryParse(crop['plantingdate'].toString());
     }
+
     if (crop['harvestdate'] != null) {
       _harvestDate = DateTime.tryParse(crop['harvestdate'].toString());
     }
@@ -79,6 +81,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
 
   Future<void> _loadReferenceData() async {
     setState(() => _isLoading = true);
+
     try {
       final db = DatabaseHelper.instance;
       final farms = await db.getAllFarmsWithRelations();
@@ -161,9 +164,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
                 widget.crop!['usercropid'].toString()) {
           continue;
         }
+
         if (crop['isactive'] == 0) {
           continue;
         }
+
         usedAcres += (crop['fieldsize'] ?? 0).toDouble();
       }
 
@@ -176,6 +181,15 @@ class _AddCropScreenState extends State<AddCropScreen> {
         _availableAcres = 0.0;
       });
     }
+  }
+
+  Map<String, dynamic>? _getSelectedPlant() {
+    for (final plant in _plants) {
+      if (plant['plantid']?.toString() == _selectedPlantId) {
+        return plant;
+      }
+    }
+    return null;
   }
 
   Future<void> _saveCrop() async {
@@ -217,6 +231,17 @@ class _AddCropScreenState extends State<AddCropScreen> {
       return;
     }
 
+    if (_harvestDate != null && _harvestDate!.isBefore(_plantingDate!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: SmartReTranslator(
+            text: 'Harvest date cannot be before planting date',
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -238,7 +263,29 @@ class _AddCropScreenState extends State<AddCropScreen> {
         cropId: cropId,
       );
 
-      debugPrint('✅ Crop ${_isEditing ? "updated" : "created"}: $cropId');
+      final selectedPlant = _getSelectedPlant();
+      final plantName =
+          selectedPlant?['plantname']?.toString() ??
+          selectedPlant?['name']?.toString() ??
+          'Crop';
+
+      await RemindersManager.instance.cancelCropReminders(cropId);
+
+      final bool shouldScheduleReminders =
+          _harvestDate != null && _isActive && _status != 'Harvested';
+
+      if (shouldScheduleReminders) {
+        await RemindersManager.instance.scheduleCropReminders(
+          cropId: cropId,
+          plantName: plantName,
+          plantingDate: _plantingDate!,
+          harvestDate: _harvestDate,
+        );
+      }
+
+      debugPrint(
+        '✅ Crop ${_isEditing ? "updated" : "created"} and reminders refreshed: $cropId',
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -262,10 +309,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-
   Future<void> _deleteCrop() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -298,7 +346,11 @@ class _AddCropScreenState extends State<AddCropScreen> {
 
     try {
       final db = DatabaseHelper.instance;
-      final result = await db.markCropAsDeleted(widget.crop!['usercropid']);
+      final cropId = widget.crop!['usercropid'].toString();
+
+      await RemindersManager.instance.cancelCropReminders(cropId);
+
+      final result = await db.markCropAsDeleted(cropId);
 
       if (mounted) {
         if (result['success'] == true) {
@@ -334,14 +386,27 @@ class _AddCropScreenState extends State<AddCropScreen> {
   }
 
   Future<void> _selectDate(BuildContext context, bool isPlanting) async {
-    final initialDate = isPlanting
-        ? (_plantingDate ?? DateTime.now())
-        : (_harvestDate ?? DateTime.now());
+    final now = DateTime.now();
+
+    final firstDate = isPlanting
+        ? DateTime(2000)
+        : (_plantingDate ?? DateTime(2000));
+
+    DateTime initialDate;
+    if (isPlanting) {
+      initialDate = _plantingDate ?? now;
+    } else {
+      initialDate = _harvestDate ?? _plantingDate ?? now;
+    }
+
+    if (initialDate.isBefore(firstDate)) {
+      initialDate = firstDate;
+    }
 
     final date = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: DateTime(2000),
+      firstDate: firstDate,
       lastDate: DateTime(2100),
       builder: (context, child) {
         return Theme(
@@ -357,6 +422,10 @@ class _AddCropScreenState extends State<AddCropScreen> {
       setState(() {
         if (isPlanting) {
           _plantingDate = date;
+
+          if (_harvestDate != null && _harvestDate!.isBefore(date)) {
+            _harvestDate = null;
+          }
         } else {
           _harvestDate = date;
         }
@@ -418,7 +487,9 @@ class _AddCropScreenState extends State<AddCropScreen> {
                             )
                             .toList(),
                         onChanged: (value) {
-                          setState(() => _selectedFarmId = value);
+                          setState(() {
+                            _selectedFarmId = value;
+                          });
                           _updateFarmSoilTypes(value);
                           if (value != null) {
                             _loadAvailableAcres(value);
@@ -455,8 +526,9 @@ class _AddCropScreenState extends State<AddCropScreen> {
                               },
                             )
                             .toList(),
-                        onChanged: (value) =>
-                            setState(() => _selectedPlantId = value),
+                        onChanged: (value) {
+                          setState(() => _selectedPlantId = value);
+                        },
                         required: true,
                       ),
                     ],
@@ -508,14 +580,17 @@ class _AddCropScreenState extends State<AddCropScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Field size is required';
                           }
+
                           final size = double.tryParse(value);
                           if (size == null || size <= 0) {
                             return 'Enter a valid field size';
                           }
+
                           if (_selectedFarmId != null &&
                               size > _availableAcres) {
                             return 'Exceeds available acres ($_availableAcres)';
                           }
+
                           return null;
                         },
                       ),
@@ -589,8 +664,9 @@ class _AddCropScreenState extends State<AddCropScreen> {
                               },
                             )
                             .toList(),
-                        onChanged: (value) =>
-                            setState(() => _selectedSoilTypeId = value),
+                        onChanged: (value) {
+                          setState(() => _selectedSoilTypeId = value);
+                        },
                         required: true,
                       ),
                     ],
@@ -680,7 +756,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.black),
+          borderSide: const BorderSide(color: Colors.black),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -719,7 +795,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.black),
+            borderSide: const BorderSide(color: Colors.black),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -771,7 +847,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.black),
+          borderSide: const BorderSide(color: Colors.black),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -831,7 +907,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.black),
+          borderSide: const BorderSide(color: Colors.black),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

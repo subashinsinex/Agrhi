@@ -12,6 +12,7 @@ import '../../src/services/connectivity_manager.dart';
 import '../shared/smart_retranslator.dart';
 import '../shared/language_switcher.dart';
 import '../components/weather_card.dart';
+import '../components/upcoming_notification_card.dart';
 import '../components/profile_card.dart';
 import '../components/feature_grid.dart';
 import 'disease_detection/disease_detection_screen.dart';
@@ -32,6 +33,8 @@ import '../../screens/features/market_place/market_place_screen.dart';
 import '../features/about_screen.dart';
 import '../features/community/community_screen.dart';
 import '../features/ai_chat/ai_chat_screen.dart';
+import '../../src/services/reminders_manager.dart';
+import '../../src/services/notification_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -40,9 +43,16 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? userData;
   bool _isLoadingProfile = true;
+  bool _isRefreshingDashboard = false;
+
+  int _weatherRefreshKey = 0;
+  int _notificationRefreshKey = 0;
+  int _profileRefreshKey = 0;
+  int _featuresRefreshKey = 0;
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -55,10 +65,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadUserData();
-      _preloadDashboardPhrases();
+    WidgetsBinding.instance.addObserver(this);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _refreshDashboard();
+      await _preloadDashboardPhrases();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshDashboard();
+    }
+  }
+
+  Future<void> _refreshDashboard() async {
+    if (_isRefreshingDashboard) return;
+
+    if (mounted) {
+      setState(() {
+        _isRefreshingDashboard = true;
+      });
+    } else {
+      _isRefreshingDashboard = true;
+    }
+
+    try {
+      await _loadUserData();
+
+      if (!mounted) return;
+
+      setState(() {
+        _weatherRefreshKey++;
+        _notificationRefreshKey++;
+        _profileRefreshKey++;
+        _featuresRefreshKey++;
+      });
+    } catch (e, stackTrace) {
+      debugPrint('DASHBOARD_REFRESH_ERROR: $e');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshingDashboard = false;
+        });
+      } else {
+        _isRefreshingDashboard = false;
+      }
+    }
   }
 
   Future<void> _preloadDashboardPhrases() async {
@@ -113,6 +174,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'Language',
       'AGRHI Assistant',
       'Community',
+      'Upcoming Notifications',
       'AI Chat',
     ], highPriority: true);
   }
@@ -163,11 +225,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       } else {
         debugPrint('User profile not found in storage');
-        if (mounted) setState(() => _isLoadingProfile = false);
+        if (mounted) {
+          setState(() {
+            userData = null;
+            _isLoadingProfile = false;
+          });
+        }
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');
-      if (mounted) setState(() => _isLoadingProfile = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingProfile = false;
+        });
+      }
     }
   }
 
@@ -276,7 +347,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       FeatureItem(
         title: 'Marketplace',
         icon: Icons.shopping_cart,
-        onTap: () => _navigateWithOnlineCheck(MarketplaceScreen()),
+        onTap: () => _navigateWithOnlineCheck(const MarketplaceScreen()),
       ),
       if (!isConsumer)
         FeatureItem(
@@ -318,6 +389,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.monetization_on,
         onTap: () => _navigateWithOnlineCheck(const SubsidyScreen()),
       ),
+
+      /*
+      --- For Second Version
       FeatureItem(
         title: 'AI Assistant',
         icon: Icons.smart_toy_outlined,
@@ -328,6 +402,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.people_alt_outlined,
         onTap: () => _navigateWithOnlineCheck(const CommunityScreen()),
       ),
+      */
+
     ];
   }
 
@@ -359,6 +435,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (result['success']) {
       _showSyncSuccessSnackBar(result);
+      await _refreshDashboard();
     } else {
       _showSnackBar(
         result['error'] ?? 'Sync failed. Please try again.',
@@ -437,8 +514,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       debugPrint('🗑️ Clearing database tables...');
       final db = await DatabaseHelper.instance.database;
 
+      await RemindersManager.instance.clearAllNotificationsOnLogout();
+      await NotificationService.debugPendingNotifications();
+
       await db.transaction((txn) async {
         await txn.delete('disease_analysis_results');
+        await txn.delete('cropreminders');
         await txn.delete('farm_soiltypes');
         await txn.delete('farm_irrigations');
         await txn.delete('farm_watersources');
@@ -595,16 +676,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(dialogContext);
-                          Navigator.pushAndRemoveUntil(
+                        onPressed: () async {
+                          final navigator = Navigator.of(
                             context,
-                            MaterialPageRoute(
-                              builder: (context) => const LoginScreen(),
-                            ),
-                            (Route<dynamic> route) => false,
+                            rootNavigator: true,
                           );
-                          _performBackgroundCleanup();
+
+                          navigator.pop();
+
+                          try {
+                            await _performBackgroundCleanup().timeout(
+                              const Duration(seconds: 8),
+                              onTimeout: () {
+                                debugPrint('LOGOUT_STEP: cleanup timeout');
+                              },
+                            );
+                          } catch (e, stackTrace) {
+                            debugPrint('LOGOUT_STEP: cleanup failed $e');
+                            debugPrintStack(stackTrace: stackTrace);
+                          }
+
+                          if (!mounted) return;
+
+                          await navigator.pushAndRemoveUntil(
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(),
+                            ),
+                            (route) => false,
+                          );
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.errorColor,
@@ -643,6 +742,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentLanguageCode = Provider.of<LanguageService>(
+      context,
+    ).currentLocale.languageCode;
+    final bool showDashboardSkeleton =
+        _isLoadingProfile || _isRefreshingDashboard;
+
     return Scaffold(
       appBar: DashboardAppBar.withSettings(
         onSyncPressed: _performManualSync,
@@ -659,33 +764,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         },
         onLogoutPressed: _showLogoutConfirmation,
-        onLanguagePressed: _showLanguageSelectionDialog, // ✅ FIXED
+        onLanguagePressed: _showLanguageSelectionDialog,
         isSyncing: context.watch<ConnectivityManager>().isSyncing,
       ),
       backgroundColor: AppColors.backgroundColor,
       body: RefreshIndicator(
-        onRefresh: _loadUserData,
+        onRefresh: _refreshDashboard,
         color: AppColors.primaryGreen,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
-              const SizedBox(height: 20),
-              WeatherCard(
-                key: ValueKey(
-                  'weather_${Provider.of<LanguageService>(context).currentLocale.languageCode}',
-                ),
-                useDeviceLocation: true,
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 10),
+
+              showDashboardSkeleton
+                  ? _buildWeatherSkeleton()
+                  : WeatherCard(
+                      key: ValueKey(
+                        'weather_${currentLanguageCode}_$_weatherRefreshKey',
+                      ),
+                      useDeviceLocation: true,
+                    ),
+
+              const SizedBox(height: 5),
+
+              showDashboardSkeleton
+                  ? _buildUpcomingNotificationSkeleton()
+                  : UpcomingNotificationCard(
+                      key: ValueKey(
+                        'upcoming_notifications_$_notificationRefreshKey',
+                      ),
+                      backgroundColor: AppColors.primaryGreen,
+                      daysAhead: 30,
+                    ),
+
+              const SizedBox(height: 18),
               _buildSectionHeader('Profile', Icons.person_outline),
               const SizedBox(height: 12),
+
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                child: _isLoadingProfile
+                child: showDashboardSkeleton
                     ? _buildProfileSkeleton()
                     : ProfileCard(
-                        key: const ValueKey('profile_card'),
+                        key: ValueKey('profile_card_$_profileRefreshKey'),
                         name: userData?['name'] ?? 'Guest User',
                         email: userData?['email'],
                         category: userData?['category'],
@@ -697,20 +819,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             MaterialPageRoute(
                               builder: (context) => const ProfileScreen(),
                             ),
-                          );
+                          ).then((_) => _refreshDashboard());
                         },
                       ),
               ),
-              const SizedBox(height: 28),
+
+              const SizedBox(height: 18),
               _buildSectionHeader('Features', Icons.grid_view_rounded),
               const SizedBox(height: 12),
+
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                child: _isLoadingProfile
+                child: showDashboardSkeleton
                     ? _buildFeaturesSkeleton()
                     : DirectFeatureGrid(
                         key: ValueKey(
-                          '${Provider.of<LanguageService>(context).currentLocale.languageCode}_${userData?['category'] ?? "none"}',
+                          '${currentLanguageCode}_${userData?['category'] ?? "none"}_$_featuresRefreshKey',
                         ),
                         features: _buildFeatures(),
                         crossAxisCount: 3,
@@ -718,7 +842,223 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         spacing: 12,
                       ),
               ),
+
               const SizedBox(height: 50),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeatherSkeleton() {
+    return Container(
+      key: const ValueKey('weather_skeleton'),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryGreen.withOpacity(0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.primaryGreen.withOpacity(0.95),
+                AppColors.primaryGreen.withOpacity(0.82),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.18),
+              width: 1.4,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.28),
+                    width: 1.3,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 110,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 150,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.30),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Container(
+                          width: 70,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.22),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          width: 55,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.14),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.22),
+                    width: 1.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUpcomingNotificationSkeleton() {
+    return Container(
+      key: const ValueKey('notification_skeleton'),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryGreen.withOpacity(0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.primaryGreen.withOpacity(0.95),
+                AppColors.primaryGreen.withOpacity(0.82),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.18),
+              width: 1.4,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.28),
+                    width: 1.3,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 90,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.28),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 130,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.22),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 105,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.14),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.22),
+                    width: 1.2,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -771,15 +1111,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildProfileSkeleton() {
     return Container(
       key: const ValueKey('profile_skeleton'),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryGreen.withOpacity(0.2),
-            blurRadius: 20,
+            color: AppColors.primaryGreen.withOpacity(0.22),
+            blurRadius: 18,
             offset: const Offset(0, 8),
-            spreadRadius: 2,
+            spreadRadius: 1,
           ),
         ],
       ),
@@ -789,64 +1129,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                AppColors.primaryGreen.withOpacity(0.7),
-                AppColors.primaryGreen.withOpacity(0.8),
+                AppColors.primaryGreen.withOpacity(0.90),
+                AppColors.primaryGreen.withOpacity(0.78),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             border: Border.all(
-              color: Colors.white.withOpacity(0.2),
-              width: 1.5,
+              color: Colors.white.withOpacity(0.18),
+              width: 1.4,
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             child: Row(
               children: [
                 Container(
-                  width: 80,
-                  height: 80,
+                  width: 72,
+                  height: 72,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.white.withOpacity(0.20),
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 2,
+                      color: Colors.white.withOpacity(0.28),
+                      width: 1.5,
                     ),
                   ),
                 ),
-                const SizedBox(width: 18),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        width: double.infinity,
+                        width: 140,
                         height: 20,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(6),
+                          color: Colors.white.withOpacity(0.30),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
                       const SizedBox(height: 10),
                       Container(
-                        width: 180,
-                        height: 14,
+                        width: double.infinity,
+                        height: 13,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.25),
+                          color: Colors.white.withOpacity(0.22),
                           borderRadius: BorderRadius.circular(6),
                         ),
                       ),
                       const SizedBox(height: 12),
                       Container(
-                        width: 100,
-                        height: 28,
+                        width: 78,
+                        height: 26,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.white.withOpacity(0.20),
+                          borderRadius: BorderRadius.circular(18),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.3),
+                            color: Colors.white.withOpacity(0.26),
                             width: 1,
                           ),
                         ),
@@ -856,16 +1196,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(width: 12),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  width: 42,
+                  height: 42,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withOpacity(0.14),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 1.5,
+                      color: Colors.white.withOpacity(0.24),
+                      width: 1.3,
                     ),
                   ),
-                  child: const SizedBox(width: 16, height: 16),
                 ),
               ],
             ),
@@ -892,8 +1232,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
         itemBuilder: (context, index) {
           return Container(
             decoration: BoxDecoration(
-              color: AppColors.primaryGreen.withOpacity(0.15),
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primaryGreen.withOpacity(0.88),
+                  AppColors.primaryGreen,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.18),
+                width: 1.3,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primaryGreen.withOpacity(0.22),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.20),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.24),
+                      width: 1.1,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: 58,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.22),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  width: 48,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ],
             ),
           );
         },

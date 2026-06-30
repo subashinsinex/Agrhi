@@ -368,6 +368,11 @@ class DatabaseHelper {
     ''');
   }
 
+  Future<List<Map<String, dynamic>>> getAllCropReminders() async {
+    final db = await database;
+    return await db.query('cropreminders', orderBy: 'createdat DESC');
+  }
+
   Future<int> getActiveCropRemindersCount() async {
     final db = await database;
 
@@ -389,29 +394,32 @@ class DatabaseHelper {
     final db = await database;
 
     final now = DateTime.now();
-    final end = now.add(Duration(days: daysAhead));
+    final today = DateTime(now.year, now.month, now.day);
+    final end = today.add(Duration(days: daysAhead));
 
     return await db.rawQuery(
       '''
-      SELECT
-        cr.cropid,
-        cr.plantname,
-        cr.harvestreminderdate,
-        'harvest' AS remindertype,
-        NULL AS daysuntilfollowup,
-        CAST(julianday(cr.harvestreminderdate) - julianday(?) AS INTEGER) AS daysuntilharvest,
-        cr.harvestreminderdate AS sortdate
-      FROM cropreminders cr
-      INNER JOIN usercrops uc
-        ON uc.usercropid = cr.cropid
-      WHERE uc.isactive = 1
-        AND uc.isdeleted = 0
-        AND cr.harvestreminderdate IS NOT NULL
-        AND datetime(cr.harvestreminderdate) >= datetime(?)
-        AND datetime(cr.harvestreminderdate) <= datetime(?)
-      ORDER BY datetime(sortdate) ASC
-    ''',
-      [now.toIso8601String(), now.toIso8601String(), end.toIso8601String()],
+    SELECT
+      uc.usercropid AS cropid,
+      p.plantname AS plantname,
+      uc.harvestdate AS harvestdate,
+      'harvest_day' AS remindertype,
+      CAST(
+        julianday(date(uc.harvestdate)) - julianday(date(?))
+        AS INTEGER
+      ) AS daysuntilharvest,
+      uc.harvestdate AS sortdate
+    FROM usercrops uc
+    LEFT JOIN plants p
+      ON p.plantid = uc.plantid
+    WHERE uc.isactive = 1
+      AND uc.isdeleted = 0
+      AND uc.harvestdate IS NOT NULL
+      AND date(uc.harvestdate) >= date(?)
+      AND date(uc.harvestdate) <= date(?)
+    ORDER BY date(uc.harvestdate) ASC, LOWER(COALESCE(p.plantname, '')) ASC
+  ''',
+      [today.toIso8601String(), today.toIso8601String(), end.toIso8601String()],
     );
   }
 

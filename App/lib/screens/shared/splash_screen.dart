@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:provider/provider.dart';
 
 import '../../../utils/colors.dart';
 import '../../../utils/routes.dart';
 import '../../../src/services/app_config_service.dart';
 import '../../../src/database/database_helper.dart';
 import '../shared/update_screen.dart';
-import '../../../src/services/sync_service.dart';
 import '../../../src/services/connectivity_manager.dart';
 import '../../../src/services/reminders_manager.dart';
 import '../../../src/services/notification_service.dart';
@@ -70,6 +68,13 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeController.forward();
   }
 
+  void _updateStatus(String message) {
+    if (!mounted || _hasNavigated) return;
+    setState(() {
+      _statusMessage = message;
+    });
+  }
+
   Future<bool> _hasUnsyncedData() async {
     try {
       final db = DatabaseHelper.instance;
@@ -111,22 +116,15 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     _configChecked = true;
-
-    setState(() {
-      _statusMessage = 'Checking for updates...';
-    });
+    _updateStatus('Checking for updates...');
 
     final serverConfig = await AppConfigService.checkAppConfig();
 
     if (!mounted || _hasNavigated) return;
 
-    if (serverConfig != null) {
-      final needsUpdate = serverConfig['needs_update'] == true;
-
-      if (needsUpdate) {
-        await _handleUpdateFlow(serverConfig);
-        return;
-      }
+    if (serverConfig != null && serverConfig['needs_update'] == true) {
+      await _handleUpdateFlow(serverConfig);
+      return;
     }
 
     if (!mounted || _hasNavigated) return;
@@ -136,9 +134,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _handleUpdateFlow(Map<String, dynamic> config) async {
     try {
-      setState(() {
-        _statusMessage = 'Update required. Checking offline data...';
-      });
+      _updateStatus('Update required. Checking offline data...');
 
       await Future.delayed(const Duration(milliseconds: 500));
       final hasUnsynced = await _hasUnsyncedData();
@@ -170,10 +166,7 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _proceedWithAuth() async {
     if (!mounted || _hasNavigated) return;
 
-    setState(() {
-      _statusMessage = 'Loading...';
-    });
-
+    _updateStatus('Loading...');
     await Future.delayed(const Duration(milliseconds: 500));
 
     final hasTokens = await _hasStoredTokens();
@@ -181,131 +174,151 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted || _hasNavigated) return;
 
     final payload = widget.initialNotificationPayload;
-
     if (payload != null && payload.isNotEmpty) {
-      debugPrint('Splash notification payload found: $payload');
-
-      setState(() {
-        _statusMessage = 'Opening notification...';
-      });
-
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      if (!mounted || _hasNavigated) return;
-
-      _hasNavigated = true;
-
-      switch (payload) {
-        case Routes.modelManager:
-          if (hasTokens) {
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
-            Navigator.of(context).pushNamed(Routes.modelManager);
-          } else {
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
-          }
-          return;
-
-        case Routes.dashboard:
-          if (hasTokens) {
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
-          } else {
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
-          }
-          return;
-
-        case Routes.login:
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
-          return;
-
-        case Routes.signup:
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.signup, (route) => false);
-          return;
-
-        default:
-          if (hasTokens) {
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
-          } else {
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
-          }
-          return;
-      }
+      await _handleNotificationNavigation(payload, hasTokens);
+      return;
     }
 
     if (hasTokens) {
-      setState(() {
-        _statusMessage = 'Welcome back!';
-      });
-
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      final accessToken = await storage.read(key: 'access_token');
-
-      if (accessToken != null && accessToken.isNotEmpty) {
-        SyncService.instance
-            .performFullSync(accessToken)
-            .then((fullSyncResult) async {
-              debugPrint('Full sync from splash: $fullSyncResult');
-              if (fullSyncResult['success'] == true && mounted) {
-                try {
-                  final connectivityManager = context
-                      .read<ConnectivityManager>();
-                  connectivityManager.updateLastSyncTime(DateTime.now());
-
-                  // ✅ NEW: Restore reminders and schedule weekly check-in
-                  await RemindersManager.instance.rescheduleAllCropReminders();
-                  await NotificationService.scheduleWeeklyCheckIn();
-                  debugPrint('✅ Reminders restored and check-in scheduled');
-                } catch (e) {
-                  debugPrint('Error restoring reminders: $e');
-                }
-              }
-            })
-            .catchError((e) {
-              debugPrint('Full sync from splash failed: $e');
-            });
-      } else {
-        debugPrint('No access token found, skipping full sync');
-        // Still try to restore reminders even if sync fails
-        try {
-          await RemindersManager.instance.rescheduleAllCropReminders();
-          await NotificationService.scheduleWeeklyCheckIn();
-        } catch (e) {
-          debugPrint('Error restoring reminders offline: $e');
-        }
-      }
-
-      if (!mounted || _hasNavigated) return;
-
-      _hasNavigated = true;
-      Routes.navigateToDashboard(context);
+      await _handleAuthenticatedBoot();
     } else {
-      setState(() {
-        _statusMessage = 'Redirecting to login...';
-      });
+      await _handleUnauthenticatedBoot();
+    }
+  }
 
-      await Future.delayed(const Duration(milliseconds: 500));
+  Future<void> _handleNotificationNavigation(
+    String payload,
+    bool hasTokens,
+  ) async {
+    debugPrint('Splash notification payload found: $payload');
+
+    _updateStatus('Opening notification...');
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (!mounted || _hasNavigated) return;
+
+    _hasNavigated = true;
+
+    switch (payload) {
+      case Routes.modelManager:
+        if (hasTokens) {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
+          Navigator.of(context).pushNamed(Routes.modelManager);
+        } else {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
+        }
+        return;
+
+      case Routes.dashboard:
+        if (hasTokens) {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
+        } else {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
+        }
+        return;
+
+      case Routes.login:
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
+        return;
+
+      case Routes.signup:
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.signup, (route) => false);
+        return;
+
+      default:
+        if (hasTokens) {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
+        } else {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.login, (route) => false);
+        }
+        return;
+    }
+  }
+
+  Future<void> _handleAuthenticatedBoot() async {
+    _updateStatus('Welcome back!');
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (!mounted || _hasNavigated) return;
+
+    _updateStatus('Syncing your data...');
+
+    try {
+      final syncResult = await ConnectivityManager.instance.performManualSync(
+        isBootSync: true,
+      );
+
+      debugPrint('✅ Boot sync result: $syncResult');
 
       if (!mounted || _hasNavigated) return;
 
-      _hasNavigated = true;
-      Routes.navigateToLogin(context);
+      _updateStatus('Finalizing setup...');
+
+      try {
+        await NotificationService.scheduleWeeklyCheckIn();
+        debugPrint('✅ Weekly check-in scheduled');
+      } catch (e) {
+        debugPrint('Error scheduling weekly check-in: $e');
+      }
+    } catch (e) {
+      debugPrint('Boot sync failed: $e');
+
+      if (!mounted || _hasNavigated) return;
+
+      _updateStatus('Continuing offline...');
+
+      try {
+        await RemindersManager.instance.rescheduleAllCropReminders();
+        await NotificationService.scheduleWeeklyCheckIn();
+        debugPrint('✅ Offline reminders restored after sync failure');
+      } catch (restoreError) {
+        debugPrint(
+          'Error restoring reminders after sync failure: $restoreError',
+        );
+      }
     }
+
+    if (!mounted || _hasNavigated) return;
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    _hasNavigated = true;
+    Routes.navigateToDashboard(context);
+  }
+
+  Future<void> _handleUnauthenticatedBoot() async {
+    try {
+      _updateStatus('Preparing offline mode...');
+      await RemindersManager.instance.rescheduleAllCropReminders();
+      await NotificationService.scheduleWeeklyCheckIn();
+      debugPrint('✅ Offline reminders restored');
+    } catch (e) {
+      debugPrint('Error restoring reminders offline: $e');
+    }
+
+    _updateStatus('Redirecting to login...');
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!mounted || _hasNavigated) return;
+
+    _hasNavigated = true;
+    Routes.navigateToLogin(context);
   }
 
   Future<bool> _hasStoredTokens() async {

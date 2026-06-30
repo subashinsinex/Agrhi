@@ -289,16 +289,15 @@ Future<void> _handleLogin() async {
         }
 
         try {
-          final fullSyncResult =
-              await SyncService.instance.performFullSync(accessToken);
-          debugPrint('🔁 Full sync after login: $fullSyncResult');
-          if (fullSyncResult['success'] == true && mounted) {
-            final connectivityManager =
-                context.read<ConnectivityManager>();
-            connectivityManager.updateLastSyncTime(DateTime.now());
+          if (mounted) {
+            final connectivityManager = context.read<ConnectivityManager>();
+            final fullSyncResult = await connectivityManager.performManualSync(
+              isBootSync: true,
+            );
+            debugPrint('Full sync after login: $fullSyncResult');
           }
         } catch (e) {
-          debugPrint('❌ Full sync after login failed: $e');
+          debugPrint('Full sync after login failed: $e');
         }
 
         if (userCategory == 'farmer' || userCategory == 'admin') {
