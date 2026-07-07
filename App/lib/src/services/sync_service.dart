@@ -21,6 +21,7 @@ class SyncService {
   // ✅ Sync locks to prevent duplicate operations
   bool _isSyncing = false;
   bool _isUploadingProfilePicture = false; // ✅ NEW: Profile picture upload lock
+  final Set<String> _imagesDownloading = <String>{};
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -344,7 +345,7 @@ class SyncService {
 
   // ================= TWO-WAY SYNC FOR DISEASE ANALYSIS =================
 
-  /// Complete two-way sync: push local changes, then pull server updates
+  /// Complete two-way sync: upload pending analyses/images and download analysis metadata changes
   Future<Map<String, dynamic>> performTwoWaySync(String accessToken) async {
     try {
       debugPrint('🔄 Starting two-way sync...');
@@ -358,21 +359,16 @@ class SyncService {
       // Step 3: Upload local images that haven't been uploaded
       final imageUploadResult = await syncImages(accessToken);
 
-      // Step 4: Download server images that don't exist locally
-      final imageDownloadResult = await downloadServerImages(accessToken);
-
       final allSuccess =
           uploadResult['success'] &&
           downloadResult['success'] &&
-          imageUploadResult['success'] &&
-          imageDownloadResult['success'];
+          imageUploadResult['success'];
 
       return {
         'success': allSuccess,
         'upload': uploadResult,
         'download': downloadResult,
         'image_upload': imageUploadResult,
-        'image_download': imageDownloadResult,
         'timestamp': DateTime.now().toIso8601String(),
       };
     } catch (e) {
@@ -794,6 +790,30 @@ class SyncService {
     } catch (e) {
       debugPrint('❌ Image download error: $e');
       return {'success': false, 'error': e.toString(), 'downloaded': 0};
+    }
+  }
+
+  /// Public helper for downloading a single image on demand
+  Future<String?> downloadImageOnDemand(
+    String imageId,
+    String serverUrl,
+    String accessToken,
+  ) async {
+    if (serverUrl.isEmpty || serverUrl == '/uploads/images/pending') {
+      return null;
+    }
+
+    if (_imagesDownloading.contains(imageId)) {
+      debugPrint('⏭️ Image already downloading: $imageId');
+      return null;
+    }
+
+    _imagesDownloading.add(imageId);
+
+    try {
+      return await _downloadImage(imageId, serverUrl, accessToken);
+    } finally {
+      _imagesDownloading.remove(imageId);
     }
   }
 

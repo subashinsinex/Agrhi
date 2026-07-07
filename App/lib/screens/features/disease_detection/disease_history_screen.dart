@@ -6,10 +6,11 @@ import '../../shared/custom_app_bar.dart';
 import '../../shared/disclaimer_banner.dart';
 import '../../../utils/storage_helper.dart';
 import '../../shared/smart_retranslator.dart';
+import '../../../src/services/sync_service.dart';
 
-/// Model for Disease History Item
 class DiseaseHistoryItem {
   final String id;
+  final String? imageId;
   final String plantName;
   final String diseaseName;
   final String severity;
@@ -22,6 +23,7 @@ class DiseaseHistoryItem {
 
   DiseaseHistoryItem({
     required this.id,
+    this.imageId,
     required this.plantName,
     required this.diseaseName,
     required this.severity,
@@ -34,36 +36,34 @@ class DiseaseHistoryItem {
   });
 
   factory DiseaseHistoryItem.fromJson(Map<String, dynamic> json) {
-    // Parse remedies and preventions from GROUP_CONCAT string
     final remediesStr = json['remedies'] as String?;
     final preventionsStr = json['preventions'] as String?;
 
     final remedies = remediesStr != null && remediesStr.isNotEmpty
-        ? remediesStr.split('|||').where((s) => s.isNotEmpty).toList()
+        ? remediesStr.split('|||').where((s) => s.trim().isNotEmpty).toList()
         : <String>[];
 
     final preventions = preventionsStr != null && preventionsStr.isNotEmpty
-        ? preventionsStr.split('|||').where((s) => s.isNotEmpty).toList()
+        ? preventionsStr.split('|||').where((s) => s.trim().isNotEmpty).toList()
         : <String>[];
 
     return DiseaseHistoryItem(
-      id: json['id'] ?? '',
-      plantName: json['plant_name'] ?? 'Unknown Plant',
-      diseaseName: json['disease_name'] ?? 'Unknown Disease',
-      severity: json['severity'] ?? 'Unknown',
+      id: json['id']?.toString() ?? '',
+      imageId: json['image_id']?.toString(),
+      plantName: json['plant_name']?.toString() ?? 'Unknown Plant',
+      diseaseName: json['disease_name']?.toString() ?? 'Unknown Disease',
+      severity: json['severity']?.toString() ?? 'Unknown',
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
-      localPath: json['local_path'] ?? '',
-      serverImageUrl: json['server_image_url'],
-      createdAt: json['created_at'] ?? '',
+      localPath: json['local_path']?.toString() ?? '',
+      serverImageUrl: json['server_image_url']?.toString(),
+      createdAt: json['created_at']?.toString() ?? '',
       remedies: remedies,
       preventions: preventions,
     );
   }
 
-  /// Get formatted confidence percentage
   String get confidencePercent => '${(confidence * 100).toStringAsFixed(1)}%';
 
-  /// Get severity color
   Color get severityColor {
     switch (severity.toLowerCase()) {
       case 'high':
@@ -78,15 +78,13 @@ class DiseaseHistoryItem {
     }
   }
 
-  /// Get image path (local or server)
   String? get imagePath {
     if (localPath.isNotEmpty && File(localPath).existsSync()) {
       return localPath;
     }
-    return serverImageUrl;
+    return null;
   }
 
-  /// Format date
   String get formattedDate {
     try {
       final date = DateTime.parse(createdAt);
@@ -97,7 +95,6 @@ class DiseaseHistoryItem {
   }
 }
 
-/// Disease History Screen
 class DiseaseHistoryScreen extends StatefulWidget {
   const DiseaseHistoryScreen({super.key});
 
@@ -106,22 +103,31 @@ class DiseaseHistoryScreen extends StatefulWidget {
 }
 
 class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
-  late Future<List<DiseaseHistoryItem>> _futureHistory;
-  List<DiseaseHistoryItem> _allHistory = [];
-  List<DiseaseHistoryItem> _filteredHistory = [];
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final DatabaseHelper _db = DatabaseHelper.instance;
   final StorageHelper _storage = StorageHelper();
+  final SyncService _syncService = SyncService.instance;
 
+  final List<DiseaseHistoryItem> _allHistory = [];
+  List<DiseaseHistoryItem> _filteredHistory = [];
+
+  static const int _initialPageSize = 10;
+  static const int _nextPageSize = 10;
+
+  bool _isInitialLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
   bool _hasError = false;
   bool _showScrollToTop = false;
+  bool _isRefreshingAfterImageDownload = false;
+
   String _errorMessage = 'Failed to load disease history';
 
   @override
   void initState() {
     super.initState();
-    _fetchData();
+    _loadInitialHistory();
     _searchController.addListener(_filterHistory);
     _scrollController.addListener(_onScroll);
   }
@@ -135,13 +141,19 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
 
   void _onScroll() {
     if (_scrollController.offset > 200 && !_showScrollToTop) {
-      setState(() {
-        _showScrollToTop = true;
-      });
+      setState(() => _showScrollToTop = true);
     } else if (_scrollController.offset <= 200 && _showScrollToTop) {
-      setState(() {
-        _showScrollToTop = false;
-      });
+      setState(() => _showScrollToTop = false);
+    }
+
+    if (_scrollController.hasClients &&
+        _scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore &&
+        !_isInitialLoading &&
+        _hasMore &&
+        _searchController.text.trim().isEmpty) {
+      _loadMoreHistory();
     }
   }
 
@@ -153,65 +165,179 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
     );
   }
 
-  void _fetchData() {
-    _futureHistory = _loadDiseaseHistory();
-  }
+  Future<void> _loadInitialHistory() async {
+    if (!mounted) return;
 
-  Future<List<DiseaseHistoryItem>> _loadDiseaseHistory() async {
+    setState(() {
+      _isInitialLoading = true;
+      _hasError = false;
+      _errorMessage = 'Failed to load disease history';
+    });
+
     try {
       final userId = await _storage.getUserId();
       if (userId == null) {
         throw Exception('User not logged in');
       }
 
-      print('📥 Loading disease history for user: $userId');
-
-      // Fetch user analyses from database
-      final analyses = await _db.getUserAnalyses(userId);
-
-      print('✅ Loaded ${analyses.length} disease history items');
+      final analyses = await _db.getUserAnalysesPaginated(
+        userId,
+        limit: _initialPageSize,
+        offset: 0,
+      );
 
       final historyItems = analyses
           .map((json) => DiseaseHistoryItem.fromJson(json))
           .toList();
 
+      if (!mounted) return;
+
       setState(() {
-        _allHistory = historyItems;
+        _allHistory
+          ..clear()
+          ..addAll(historyItems);
         _filteredHistory = List.of(_allHistory);
+        _hasMore = historyItems.length == _initialPageSize;
         _hasError = false;
       });
 
-      return historyItems;
+      await _downloadImagesForItems(historyItems);
     } catch (e) {
-      print('❌ Error loading disease history: $e');
+      if (!mounted) return;
       setState(() {
         _hasError = true;
         _errorMessage = 'Failed to load disease history: $e';
       });
-      rethrow;
+    } finally {
+      if (mounted) {
+        setState(() => _isInitialLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadMoreHistory() async {
+    if (_isLoadingMore || !_hasMore) return;
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final userId = await _storage.getUserId();
+      if (userId == null) return;
+
+      final analyses = await _db.getUserAnalysesPaginated(
+        userId,
+        limit: _nextPageSize,
+        offset: _allHistory.length,
+      );
+
+      final newItems = analyses
+          .map((json) => DiseaseHistoryItem.fromJson(json))
+          .toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        _allHistory.addAll(newItems);
+        _applyFilter();
+        _hasMore = newItems.length == _nextPageSize;
+      });
+
+      await _downloadImagesForItems(newItems);
+    } catch (e) {
+      debugPrint('❌ Error loading more history: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
     }
   }
 
   void _filterHistory() {
+    if (!mounted) return;
+    setState(_applyFilter);
+  }
+
+  void _applyFilter() {
     final query = _searchController.text.toLowerCase().trim();
-    setState(() {
-      if (query.isEmpty) {
-        _filteredHistory = List.of(_allHistory);
-      } else {
-        _filteredHistory = _allHistory.where((item) {
-          return item.plantName.toLowerCase().contains(query) ||
-              item.diseaseName.toLowerCase().contains(query) ||
-              item.severity.toLowerCase().contains(query);
-        }).toList();
+
+    if (query.isEmpty) {
+      _filteredHistory = List.of(_allHistory);
+    } else {
+      _filteredHistory = _allHistory.where((item) {
+        return item.plantName.toLowerCase().contains(query) ||
+            item.diseaseName.toLowerCase().contains(query) ||
+            item.severity.toLowerCase().contains(query);
+      }).toList();
+    }
+  }
+
+  Future<void> _downloadImagesForItems(List<DiseaseHistoryItem> items) async {
+    if (_isRefreshingAfterImageDownload || items.isEmpty) return;
+
+    try {
+      final accessToken = await _storage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) return;
+
+      bool anyDownloaded = false;
+
+      for (final item in items) {
+        final hasLocalImage =
+            item.localPath.isNotEmpty && File(item.localPath).existsSync();
+        final serverUrl = item.serverImageUrl;
+
+        if (!hasLocalImage &&
+            item.imageId != null &&
+            item.imageId!.isNotEmpty &&
+            serverUrl != null &&
+            serverUrl.isNotEmpty &&
+            serverUrl != '/uploads/images/pending') {
+          final localPath = await _syncService.downloadImageOnDemand(
+            item.imageId!,
+            serverUrl,
+            accessToken,
+          );
+
+          if (localPath != null) {
+            anyDownloaded = true;
+          }
+        }
       }
-    });
+
+      if (anyDownloaded && mounted) {
+        _isRefreshingAfterImageDownload = true;
+        try {
+          final userId = await _storage.getUserId();
+          if (userId != null) {
+            final refreshedAnalyses = await _db.getUserAnalysesPaginated(
+              userId,
+              limit: _allHistory.length,
+              offset: 0,
+            );
+
+            final refreshedItems = refreshedAnalyses
+                .map((json) => DiseaseHistoryItem.fromJson(json))
+                .toList();
+
+            if (!mounted) return;
+
+            setState(() {
+              _allHistory
+                ..clear()
+                ..addAll(refreshedItems);
+              _applyFilter();
+            });
+          }
+        } finally {
+          _isRefreshingAfterImageDownload = false;
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error downloading visible images: $e');
+    }
   }
 
   void _handleRetry() {
-    setState(() {
-      _hasError = false;
-    });
-    _fetchData();
+    _loadInitialHistory();
   }
 
   @override
@@ -224,142 +350,143 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
       ),
       body: _hasError
           ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 80, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: SmartReTranslator(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 80,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(height: 16),
+                    SmartReTranslator(
                       text: _errorMessage,
                       style: const TextStyle(color: Colors.grey, fontSize: 16),
                       textAlign: TextAlign.center,
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.refresh),
-                    label: SmartReTranslator(
-                      text: 'Retry',
-                      style: const TextStyle(),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      label: const SmartReTranslator(
+                        text: 'Retry',
+                        style: TextStyle(),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(26),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryGreen,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(26),
+                        ),
                       ),
+                      onPressed: _handleRetry,
                     ),
-                    onPressed: _handleRetry,
-                  ),
-                ],
+                  ],
+                ),
               ),
             )
-          : FutureBuilder<List<DiseaseHistoryItem>>(
-              future: _futureHistory,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return const SizedBox.shrink();
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Center(
+          : _isInitialLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _allHistory.isEmpty
+          ? Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.history, size: 80, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    SmartReTranslator(
+                      text: 'No disease history found',
+                      style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 8),
+                    SmartReTranslator(
+                      text: 'Analyze a plant to see results here',
+                      style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.history, size: 80, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        SmartReTranslator(
-                          text: 'No disease history found',
+                        const SmartReTranslator(
+                          text: 'Search by plants, disease, or severity',
                           style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.grey[600],
+                            color: AppColors.primaryGreen,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        SmartReTranslator(
-                          text: 'Analyze a plant to see results here',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[500],
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: AppColors.primaryGreen,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 0,
+                              horizontal: 12,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            filled: true,
+                            fillColor: Colors.white,
                           ),
                         ),
                       ],
                     ),
-                  );
-                } else {
-                  return CustomScrollView(
-                    controller: _scrollController,
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SmartReTranslator(
-                                text: 'Search by plants, disease, or severity',
-                                style: const TextStyle(
-                                  color: AppColors.primaryGreen,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              TextField(
-                                controller: _searchController,
-                                decoration: InputDecoration(
-                                  prefixIcon: const Icon(
-                                    Icons.search,
-                                    color: AppColors.primaryGreen,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 0,
-                                    horizontal: 12,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
+                  ),
+                ),
+                SliverList(
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final item = _filteredHistory[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 0,
+                      ),
+                      child: _DiseaseHistoryCard(
+                        item: item,
+                        onTap: () => _showDetailDialog(context, item),
+                      ),
+                    );
+                  }, childCount: _filteredHistory.length),
+                ),
+                SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      if (_isLoadingMore)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: CircularProgressIndicator(),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        child: const DisclaimerBanner(
+                          'AI results are for reference only. Accuracy depends on image quality and conditions. Always consult an expert before taking action. AGRHI is not liable for crop losses based on these predictions.',
                         ),
                       ),
-                      SliverList(
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final item = _filteredHistory[index];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 0,
-                            ),
-                            child: _DiseaseHistoryCard(
-                              item: item,
-                              onTap: () => _showDetailDialog(context, item),
-                            ),
-                          );
-                        }, childCount: _filteredHistory.length),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          child: DisclaimerBanner(
-                            'AI results are for reference only. Accuracy depends on image quality and conditions. Always consult an expert before taking action. AGRHI is not liable for crop losses based on these predictions.',
-                          ),
-                        )
-                      ),
                     ],
-                  );
-                }
-              },
+                  ),
+                ),
+              ],
             ),
       floatingActionButton: _showScrollToTop
           ? FloatingActionButton(
@@ -379,7 +506,6 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
   }
 }
 
-/// Disease History Card Widget
 class _DiseaseHistoryCard extends StatelessWidget {
   final DiseaseHistoryItem item;
   final VoidCallback onTap;
@@ -401,18 +527,15 @@ class _DiseaseHistoryCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Image
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: _buildImage(),
               ),
               const SizedBox(width: 12),
-              // Content
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Plant Name - TRANSLATED
                     SmartReTranslator(
                       text: item.plantName,
                       style: const TextStyle(
@@ -422,7 +545,6 @@ class _DiseaseHistoryCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    // Disease Name - TRANSLATED
                     SmartReTranslator(
                       text: item.diseaseName,
                       style: const TextStyle(
@@ -432,13 +554,11 @@ class _DiseaseHistoryCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    // Date
                     SmartReTranslator(
                       text: _formatDate(item.createdAt),
                       style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 4),
-                    // Severity and Confidence - TRANSLATED
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -495,39 +615,14 @@ class _DiseaseHistoryCard extends StatelessWidget {
       );
     }
 
-    // Local image
-    if (imagePath.startsWith('/') || imagePath.startsWith('file://')) {
-      final file = File(imagePath);
-      if (file.existsSync()) {
-        return Image.file(
-          file,
-          width: 90,
-          height: 90,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildErrorImage(),
-        );
-      }
-    }
-
-    // Network image
-    if (imagePath.startsWith('http')) {
-      return Image.network(
-        imagePath,
+    final file = File(imagePath);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
         width: 90,
         height: 90,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => _buildErrorImage(),
-        loadingBuilder: (_, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            width: 90,
-            height: 90,
-            color: Colors.grey[300],
-            child: const Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        },
       );
     }
 
@@ -562,7 +657,6 @@ class _DiseaseHistoryCard extends StatelessWidget {
   }
 }
 
-/// Disease Detail Dialog
 class DiseaseDetailDialog extends StatelessWidget {
   final DiseaseHistoryItem item;
 
@@ -582,7 +676,6 @@ class DiseaseDetailDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header with image
             Stack(
               children: [
                 ClipRRect(
@@ -604,14 +697,12 @@ class DiseaseDetailDialog extends StatelessWidget {
                 ),
               ],
             ),
-            // Content
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Plant and Disease - TRANSLATED
                     SmartReTranslator(
                       text: item.plantName,
                       style: const TextStyle(
@@ -630,7 +721,6 @@ class DiseaseDetailDialog extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Badges - TRANSLATED
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -657,24 +747,17 @@ class DiseaseDetailDialog extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    // Remedies - TRANSLATED
                     if (item.remedies.isNotEmpty) ...[
                       _buildSectionTitle('Remedies', Icons.healing),
                       const SizedBox(height: 8),
-                      ...item.remedies.map(
-                        (remedy) => _buildBulletPoint(remedy),
-                      ),
+                      ...item.remedies.map(_buildBulletPoint),
                       const SizedBox(height: 16),
                     ],
-                    // Preventions - TRANSLATED
                     if (item.preventions.isNotEmpty) ...[
                       _buildSectionTitle('Prevention', Icons.shield),
                       const SizedBox(height: 8),
-                      ...item.preventions.map(
-                        (prevention) => _buildBulletPoint(prevention),
-                      ),
+                      ...item.preventions.map(_buildBulletPoint),
                     ],
-                    // Empty state - TRANSLATED
                     if (item.remedies.isEmpty && item.preventions.isEmpty)
                       Center(
                         child: Padding(
@@ -712,33 +795,13 @@ class DiseaseDetailDialog extends StatelessWidget {
       );
     }
 
-    if (imagePath.startsWith('/') || imagePath.startsWith('file://')) {
-      final file = File(imagePath);
-      if (file.existsSync()) {
-        return Image.file(
-          file,
-          width: double.infinity,
-          height: 200,
-          fit: BoxFit.cover,
-        );
-      }
-    }
-
-    if (imagePath.startsWith('http')) {
-      return Image.network(
-        imagePath,
+    final file = File(imagePath);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
         width: double.infinity,
         height: 200,
         fit: BoxFit.cover,
-        loadingBuilder: (_, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            width: double.infinity,
-            height: 200,
-            color: Colors.grey[300],
-            child: const Center(child: CircularProgressIndicator()),
-          );
-        },
         errorBuilder: (_, __, ___) => Container(
           width: double.infinity,
           height: 200,

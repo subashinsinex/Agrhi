@@ -15,8 +15,7 @@ import '../../utils/constants.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/api_service.dart';
 import '../../src/services/farm_store_service.dart';
-import '../../src/database/database_helper.dart';
-import '../../src/services/sync_service.dart';
+import '../../src/database/database_helper.dart'; 
 import '../../src/services/connectivity_manager.dart';
 import 'forgot_password_screen.dart';
 

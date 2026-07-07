@@ -1089,30 +1089,42 @@ class DatabaseHelper {
     ''');
   }
 
-  Future<List<Map<String, dynamic>>> getUserAnalyses(String userId) async {
+  Future<List<Map<String, dynamic>>> getUserAnalysesPaginated(
+    String userId, {
+    int limit = 10,
+    int offset = 0,
+  }) async {
     final db = await database;
+
     return await db.rawQuery(
       '''
-      SELECT
-        dar.*,
-        d.name as disease_name,
-        d.severity,
-        i.local_path,
-        i.server_image_url,
-        p.plantname as plant_name,
-        GROUP_CONCAT(r.remedy, '|||') as remedies,
-        GROUP_CONCAT(r.prevention, '|||') as preventions
-      FROM disease_analysis_results dar
-      LEFT JOIN diseases d ON dar.disease_id = d.diseaseid
-      LEFT JOIN images i ON dar.image_id = i.image_id
-      LEFT JOIN plants p ON dar.plant_id = p.plantid
-      LEFT JOIN diseaseremedies dr ON d.diseaseid = dr.diseaseid
-      LEFT JOIN remedies r ON dr.remedyid = r.remedyid
-      WHERE dar.user_id = ?
-      GROUP BY dar.id
-      ORDER BY dar.created_at DESC
+    SELECT
+      dar.id,
+      dar.user_id,
+      dar.plant_id,
+      dar.image_id,
+      dar.disease_id,
+      dar.confidence,
+      dar.created_at,
+      d.name as disease_name,
+      d.severity,
+      i.local_path,
+      i.server_image_url,
+      p.plantname as plant_name,
+      GROUP_CONCAT(r.remedy, '|||') as remedies,
+      GROUP_CONCAT(r.prevention, '|||') as preventions
+    FROM disease_analysis_results dar
+    LEFT JOIN diseases d ON dar.disease_id = d.diseaseid
+    LEFT JOIN images i ON dar.image_id = i.image_id
+    LEFT JOIN plants p ON dar.plant_id = p.plantid
+    LEFT JOIN diseaseremedies dr ON d.diseaseid = dr.diseaseid
+    LEFT JOIN remedies r ON dr.remedyid = r.remedyid
+    WHERE dar.user_id = ?
+    GROUP BY dar.id
+    ORDER BY dar.created_at DESC
+    LIMIT ? OFFSET ?
     ''',
-      [userId],
+      [userId, limit, offset],
     );
   }
 

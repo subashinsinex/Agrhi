@@ -31,8 +31,8 @@ import '../../screens/features/farm_store/setup_screen.dart';
 import '../../screens/features/farm_store/farm_product_screen.dart';
 import '../../screens/features/market_place/market_place_screen.dart';
 import '../features/about_screen.dart';
-import '../features/community/community_screen.dart';
-import '../features/ai_chat/ai_chat_screen.dart';
+// import '../features/community/community_screen.dart';
+// import '../features/ai_chat/ai_chat_screen.dart';
 import '../../src/services/reminders_manager.dart';
 import '../../src/services/notification_service.dart';
 

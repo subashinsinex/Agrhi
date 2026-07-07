@@ -52,7 +52,6 @@ class NotificationReminderSyncService {
             skipped++;
             debugPrint(
               '⏭️ Skipping reminder for crop $cropId — inactive or deleted '
-              '(isactive=${crop['isactive']}, isdeleted=${crop['isdeleted']})',
             );
             continue;
           }
