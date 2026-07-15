@@ -1,5 +1,3 @@
-// App.jsx
-
 import { useEffect } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import Sidebar from "./components/sidebar";
@@ -24,8 +22,6 @@ import Home from "./components/home";
 // Import the 3D Background component
 import AgrhiBackground from "./parts/background";
 
-// --- Constants (Must match constants in sidebar.jsx) ---
-//const EXPANDED_WIDTH = "220px";
 const COLLAPSED_WIDTH = "80px";
 
 function App() {
@@ -37,7 +33,6 @@ function App() {
   const isResetPasswordPage = location.pathname.startsWith("/reset-password");
   const useStandardLayout = !isLoginPage && !isResetPasswordPage;
 
-  // Active timer for refreshing access_token
   useEffect(() => {
     if (!useStandardLayout) return;
 
@@ -49,7 +44,7 @@ function App() {
     const handleLogout = () => {
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
-      navigate("/login"); // ← now correctly points to the login page
+      navigate("/login");
     };
 
     const refreshAccessToken = async () => {
@@ -94,16 +89,11 @@ function App() {
 
   return (
     <>
-      {/* 1. The 3D Animation Component 
-          This will sit behind everything because of z-index: -1 
-      */}
       <AgrhiBackground />
 
       <div className="admin-layout">
-        {/* Sidebar: only for standard layout */}
         {useStandardLayout && <Sidebar />}
 
-        {/* Main content */}
         <main
           className={
             useStandardLayout
@@ -111,15 +101,13 @@ function App() {
               : "admin-content admin-content--full"
           }
         >
-          {/* Header: only for standard layout */}
           {useStandardLayout && <Header />}
 
           <Routes>
-            {/* Public/Auth Routes */}
-            <Route path="/" element={<Home />} /> {/* ← NEW home page */}
+            <Route path="/" element={<Home />} />
             <Route path="/login" element={<LoginForm />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            {/* Protected Routes */}
+
             <Route
               path="/dashboard"
               element={
@@ -213,7 +201,6 @@ function App() {
       </div>
 
       <style>{`
-        /* --- IDLE: FULL CONTENT | HOVER: SIDEBAR OVERLAYS (NO SHIFT) --- */
         html, body, #root {
           height: 100vh;
           margin: 0;
@@ -228,15 +215,14 @@ function App() {
           background-color: transparent;
         }
 
-        /* ALWAYS: Content FULL viewport (no sidebar spacing ever) */
         .admin-content {
           flex: 1;
           box-sizing: border-box;
           padding: 10px 10px 20px ${COLLAPSED_WIDTH} !important;
           background-color: transparent;
-          margin-left: 0 !important; /* FULL WIDTH ALWAYS */
+          margin-left: 0 !important;
           width: 100vw !important;
-          transition: none !important; /* NO MOVEMENT */
+          transition: none !important;
           height: 100vh;
           overflow-y: compatible;
         }
@@ -248,9 +234,7 @@ function App() {
           margin-bottom: 0;
         }
 
-        /* HOVER: Sidebar expands OVER content (NO content movement) */
         @media (min-width: ${DESKTOP_BREAKPOINT}px) {
-          /* Sidebar ONLY changes - content stays STATIC */
         }
 
         .admin-content--full {
