@@ -231,7 +231,8 @@ function App() {
         /* ALWAYS: Content FULL viewport (no sidebar spacing ever) */
         .admin-content {
           flex: 1;
-          padding: 20px 20px 20px ${COLLAPSED_WIDTH} !important;
+          box-sizing: border-box;
+          padding: 10px 10px 20px ${COLLAPSED_WIDTH} !important;
           background-color: transparent;
           margin-left: 0 !important; /* FULL WIDTH ALWAYS */
           width: 100vw !important;
