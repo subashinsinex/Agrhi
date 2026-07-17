@@ -332,7 +332,7 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
               ]
             : null,
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: _isLoading
           ? Center(
               child: CircularProgressIndicator(color: AppColors.primaryGreen),

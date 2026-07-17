@@ -311,7 +311,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         showOnlineStatus: true,
         title: _isEditing ? 'Edit Product' : 'Add Product',
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: _isLoading
           ? Center(
               child: Column(

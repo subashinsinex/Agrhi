@@ -571,7 +571,7 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const CustomAppBar(showOnlineStatus: true, title: 'My Shops'),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: _isLoading
           ? Center(
               child: CircularProgressIndicator(color: AppColors.primaryGreen),

@@ -190,7 +190,7 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
               showOnlineStatus: true,
               onBackPressed: () => _handleBackNavigation(provider),
             ),
-            backgroundColor: AppColors.backgroundColor,
+            backgroundColor: Colors.transparent,
             body: _buildBody(provider),
           ),
         );
@@ -317,8 +317,8 @@ class _ModelManagerScreenState extends State<ModelManagerScreen>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.primaryGreen,
-            AppColors.primaryGreen.withOpacity(0.8),
+            const Color(0xFF082E1B),
+            const Color(0xFF005A2B),
           ],
         ),
         borderRadius: BorderRadius.circular(20),

@@ -343,7 +343,7 @@ class _DiseaseHistoryScreenState extends State<DiseaseHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       appBar: const CustomAppBar(
         title: 'Detection History',
         showOnlineStatus: true,

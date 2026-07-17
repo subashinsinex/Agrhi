@@ -303,7 +303,7 @@ class _AddEditFarmProductScreenState extends State<AddEditFarmProductScreen> {
         showOnlineStatus: true,
         title: _isEditing ? 'Edit Product' : 'Add Product',
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: _isLoading
           ? Center(
               child: Column(

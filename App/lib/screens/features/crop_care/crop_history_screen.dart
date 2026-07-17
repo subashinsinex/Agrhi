@@ -4,8 +4,6 @@ import '../../../utils/colors.dart';
 import '../../../src/database/database_helper.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
-import '../../../src/services/notification_service.dart';
-import '../../../utils/routes.dart';
 
 class CropHistoryScreen extends StatefulWidget {
   const CropHistoryScreen({super.key});
@@ -104,50 +102,6 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
       'uniqueTypes': uniqueCropTypes,
       'thisYearCrops': thisYearCrops,
     };
-  }
-
-  Future<void> _scheduleTestReminder() async {
-    try {
-      final scheduledTime = DateTime.now().add(const Duration(minutes: 1));
-
-      await NotificationService.scheduleReminder(
-        id: 99991,
-        title: 'AGRHI Test Reminder',
-        body:
-            'If you receive this while the app is closed, notifications are working.',
-        scheduledDate: scheduledTime,
-        payload: Routes.dashboard,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SmartReTranslator(
-              text:
-                  'Test reminder scheduled for '
-                  '${scheduledTime.hour.toString().padLeft(2, '0')}:'
-                  '${scheduledTime.minute.toString().padLeft(2, '0')}',
-            ),
-            backgroundColor: AppColors.successColor,
-          ),
-        );
-      }
-
-      debugPrint('✅ Test reminder scheduled for $scheduledTime');
-    } catch (e) {
-      debugPrint('❌ Error scheduling test reminder: $e');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SmartReTranslator(
-              text: 'Failed to schedule test reminder: $e',
-            ),
-            backgroundColor: AppColors.errorColor,
-          ),
-        );
-      }
-    }
   }
 
   Future<void> _loadInactiveCrops() async {
@@ -474,15 +428,8 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
       appBar: CustomAppBar(
         title: 'Crop History',
         showOnlineStatus: true,
-        actions: [
-          IconButton(
-            onPressed: _scheduleTestReminder,
-            icon: const Icon(Icons.notifications_active, color: Colors.white),
-            tooltip: 'Test Notification',
-          ),
-        ],
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: _isLoading
           ? Center(
               child: Column(
@@ -594,7 +541,7 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
                           gradient: LinearGradient(
                             colors: [
                               Colors.orange.shade600,
-                              Colors.orange.shade400,
+                              Colors.orange.shade100,
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,

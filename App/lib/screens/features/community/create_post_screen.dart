@@ -507,7 +507,7 @@ class _CreatePostScreenState extends State<CreatePostScreen>
   Widget build(BuildContext context) {
     final canPost = !_isTrimming && !_showTrimmer;
     return Scaffold(
-      backgroundColor: _showTrimmer ? Colors.black : AppColors.backgroundColor,
+      backgroundColor: _showTrimmer ? Colors.black : Colors.transparent,
       appBar: _showTrimmer ? null : _buildAppBar(canPost),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 350),

@@ -449,7 +449,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
               ]
             : null,
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: _isLoading
           ? Center(
               child: CircularProgressIndicator(color: AppColors.primaryGreen),

@@ -212,7 +212,7 @@ class _FarmProductsScreenState extends State<FarmProductsScreen> {
         showOnlineStatus: true,
         title: 'My Farm Products',
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: Column(
         children: [
           // Header section

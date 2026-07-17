@@ -98,7 +98,7 @@ class _CropCareScreenState extends State<CropCareScreen>
     return Scaffold(
       // ✅ CustomAppBar WITHOUT TabBar
       appBar: CustomAppBar(title: 'Crop Care Manager', showOnlineStatus: true),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton(
   onPressed: () async {
     bool changed = false;
@@ -142,13 +142,13 @@ class _CropCareScreenState extends State<CropCareScreen>
         children: [
           // ✅ TabBar BELOW AppBar
           Container(
-            color: AppColors.primaryGreen,
+            color: Colors.transparent,
             child: TabBar(
               controller: _tabController,
-              indicatorColor: Colors.white,
-              indicatorWeight: 3,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white70,
+              indicatorColor: Colors.black,
+              indicatorWeight: 5,
+              labelColor: Colors.black,
+              unselectedLabelColor: Colors.black.withOpacity(0.25),
               tabs: const [
                 Tab(
                   icon: Icon(Icons.eco, size: 20),
@@ -549,8 +549,8 @@ class _CropsManagerTabState extends State<CropsManagerTab>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    AppColors.primaryGreen,
-                    AppColors.primaryGreen.withOpacity(0.8),
+                    const Color(0xFF082E1B),
+                    const Color(0xFF005A2B),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -1490,8 +1490,8 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.primaryGreen,
-                        AppColors.primaryGreen.withOpacity(0.8),
+                        const Color(0xFF082E1B),
+            const Color(0xFF005A2B),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -1499,7 +1499,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primaryGreen.withOpacity(0.3),
+                        color: const Color(0xFF005A2B).withOpacity(0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),

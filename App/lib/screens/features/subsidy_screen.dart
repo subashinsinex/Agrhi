@@ -402,7 +402,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       appBar: CustomAppBar(
         title: 'Subsidy',
         showOnlineStatus: true,
@@ -768,7 +768,7 @@ class SubsidyDetailScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: CustomAppBar(title: subsidy.title, showOnlineStatus: true),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(

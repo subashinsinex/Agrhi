@@ -227,7 +227,7 @@ class _UpdateScreenState extends State<UpdateScreen>
     return PopScope(
       canPop: false, // ✅ Updated from WillPopScope
       child: Scaffold(
-        backgroundColor: AppColors.backgroundColor,
+        backgroundColor: Colors.transparent,
         body: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,

@@ -485,7 +485,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const SmartReTranslator(
           text: 'Help & Support',

@@ -117,7 +117,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
           ),
         ],
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(

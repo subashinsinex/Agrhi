@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../utils/colors.dart';
+import '../../../../utils/colors.dart';
 import '../shared/smart_retranslator.dart';
 
 class FeatureGrid extends StatelessWidget {
@@ -12,34 +12,32 @@ class FeatureGrid extends StatelessWidget {
     super.key,
     required this.features,
     this.crossAxisCount = 3,
-    this.childAspectRatio = 0.9,
-    this.spacing = 12.0,
+    this.childAspectRatio = 0.96,
+    this.spacing = 10.0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: spacing),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: spacing,
-          mainAxisSpacing: spacing,
-          childAspectRatio: childAspectRatio,
-        ),
-        itemCount: features.length,
-        itemBuilder: (context, index) {
-          final feature = features[index];
-          return FeatureCard(
-            title: feature.title,
-            icon: feature.icon,
-            onTap: feature.onTap,
-            backgroundColor: feature.backgroundColor,
-          );
-        },
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: features.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: spacing,
+        mainAxisSpacing: spacing,
+        childAspectRatio: childAspectRatio,
       ),
+      itemBuilder: (context, index) {
+        final feature = features[index];
+        return FeatureCard(
+          title: feature.title,
+          icon: feature.icon,
+          onTap: feature.onTap,
+          backgroundColor: feature.backgroundColor,
+          iconColor: feature.iconColor,
+        );
+      },
     );
   }
 }
@@ -49,6 +47,7 @@ class FeatureCard extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final Color? backgroundColor;
+  final Color? iconColor;
 
   const FeatureCard({
     super.key,
@@ -56,69 +55,48 @@ class FeatureCard extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.backgroundColor,
+    this.iconColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cardColor = backgroundColor ?? AppColors.primaryGreen;
+    final Color tileColor = backgroundColor ?? Colors.white;
+    final Color tileIconColor = iconColor ?? AppColors.primaryGreen;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [cardColor.withOpacity(0.9), cardColor],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.2),
-              width: 1.5,
-            ),
+            color: tileColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFD7DEC9), width: 1),
             boxShadow: [
               BoxShadow(
-                color: cardColor.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
+                color: Colors.green.withOpacity(0.045),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Icon container with glass effect
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Icon(icon, size: 32, color: Colors.white),
-              ),
+              Icon(icon, size: 38, color: tileIconColor),
               const SizedBox(height: 10),
-
-              // Feature title
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: SmartReTranslator(
-                  text: title,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                    letterSpacing: 0.2,
-                  ),
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
+              SmartReTranslator(
+                text: title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E2C1C),
+                  height: 1.2,
                 ),
+                maxLines: 2,
+                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -128,17 +106,18 @@ class FeatureCard extends StatelessWidget {
   }
 }
 
-// Model class for feature items
 class FeatureItem {
   final String title;
   final IconData icon;
   final VoidCallback onTap;
   final Color? backgroundColor;
+  final Color? iconColor;
 
   const FeatureItem({
     required this.title,
     required this.icon,
     required this.onTap,
     this.backgroundColor,
+    this.iconColor,
   });
 }

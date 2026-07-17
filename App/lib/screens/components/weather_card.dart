@@ -1,715 +1,683 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../utils/colors.dart';
-import '../../src/services/weather_service.dart';
-import '../../src/services/language_service.dart';
+import '../shared/smart_retranslator.dart';
 
 class WeatherCard extends StatefulWidget {
-  final String? location;
   final bool useDeviceLocation;
   final Color? backgroundColor;
 
   const WeatherCard({
     super.key,
-    this.location,
-    this.useDeviceLocation = false,
+    this.useDeviceLocation = true,
     this.backgroundColor,
   });
 
   @override
-  State<WeatherCard> createState() => _WeatherCardState();
+  State<WeatherCard> createState() => WeatherCardState();
 }
 
-class _WeatherCardState extends State<WeatherCard>
+class WeatherCardState extends State<WeatherCard>
     with SingleTickerProviderStateMixin {
-  String? temperature;
-  String? condition;
-  String? wind;
-  String? displayLocation;
-  String? originalLocationName;
-  IconData weatherIcon = Icons.cloud;
-  bool isLoading = true;
-  bool isSyncing = false;
-  DateTime? lastSyncTime;
+  bool isRefreshing = false;
+  bool hasCachedData = false;
+  late final AnimationController _rotateController;
 
-  AnimationController? _pulseController;
-  Animation<double>? _pulseAnimation;
+  String locationName = 'Loading...';
+  double temperature = 0.0;
+  String condition = 'Loading';
+  double windSpeed = 0.0;
+  String timeLabel = 'Now';
 
-  Map<String, String> translatedTexts = {};
-  String _currentLanguage = '';
-
-  static const String _cacheKeyPrefix = 'weather_cache_';
-  static const String _lastSyncPrefix = 'weather_last_sync_';
+  static const _weatherTimeout = Duration(seconds: 10);
+  static const _locationTimeout = Duration(seconds: 10);
+  static const _cacheKey = 'weather_card_cache_v2';
+  static const _cacheMaxAge = Duration(minutes: 10);
 
   @override
   void initState() {
     super.initState();
-
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
+    _rotateController = AnimationController(
       vsync: this,
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController!, curve: Curves.easeInOut),
+      duration: const Duration(milliseconds: 900),
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadCachedDataThenSync();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadCachedWeather();
+      unawaited(_refreshIfNeededInBackground());
     });
   }
 
   @override
   void dispose() {
-    _pulseController?.dispose();
+    _rotateController.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final langService = Provider.of<LanguageService>(context);
-    if (_currentLanguage != langService.currentLocale.languageCode) {
-      _currentLanguage = langService.currentLocale.languageCode;
-      _loadTranslationsAndRefreshDisplay();
+  Future<void> _refreshIfNeededInBackground() async {
+    final cached = await _getCachedWeather();
+    if (cached == null) {
+      await refreshWeather(forceRefresh: true, showLoaderOnlyIfEmpty: true);
+      return;
+    }
+
+    final age = DateTime.now().difference(cached.updatedAt);
+    if (age > _cacheMaxAge) {
+      await refreshWeather(forceRefresh: true, showLoaderOnlyIfEmpty: false);
     }
   }
 
-  Future<void> _loadCachedDataThenSync() async {
-    // ✅ Load translations and cache in parallel for faster startup
-    await Future.wait([_loadTranslations(), _loadAndDisplayCache()]);
+  Future<void> refreshWeather({
+    bool forceRefresh = false,
+    bool showLoaderOnlyIfEmpty = true,
+  }) async {
+    if (isRefreshing || !widget.useDeviceLocation) return;
 
-    // ✅ Fetch fresh data silently in background
-    _fetchWeatherSilently();
-  }
+    final shouldShowFallbackState = showLoaderOnlyIfEmpty
+        ? !hasCachedData
+        : true;
 
-  Future<void> _loadAndDisplayCache() async {
-    final cachedData = await _loadCachedWeather();
-    if (cachedData != null) {
-      debugPrint('✅ Loaded cached weather data');
-      _displayWeatherData(cachedData, fromCache: true);
+    if (mounted) {
+      setState(() => isRefreshing = true);
     }
-  }
+    _rotateController.repeat();
 
-  Future<Map<String, dynamic>?> _loadCachedWeather() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = _getCacheKey();
-      final cachedJson = prefs.getString(cacheKey);
+      final cached = await _getCachedWeather();
 
-      if (cachedJson != null) {
-        final cachedData = jsonDecode(cachedJson) as Map<String, dynamic>;
-        final lastSyncStr = prefs.getString('$_lastSyncPrefix$cacheKey');
-        if (lastSyncStr != null) {
-          lastSyncTime = DateTime.parse(lastSyncStr);
-        }
-        return cachedData;
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading cached weather: $e');
-    }
-    return null;
-  }
+      if (!forceRefresh && cached != null) {
+        final age = DateTime.now().difference(cached.updatedAt);
+        if (age <= _cacheMaxAge) {
+          if (!mounted) return;
 
-  Future<void> _saveWeatherToCache(Map<String, dynamic> weatherData) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = _getCacheKey();
-      await prefs.setString(cacheKey, jsonEncode(weatherData));
-      await prefs.setString(
-        '$_lastSyncPrefix$cacheKey',
-        DateTime.now().toIso8601String(),
-      );
-      debugPrint('✅ Weather data cached successfully');
-    } catch (e) {
-      debugPrint('❌ Error caching weather data: $e');
-    }
-  }
-
-  String _getCacheKey() {
-    if (widget.useDeviceLocation) {
-      return '${_cacheKeyPrefix}current_location';
-    } else if (widget.location != null) {
-      return '$_cacheKeyPrefix${widget.location}';
-    }
-    return '${_cacheKeyPrefix}default';
-  }
-
-  void _displayWeatherData(
-    Map<String, dynamic> data, {
-    bool fromCache = false,
-  }) {
-    if (!mounted) return;
-
-    setState(() {
-      originalLocationName = data['locationName'];
-      temperature =
-          "${data['temperature']}${translatedTexts['degreeCelsius'] ?? '°C'}";
-      condition = _translateCondition(data['weatherCode']);
-      wind = "${data['windSpeed']} km/h";
-      weatherIcon = _mapWeatherToIcon(data['weatherCode']);
-
-      // ✅ Hide loading immediately when cache is displayed
-      isLoading = false;
-
-      if (!fromCache) {
-        isSyncing = false;
-        lastSyncTime = DateTime.now();
-      }
-    });
-
-    // ✅ Translate location name asynchronously (don't block UI)
-    if (originalLocationName != null) {
-      final langService = Provider.of<LanguageService>(context, listen: false);
-      langService.translate(originalLocationName!).then((translated) {
-        if (mounted) {
           setState(() {
-            displayLocation = translated;
+            hasCachedData = true;
+            locationName = cached.locationName;
+            temperature = cached.temperature;
+            windSpeed = cached.windSpeed;
+            condition = cached.condition;
+            timeLabel = 'Saved ${_formatAge(age)} ago';
           });
+          return;
         }
-      });
-    }
-  }
-
-  Future<void> _fetchWeatherSilently() async {
-    if (!mounted) return;
-
-    // ✅ Only show syncing if we already have data displayed
-    if (temperature != null) {
-      setState(() => isSyncing = true);
-    }
-
-    try {
-      final startTime = DateTime.now();
-      Weather weather;
-
-      if (widget.useDeviceLocation) {
-        weather = await WeatherService().getWeatherByCurrentLocation();
-      } else if (widget.location != null) {
-        weather = await WeatherService().getWeatherByPlace(widget.location!);
-      } else {
-        throw Exception('No location provided');
       }
 
-      final duration = DateTime.now().difference(startTime);
-      debugPrint('⏱️ Weather fetched in ${duration.inMilliseconds}ms');
+      final position = await _getSafePosition();
 
-      final weatherData = {
-        'locationName': weather.locationName,
-        'temperature': weather.temperature.toStringAsFixed(1),
-        'weatherCode': weather.weatherCode,
-        'windSpeed': weather.windSpeed.toStringAsFixed(1),
-      };
+      final weatherFuture = _fetchWeather(
+        position.latitude,
+        position.longitude,
+      );
+      final locationFuture = _resolveLocationName(
+        position.latitude,
+        position.longitude,
+      );
 
-      await _saveWeatherToCache(weatherData);
-      _displayWeatherData(weatherData, fromCache: false);
-    } catch (e) {
-      debugPrint('❌ Error fetching weather silently: $e');
+      final results = await Future.wait([weatherFuture, locationFuture]);
+
+      final weather = results[0] as _WeatherData;
+      final resolvedLocation = results[1] as String;
+
+      final cachedData = _CachedWeatherData(
+        locationName: resolvedLocation,
+        temperature: weather.temperature,
+        windSpeed: weather.windSpeed,
+        condition: weather.condition,
+        updatedAt: DateTime.now(),
+      );
+
+      await _saveCachedWeather(cachedData);
 
       if (!mounted) return;
-      setState(() {
-        isSyncing = false;
 
-        // ✅ Only show error if we don't have cached data
-        if (temperature == null) {
-          displayLocation =
-              translatedTexts['locationError'] ?? 'Location unavailable';
-          temperature = "--";
-          condition = translatedTexts['unavailable'] ?? 'Unavailable';
-          wind = "--";
-          isLoading = false;
-        }
+      setState(() {
+        hasCachedData = true;
+        locationName = resolvedLocation;
+        temperature = weather.temperature;
+        windSpeed = weather.windSpeed;
+        condition = weather.condition;
+        timeLabel = 'Updated now';
       });
+    } catch (_) {
+      if (!mounted) return;
+
+      if (!hasCachedData && shouldShowFallbackState) {
+        setState(() {
+          locationName = 'Retry location';
+          temperature = 0.0;
+          windSpeed = 0.0;
+          condition = 'Tap to retry';
+          timeLabel = 'Retry';
+        });
+      }
+    } finally {
+      _rotateController.stop();
+      _rotateController.reset();
+      if (mounted) {
+        setState(() => isRefreshing = false);
+      }
     }
   }
 
-  Future<void> _loadTranslations() async {
-    final langService = Provider.of<LanguageService>(context, listen: false);
-    final keys = {
-      'refreshing': 'Refreshing weather data...',
-      'unavailable': 'Unavailable',
-      'kmh': 'km/h',
-      'degreeCelsius': '°C',
-      'clear': 'Clear',
-      'partlyCloudy': 'Partly Cloudy',
-      'fog': 'Fog',
-      'rain': 'Rain',
-      'snow': 'Snow',
-      'thunderstorm': 'Thunderstorm',
-      'unknown': 'Unknown',
-      'currentLocation': 'Current Location',
-      'locationError': 'Location unavailable',
-      'loading': 'Loading...',
-      'lastSync': 'Updated',
-      'syncing': 'Syncing...',
-      'justNow': 'Just now',
-      'minutesAgo': 'm',
-      'hoursAgo': 'h',
-      'wind': 'Wind',
-    };
+  Future<void> _loadCachedWeather() async {
+    try {
+      final cached = await _getCachedWeather();
+      if (cached == null) return;
 
-    final Map<String, String> newTranslations = {};
-    for (var entry in keys.entries) {
-      newTranslations[entry.key] = await langService.translate(entry.value);
+      final age = DateTime.now().difference(cached.updatedAt);
+
+      if (!mounted) return;
+
+      setState(() {
+        hasCachedData = true;
+        locationName = cached.locationName;
+        temperature = cached.temperature;
+        windSpeed = cached.windSpeed;
+        condition = cached.condition;
+        timeLabel = age <= _cacheMaxAge
+            ? 'Saved ${_formatAge(age)} ago'
+            : 'Syncing...';
+      });
+    } catch (_) {}
+  }
+
+  Future<_CachedWeatherData?> _getCachedWeather() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey);
+      if (raw == null || raw.isEmpty) return null;
+
+      return _CachedWeatherData.fromJson(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _saveCachedWeather(_CachedWeatherData data) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cacheKey, jsonEncode(data.toJson()));
+    } catch (_) {}
+  }
+
+  String _formatAge(Duration age) {
+    if (age.inMinutes < 1) return 'just now';
+    if (age.inMinutes < 60) return '${age.inMinutes}m';
+    if (age.inHours < 24) return '${age.inHours}h';
+    return '${age.inDays}d';
+  }
+
+  Future<Position> _getSafePosition() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Location services are disabled');
     }
 
-    if (originalLocationName != null && originalLocationName!.isNotEmpty) {
-      newTranslations['locationName'] = await langService.translate(
-        originalLocationName!,
+    var permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission().timeout(
+        _locationTimeout,
       );
     }
 
-    if (!mounted) return;
-    setState(() {
-      translatedTexts = newTranslations;
-      if (originalLocationName != null &&
-          newTranslations['locationName'] != null) {
-        displayLocation = newTranslations['locationName'];
+    if (permission == LocationPermission.denied) {
+      throw Exception('Location permission denied');
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('Location permission denied forever');
+    }
+
+    final lastKnown = await Geolocator.getLastKnownPosition();
+
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: _locationTimeout,
+      );
+    } on TimeoutException {
+      if (lastKnown != null) return lastKnown;
+      rethrow;
+    } catch (_) {
+      if (lastKnown != null) return lastKnown;
+      rethrow;
+    }
+  }
+
+  Future<_WeatherData> _fetchWeather(double lat, double lon) async {
+    final weatherUri = Uri.parse(
+      'https://api.open-meteo.com/v1/forecast'
+      '?latitude=$lat'
+      '&longitude=$lon'
+      '&current=temperature_2m,wind_speed_10m,weather_code'
+      '&timezone=auto',
+    );
+
+    final response = await http.get(weatherUri).timeout(_weatherTimeout);
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load weather');
+    }
+
+    final weatherJson = jsonDecode(response.body) as Map<String, dynamic>;
+    final current = weatherJson['current'] as Map<String, dynamic>?;
+
+    if (current == null) {
+      throw Exception('Current weather data missing');
+    }
+
+    return _WeatherData(
+      temperature: (current['temperature_2m'] as num?)?.toDouble() ?? 0.0,
+      windSpeed: (current['wind_speed_10m'] as num?)?.toDouble() ?? 0.0,
+      condition: _mapWeatherCode(
+        (current['weather_code'] as num?)?.toInt() ?? -1,
+      ),
+    );
+  }
+
+  Future<String> _resolveLocationName(double lat, double lon) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(lat, lon);
+
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        final parts = <String>[];
+
+        void addPart(String? value) {
+          final v = value?.trim();
+          if (v == null || v.isEmpty) return;
+          final exists = parts.any(
+            (item) => item.toLowerCase() == v.toLowerCase(),
+          );
+          if (!exists) parts.add(v);
+        }
+
+        addPart(p.locality);
+        addPart(p.subAdministrativeArea);
+        addPart(p.administrativeArea);
+
+        if (parts.isNotEmpty) {
+          return _compactLocation(parts.join(', '));
+        }
+
+        addPart(p.country);
+        if (parts.isNotEmpty) {
+          return _compactLocation(parts.join(', '));
+        }
       }
-    });
+    } catch (_) {}
+
+    return '${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}';
   }
 
-  Future<void> _loadTranslationsAndRefreshDisplay() async {
-    await _loadTranslations();
-    if (mounted && temperature != null) {
-      setState(() {});
-    }
+  String _compactLocation(String value) {
+    final parts = value
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    if (parts.length <= 2) return parts.join(', ');
+    return '${parts[0]}, ${parts[1]}';
   }
 
-  Future<void> _fetchWeather({bool isRefresh = false}) async {
-    if (isRefresh) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.refresh, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  translatedTexts['refreshing'] ?? 'Refreshing weather data...',
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ],
-            ),
-            backgroundColor: AppColors.primaryGreen,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-      await _fetchWeatherSilently();
-    }
-  }
-
-  String _translateCondition(int code) {
-    switch (code) {
-      case 0:
-        return translatedTexts['clear'] ?? 'Clear';
-      case 1:
-      case 2:
-      case 3:
-        return translatedTexts['partlyCloudy'] ?? 'Partly Cloudy';
-      case 45:
-      case 48:
-        return translatedTexts['fog'] ?? 'Fog';
-      case 51:
-      case 53:
-      case 55:
-      case 61:
-      case 63:
-      case 65:
-      case 80:
-      case 81:
-      case 82:
-        return translatedTexts['rain'] ?? 'Rain';
-      case 71:
-      case 73:
-      case 75:
-      case 77:
-      case 85:
-      case 86:
-        return translatedTexts['snow'] ?? 'Snow';
-      case 95:
-      case 96:
-      case 99:
-        return translatedTexts['thunderstorm'] ?? 'Thunderstorm';
-      default:
-        return translatedTexts['unknown'] ?? 'Unknown';
-    }
-  }
-
-  IconData _mapWeatherToIcon(int code) {
-    switch (code) {
-      case 0:
-        return Icons.wb_sunny_rounded;
-      case 1:
-      case 2:
-      case 3:
-        return Icons.cloud_rounded;
-      case 45:
-      case 48:
-        return Icons.foggy;
-      case 51:
-      case 53:
-      case 55:
-      case 61:
-      case 63:
-      case 65:
-      case 80:
-      case 81:
-      case 82:
-        return Icons.beach_access_rounded;
-      case 71:
-      case 73:
-      case 75:
-      case 77:
-      case 85:
-      case 86:
-        return Icons.ac_unit_rounded;
-      case 95:
-      case 96:
-      case 99:
-        return Icons.flash_on_rounded;
-      default:
-        return Icons.wb_cloudy_rounded;
-    }
-  }
-
-  String _getLastSyncText() {
-    if (lastSyncTime == null) return '';
-
-    final now = DateTime.now();
-    final difference = now.difference(lastSyncTime!);
-
-    if (difference.inMinutes < 1) {
-      return translatedTexts['justNow'] ?? 'now';
-    } else if (difference.inHours < 1) {
-      return '${difference.inMinutes}${translatedTexts['minutesAgo'] ?? 'm'}';
-    } else if (difference.inDays < 1) {
-      return '${difference.inHours}${translatedTexts['hoursAgo'] ?? 'h'}';
-    } else {
-      return '${difference.inDays}d';
-    }
+  String _mapWeatherCode(int code) {
+    if (code == 0) return 'Clear';
+    if (code == 1 || code == 2 || code == 3) return 'Partly Cloudy';
+    if (code == 45 || code == 48) return 'Fog';
+    if (code == 51 || code == 53 || code == 55) return 'Drizzle';
+    if (code == 61 || code == 63 || code == 65) return 'Rain';
+    if (code == 66 || code == 67) return 'Freezing Rain';
+    if (code == 71 || code == 73 || code == 75) return 'Snow';
+    if (code == 77) return 'Snow Grains';
+    if (code == 80 || code == 81 || code == 82) return 'Rain Showers';
+    if (code == 85 || code == 86) return 'Snow Showers';
+    if (code == 95 || code == 96 || code == 99) return 'Thunderstorm';
+    return 'Weather';
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _fetchWeather(isRefresh: true),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: (widget.backgroundColor ?? AppColors.primaryGreen)
-                  .withOpacity(0.25),
-              blurRadius: 15,
-              offset: const Offset(0, 6),
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: widget.backgroundColor != null
-                      ? [
-                          widget.backgroundColor!.withOpacity(0.85),
-                          widget.backgroundColor!.withOpacity(0.95),
-                        ]
-                      : [
-                          AppColors.primaryGreen.withOpacity(0.85),
-                          AppColors.primaryGreen.withOpacity(0.95),
-                        ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                  width: 1.5,
-                ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => refreshWeather(forceRefresh: true),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: widget.backgroundColor ?? Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFD7DEC9)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withOpacity(0.05),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
               ),
-              child: Stack(
-                children: [
-                  // Decorative circles
-                  Positioned(
-                    right: -25,
-                    top: -25,
-                    child: Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.06),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: -15,
-                    bottom: -30,
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.04),
-                      ),
-                    ),
-                  ),
-
-                  // Main content
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        // Weather icon with animation
-                        if (!isLoading && _pulseAnimation != null)
-                          ScaleTransition(
-                            scale: _pulseAnimation!,
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.3),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Icon(
-                                weatherIcon,
-                                size: 48,
-                                color: Colors.white,
-                              ),
-                            ),
-                          )
-                        else if (!isLoading)
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.3),
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Icon(
-                              weatherIcon,
-                              size: 48,
-                              color: Colors.white,
-                            ),
-                          )
-                        else
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: const SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-
-                        const SizedBox(width: 16),
-
-                        // Weather details
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Location with icon
-                              Row(
-                                children: [
-                                  if (widget.useDeviceLocation) ...[
-                                    Icon(
-                                      Icons.location_on,
-                                      size: 14,
-                                      color: Colors.white.withOpacity(0.8),
-                                    ),
-                                    const SizedBox(width: 4),
-                                  ],
-                                  Expanded(
-                                    child: Text(
-                                      displayLocation ??
-                                          widget.location ??
-                                          translatedTexts['loading'] ??
-                                          'Loading...',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.3,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 4),
-
-                              // Temperature & Condition
-                              Row(
-                                children: [
-                                  Text(
-                                    temperature ?? "--",
-                                    style: const TextStyle(
-                                      fontSize: 36,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w300,
-                                      height: 1,
-                                      letterSpacing: -1,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        condition ??
-                                            translatedTexts['loading'] ??
-                                            'Loading...',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 8),
-
-                              // Wind & Last Sync
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: const Icon(
-                                      Icons.air,
-                                      size: 12,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    wind ?? '--',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.white.withOpacity(0.9),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-
-                                  const SizedBox(width: 12),
-
-                                  if (lastSyncTime != null) ...[
-                                    Icon(
-                                      isSyncing
-                                          ? Icons.sync
-                                          : Icons.check_circle,
-                                      size: 10,
-                                      color: Colors.white.withOpacity(0.7),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        isSyncing
-                                            ? translatedTexts['syncing'] ??
-                                                  'Syncing...'
-                                            : _getLastSyncText(),
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.white.withOpacity(0.7),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Row(
+              children: [
+                _WeatherIconPanel(condition: condition),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SmartReTranslator(
+                        text: locationName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16.0,
+                          height: 1.15,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF264E25),
                         ),
-
-                        // Refresh indicator
-                        const SizedBox(width: 8),
-                        if (isSyncing)
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            ),
-                          )
-                        else
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.refresh,
-                              size: 16,
-                              color: Colors.white,
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          Text(
+                            '${temperature.toStringAsFixed(1)}°C',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF2C5A26),
+                              height: 1.0,
                             ),
                           ),
-                      ],
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDDE8BF),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: SmartReTranslator(
+                              text: condition,
+                              style: const TextStyle(
+                                fontSize: 12.2,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF4C6B39),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SmartReTranslator(
+                        text: isRefreshing
+                            ? 'Wind: ${windSpeed.toStringAsFixed(1)} km/h • Syncing...'
+                            : 'Wind: ${windSpeed.toStringAsFixed(1)} km/h • $timeLabel',
+                        style: TextStyle(
+                          fontSize: 12.2,
+                          fontWeight: FontWeight.w500,
+                          color: isRefreshing
+                              ? const Color(0xFF5C7C4D)
+                              : const Color(0xFF6A8460),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Material(
+                  color: const Color(0xFFF1F6E5),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => refreshWeather(forceRefresh: true),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: AnimatedBuilder(
+                          animation: _rotateController,
+                          builder: (context, child) {
+                            return Transform.rotate(
+                              angle: _rotateController.value * 2 * math.pi,
+                              child: Icon(
+                                Icons.refresh_rounded,
+                                color: isRefreshing
+                                    ? const Color(0xFF6F9A53)
+                                    : const Color(0xFF4E7A3D),
+                                size: 24,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WeatherData {
+  final double temperature;
+  final double windSpeed;
+  final String condition;
+
+  const _WeatherData({
+    required this.temperature,
+    required this.windSpeed,
+    required this.condition,
+  });
+}
+
+class _CachedWeatherData {
+  final String locationName;
+  final double temperature;
+  final double windSpeed;
+  final String condition;
+  final DateTime updatedAt;
+
+  const _CachedWeatherData({
+    required this.locationName,
+    required this.temperature,
+    required this.windSpeed,
+    required this.condition,
+    required this.updatedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'locationName': locationName,
+    'temperature': temperature,
+    'windSpeed': windSpeed,
+    'condition': condition,
+    'updatedAt': updatedAt.toIso8601String(),
+  };
+
+  factory _CachedWeatherData.fromJson(Map<String, dynamic> json) {
+    return _CachedWeatherData(
+      locationName: json['locationName']?.toString() ?? 'Unknown location',
+      temperature: (json['temperature'] as num?)?.toDouble() ?? 0.0,
+      windSpeed: (json['windSpeed'] as num?)?.toDouble() ?? 0.0,
+      condition: json['condition']?.toString() ?? 'Weather',
+      updatedAt:
+          DateTime.tryParse(json['updatedAt']?.toString() ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+    );
+  }
+}
+
+class _WeatherIconPanel extends StatelessWidget {
+  final String condition;
+
+  const _WeatherIconPanel({required this.condition});
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = condition.toLowerCase();
+    final isSunny = normalized.contains('clear') || normalized.contains('sun');
+    final isCloudy = normalized.contains('cloud');
+    final showSun = isSunny || isCloudy;
+
+    return Container(
+      width: 74,
+      height: 74,
+      decoration: BoxDecoration(
+        color: const Color(0xFFD8E3AE),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color.fromARGB(120, 139, 195, 74),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Center(
+        child: SizedBox(
+          width: 52,
+          height: 52,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              if (showSun)
+                const Positioned(top: 1, left: 4, child: _SunWithRaysSmall()),
+              Positioned(
+                left: 6,
+                right: 6,
+                bottom: 8,
+                child: Container(
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Positioned(
+                left: 10,
+                bottom: 11,
+                child: _CloudBubble(size: 16),
+              ),
+              const Positioned(
+                left: 20,
+                bottom: 10,
+                child: _CloudBubble(size: 19),
+              ),
+              const Positioned(
+                left: 31,
+                bottom: 12,
+                child: _CloudBubble(size: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SunWithRaysSmall extends StatelessWidget {
+  const _SunWithRaysSmall();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 28,
+      height: 28,
+      child: CustomPaint(
+        painter: _SunRaysSmallPainter(),
+        child: Center(
+          child: Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFFFD530),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.yellow.withOpacity(0.45),
+                  blurRadius: 10,
+                  spreadRadius: 1.2,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SunRaysSmallPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final paint = Paint()
+      ..color = const Color(0xFFFFD24A)
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+
+    const rayCount = 10;
+    const innerRadius = 11.0;
+    const outerRadius = 14.0;
+
+    for (int i = 0; i < rayCount; i++) {
+      final angle = (2 * math.pi / rayCount) * i;
+      final start = Offset(
+        center.dx + math.cos(angle) * innerRadius,
+        center.dy + math.sin(angle) * innerRadius,
+      );
+      final end = Offset(
+        center.dx + math.cos(angle) * outerRadius,
+        center.dy + math.sin(angle) * outerRadius,
+      );
+      canvas.drawLine(start, end, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _CloudBubble extends StatelessWidget {
+  final double size;
+
+  const _CloudBubble({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
       ),
     );
   }

@@ -332,7 +332,7 @@ class _CommunityScreenState extends State<CommunityScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       appBar: CustomAppBar(
         showOnlineStatus: true,
         title: 'Community',
@@ -407,7 +407,7 @@ class _CommunityScreenState extends State<CommunityScreen>
       children: [
         // Category chips bar
         Container(
-          color: AppColors.backgroundColor,
+          color: Colors.transparent,
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: SizedBox(
             height: 38,

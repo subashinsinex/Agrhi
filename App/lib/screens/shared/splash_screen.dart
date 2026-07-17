@@ -1,7 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
-import '../../../utils/colors.dart';
 import '../../../utils/routes.dart';
 import '../../../src/services/app_config_service.dart';
 import '../../../src/database/database_helper.dart';
@@ -26,7 +25,10 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _fadeAnimation;
   late Animation<double> _pulseAnimation;
 
-  String _statusMessage = 'Initializing...';
+  String _statusMessage = 'Initializing services...';
+  String _progressName = 'Booting';
+  double _progressValue = 0.08;
+
   final bool _showOfflineBadge = false;
   bool _configChecked = false;
   bool _hasNavigated = false;
@@ -43,12 +45,17 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _setupAnimations();
+    _updateProgress(
+      step: 'Booting',
+      message: 'Initializing services...',
+      value: 0.08,
+    );
     _checkAuthAndNavigate();
   }
 
   void _setupAnimations() {
     _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 900),
       vsync: this,
     );
 
@@ -57,21 +64,48 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1400),
       vsync: this,
     )..repeat(reverse: true);
 
-    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.15).animate(
+    _pulseAnimation = Tween<double>(begin: 0.96, end: 1.03).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
     _fadeController.forward();
   }
 
-  void _updateStatus(String message) {
+  double _scaleText(BuildContext context, double size) {
+    final width = MediaQuery.of(context).size.width;
+    final scaledBase = size * (width / 390).clamp(0.90, 1.12);
+    final accessibilityScale = MediaQuery.of(context).textScaler.scale(1.0);
+    return scaledBase * accessibilityScale.clamp(0.95, 1.08);
+  }
+
+  List<Shadow> get _softTextShadow => [
+    Shadow(
+      color: Colors.white.withOpacity(0.55),
+      blurRadius: 10,
+      offset: const Offset(0, 1),
+    ),
+    Shadow(
+      color: const Color(0xFFB8CAA1).withOpacity(0.28),
+      blurRadius: 18,
+      offset: const Offset(0, 4),
+    ),
+  ];
+
+  void _updateProgress({
+    required String step,
+    required String message,
+    required double value,
+  }) {
     if (!mounted || _hasNavigated) return;
+
     setState(() {
+      _progressName = step;
       _statusMessage = message;
+      _progressValue = value.clamp(0.0, 1.0);
     });
   }
 
@@ -116,7 +150,11 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     _configChecked = true;
-    _updateStatus('Checking for updates...');
+    _updateProgress(
+      step: 'Updates',
+      message: 'Checking for updates...',
+      value: 0.20,
+    );
 
     final serverConfig = await AppConfigService.checkAppConfig();
 
@@ -134,12 +172,24 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _handleUpdateFlow(Map<String, dynamic> config) async {
     try {
-      _updateStatus('Update required. Checking offline data...');
+      _updateProgress(
+        step: 'Update Required',
+        message: 'Checking offline data before update...',
+        value: 0.32,
+      );
 
       await Future.delayed(const Duration(milliseconds: 500));
       final hasUnsynced = await _hasUnsyncedData();
 
       if (!mounted || _hasNavigated) return;
+
+      _updateProgress(
+        step: 'Redirecting',
+        message: 'Opening update screen...',
+        value: 1.0,
+      );
+
+      await Future.delayed(const Duration(milliseconds: 250));
 
       _hasNavigated = true;
       await Navigator.of(context).pushReplacement(
@@ -166,7 +216,12 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _proceedWithAuth() async {
     if (!mounted || _hasNavigated) return;
 
-    _updateStatus('Loading...');
+    _updateProgress(
+      step: 'Authentication',
+      message: 'Loading secure session...',
+      value: 0.40,
+    );
+
     await Future.delayed(const Duration(milliseconds: 500));
 
     final hasTokens = await _hasStoredTokens();
@@ -192,7 +247,12 @@ class _SplashScreenState extends State<SplashScreen>
   ) async {
     debugPrint('Splash notification payload found: $payload');
 
-    _updateStatus('Opening notification...');
+    _updateProgress(
+      step: 'Notification',
+      message: 'Opening notification...',
+      value: 0.55,
+    );
+
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (!mounted || _hasNavigated) return;
@@ -252,12 +312,13 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _handleAuthenticatedBoot() async {
-    _updateStatus('Welcome back!');
+    _updateProgress(step: 'Welcome', message: 'Welcome back!', value: 0.52);
+
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (!mounted || _hasNavigated) return;
 
-    _updateStatus('Syncing your data...');
+    _updateProgress(step: 'Sync', message: 'Syncing your data...', value: 0.68);
 
     try {
       final syncResult = await ConnectivityManager.instance.performManualSync(
@@ -268,7 +329,11 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (!mounted || _hasNavigated) return;
 
-      _updateStatus('Finalizing setup...');
+      _updateProgress(
+        step: 'Finishing',
+        message: 'Finalizing setup...',
+        value: 0.88,
+      );
 
       try {
         await NotificationService.scheduleWeeklyCheckIn();
@@ -281,7 +346,11 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (!mounted || _hasNavigated) return;
 
-      _updateStatus('Continuing offline...');
+      _updateProgress(
+        step: 'Offline Mode',
+        message: 'Continuing offline...',
+        value: 0.82,
+      );
 
       try {
         await RemindersManager.instance.rescheduleAllCropReminders();
@@ -296,7 +365,9 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (!mounted || _hasNavigated) return;
 
-    await Future.delayed(const Duration(milliseconds: 300));
+    _updateProgress(step: 'Ready', message: 'Opening dashboard...', value: 1.0);
+
+    await Future.delayed(const Duration(milliseconds: 350));
 
     _hasNavigated = true;
     Routes.navigateToDashboard(context);
@@ -304,7 +375,12 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _handleUnauthenticatedBoot() async {
     try {
-      _updateStatus('Preparing offline mode...');
+      _updateProgress(
+        step: 'Offline Setup',
+        message: 'Preparing offline mode...',
+        value: 0.72,
+      );
+
       await RemindersManager.instance.rescheduleAllCropReminders();
       await NotificationService.scheduleWeeklyCheckIn();
       debugPrint('✅ Offline reminders restored');
@@ -312,7 +388,12 @@ class _SplashScreenState extends State<SplashScreen>
       debugPrint('Error restoring reminders offline: $e');
     }
 
-    _updateStatus('Redirecting to login...');
+    _updateProgress(
+      step: 'Login',
+      message: 'Redirecting to login...',
+      value: 0.96,
+    );
+
     await Future.delayed(const Duration(milliseconds: 500));
 
     if (!mounted || _hasNavigated) return;
@@ -350,33 +431,52 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenHeight < 700;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SizedBox(
-            width: screenWidth,
-            height: screenHeight,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const Spacer(flex: 3),
-                  _buildLogo(isSmallScreen),
-                  SizedBox(height: isSmallScreen ? 32 : 40),
-                  _buildTitle(),
-                  SizedBox(height: isSmallScreen ? 12 : 16),
-                  _buildSubtitle(),
-                  const Spacer(flex: 4),
-                  _buildStatusSection(),
-                  SizedBox(height: isSmallScreen ? 50 : 70),
-                ],
-              ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFE8F1DF), Color(0xFFF5F4EC), Color(0xFFE3EED7)],
+          ),
+        ),
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: Stack(
+              children: [
+                _buildBackgroundGlow(),
+                _buildFloatingLeaves(),
+                _buildBottomLandscape(),
+                _buildTextVisibilityOverlay(),
+                Positioned.fill(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 28,
+                      vertical: isSmallScreen ? 18 : 28,
+                    ),
+                    child: Column(
+                      children: [
+                        const Spacer(flex: 2),
+                        _buildLogo(isSmallScreen),
+                        SizedBox(height: isSmallScreen ? 20 : 26),
+                        _buildTitle(),
+                        const SizedBox(height: 10),
+                        _buildSubtitleText(),
+                        const SizedBox(height: 22),
+                        _buildDecorativeDivider(),
+                        const Spacer(flex: 3),
+                        _buildStatusSection(),
+                        SizedBox(height: isSmallScreen ? 28 : 36),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -385,193 +485,473 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Widget _buildLogo(bool isSmallScreen) {
-    final logoSize = isSmallScreen ? 140.0 : 170.0;
+    final logoSize = isSmallScreen ? 148.0 : 176.0;
 
-    return Container(
-      width: logoSize,
-      height: logoSize,
-      decoration: BoxDecoration(
-        color: AppColors.primaryWhite,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadowColor.withOpacity(0.1),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: Padding(
-          padding: const EdgeInsets.all(0),
-          child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+    return ScaleTransition(
+      scale: _pulseAnimation,
+      child: Container(
+        width: logoSize,
+        height: logoSize,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.34),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF8FAE73).withOpacity(0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: Image.asset('assets/images/logo.png', fit: BoxFit.cover),
         ),
       ),
     );
   }
 
   Widget _buildTitle() {
-    return const Text(
+    return Text(
       'AGRHI',
       textAlign: TextAlign.center,
       style: TextStyle(
-        fontSize: 56,
+        fontSize: _scaleText(context, 50),
         fontWeight: FontWeight.w900,
-        color: AppColors.primaryGreen,
-        letterSpacing: 4,
+        color: const Color(0xFF3F742F),
+        letterSpacing: 2.6,
         height: 1.0,
+        shadows: _softTextShadow,
       ),
     );
   }
 
-  Widget _buildSubtitle() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.primaryWhite,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: AppColors.primaryGreen.withOpacity(0.2),
-          width: 1.5,
-        ),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Smart Farm Assistant',
-            style: TextStyle(
-              fontSize: 15,
-              color: AppColors.primaryGreen,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-            ),
-          ),
-        ],
+  Widget _buildSubtitleText() {
+    return Text(
+      'Smart Farm Assistant',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: _scaleText(context, 17),
+        color: const Color(0xFF4F7843),
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.9,
+        height: 1.25,
+        shadows: _softTextShadow,
       ),
     );
   }
 
-  Widget _buildStatusSection() {
-    return Column(
+  Widget _buildDecorativeDivider() {
+    return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 400),
-          transitionBuilder: (child, animation) {
-            return ScaleTransition(
-              scale: animation,
-              child: FadeTransition(opacity: animation, child: child),
-            );
-          },
-          child: _showOfflineBadge
-              ? _buildOfflineBadge()
-              : const SizedBox.shrink(),
-        ),
-        SizedBox(height: _showOfflineBadge ? 24 : 0),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 400),
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position:
-                    Tween<Offset>(
-                      begin: const Offset(0, 0.3),
-                      end: Offset.zero,
-                    ).animate(
-                      CurvedAnimation(parent: animation, curve: Curves.easeOut),
-                    ),
-                child: child,
-              ),
-            );
-          },
-          child: Padding(
-            key: ValueKey(_statusMessage),
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
-              _statusMessage,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 16,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
-                height: 1.4,
-              ),
-            ),
+        Container(
+          width: 62,
+          height: 2,
+          decoration: BoxDecoration(
+            color: const Color(0xFFAEC78A).withOpacity(0.90),
+            borderRadius: BorderRadius.circular(99),
           ),
         ),
-        const SizedBox(height: 28),
-        ScaleTransition(
-          scale: _pulseAnimation,
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: AppColors.primaryGreen.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(
-              child: SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    AppColors.primaryGreen,
-                  ),
-                  strokeCap: StrokeCap.round,
-                ),
-              ),
-            ),
+        const SizedBox(width: 14),
+        const Icon(Icons.eco_rounded, color: Color(0xFF5F8B49), size: 24),
+        const SizedBox(width: 14),
+        Container(
+          width: 62,
+          height: 2,
+          decoration: BoxDecoration(
+            color: const Color(0xFFAEC78A).withOpacity(0.90),
+            borderRadius: BorderRadius.circular(99),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildOfflineBadge() {
-    return Container(
-      key: const ValueKey('offline-badge'),
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.primaryWhite,
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(
-          color: AppColors.warningColor.withOpacity(0.3),
-          width: 2,
+  Widget _buildStatusSection() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: _progressValue),
+          duration: const Duration(milliseconds: 700),
+          curve: Curves.easeInOut,
+          builder: (context, value, child) {
+            final percent = (value * 100).round();
+
+            return Container(
+              width: 118,
+              height: 118,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.16),
+                border: Border.all(
+                  color: const Color(0xFFD5E4BF).withOpacity(0.95),
+                  width: 1.3,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF8DAE72).withOpacity(0.14),
+                    blurRadius: 28,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 84,
+                    height: 84,
+                    child: CircularProgressIndicator(
+                      value: value,
+                      strokeWidth: 6,
+                      strokeCap: StrokeCap.round,
+                      backgroundColor: const Color(0xFFDDE8CC),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Color(0xFF4D873C),
+                      ),
+                      semanticsLabel: 'Splash loading progress',
+                      semanticsValue: '$percent%',
+                    ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$percent%',
+                        style: TextStyle(
+                          fontSize: _scaleText(context, 24),
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF3F742F),
+                          height: 1.0,
+                          shadows: _softTextShadow,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Loading',
+                        style: TextStyle(
+                          fontSize: _scaleText(context, 11),
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF6F8D62),
+                          letterSpacing: 0.8,
+                          shadows: _softTextShadow,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: const BoxDecoration(
-              color: AppColors.warningColor,
-              shape: BoxShape.circle,
+        const SizedBox(height: 18),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.18),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: Text(
+            _progressName,
+            key: ValueKey(_progressName),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: _scaleText(context, 18),
+              color: const Color(0xFF3F742F),
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.35,
+              shadows: _softTextShadow,
             ),
           ),
-          const SizedBox(width: 12),
-          const Icon(
-            Icons.wifi_off_rounded,
-            size: 20,
-            color: AppColors.warningColor,
+        ),
+        const SizedBox(height: 8),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: Padding(
+            key: ValueKey(_statusMessage),
+            padding: const EdgeInsets.symmetric(horizontal: 30),
+            child: Text(
+              _statusMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: _scaleText(context, 14.5),
+                color: const Color(0xFF587B4D),
+                fontWeight: FontWeight.w700,
+                height: 1.4,
+                shadows: [
+                  Shadow(
+                    color: Colors.white.withOpacity(0.42),
+                    blurRadius: 8,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(width: 10),
-          const Text(
+        ),
+        const SizedBox(height: 18),
+        Container(
+          width: 190,
+          height: 8,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.42),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: _progressValue),
+              duration: const Duration(milliseconds: 700),
+              curve: Curves.easeInOut,
+              builder: (context, value, child) {
+                return FractionallySizedBox(
+                  widthFactor: value,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF83B85B), Color(0xFF4D873C)],
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6A9A4E).withOpacity(0.25),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        if (_showOfflineBadge) ...[
+          const SizedBox(height: 14),
+          _buildOfflineBadge(),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildOfflineBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF6E4),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: const Color(0xFFE3C66F).withOpacity(0.85),
+          width: 1.2,
+        ),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.wifi_off_rounded, size: 18, color: Color(0xFFC28A1B)),
+          SizedBox(width: 8),
+          Text(
             'Offline Mode',
             style: TextStyle(
-              fontSize: 16,
-              color: AppColors.warningColor,
+              fontSize: 14,
+              color: Color(0xFFC28A1B),
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBackgroundGlow() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            Positioned(
+              top: -80,
+              left: -40,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFCFE3AE).withOpacity(0.24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFCFE3AE).withOpacity(0.34),
+                      blurRadius: 90,
+                      spreadRadius: 28,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 90,
+              right: -40,
+              child: Container(
+                width: 180,
+                height: 180,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFF3E7B2).withOpacity(0.18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF3E7B2).withOpacity(0.25),
+                      blurRadius: 80,
+                      spreadRadius: 12,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingLeaves() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            Positioned(
+              top: 88,
+              left: -4,
+              child: Transform.rotate(
+                angle: -0.7,
+                child: Icon(
+                  Icons.eco_rounded,
+                  size: 74,
+                  color: const Color(0xFF9ABB6C).withOpacity(0.42),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 270,
+              right: 36,
+              child: Transform.rotate(
+                angle: 0.5,
+                child: Icon(
+                  Icons.eco_rounded,
+                  size: 50,
+                  color: const Color(0xFF88AC58).withOpacity(0.52),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 430,
+              left: 26,
+              child: Transform.rotate(
+                angle: -0.9,
+                child: Icon(
+                  Icons.eco_rounded,
+                  size: 46,
+                  color: const Color(0xFF8FB55A).withOpacity(0.55),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 68,
+              right: 18,
+              child: Transform.rotate(
+                angle: 0.8,
+                child: Icon(
+                  Icons.eco_rounded,
+                  size: 84,
+                  color: const Color(0xFFA8C86E).withOpacity(0.44),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomLandscape() {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.34,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                'assets/images/dashboard_bg.jpg',
+                fit: BoxFit.cover,
+                alignment: Alignment.bottomCenter,
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFFEAF3E1).withOpacity(0.94),
+                      const Color(0xFFEAF3E1).withOpacity(0.08),
+                      const Color(0xFFEAF3E1).withOpacity(0.12),
+                    ],
+                    stops: const [0.0, 0.38, 1.0],
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  height: 82,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        const Color(0xFFE7F0DD),
+                        const Color(0xFFE7F0DD).withOpacity(0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextVisibilityOverlay() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                const Color(0xFFEAF3E1).withOpacity(0.18),
+                const Color(0xFFF7F5EE).withOpacity(0.52),
+                const Color(0xFFF7F5EE).withOpacity(0.68),
+                const Color(0xFFE7F0DD).withOpacity(0.34),
+              ],
+              stops: const [0.0, 0.28, 0.65, 1.0],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -388,7 +388,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         showOnlineStatus: true,
         title: 'Product Details',
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primaryGreen),

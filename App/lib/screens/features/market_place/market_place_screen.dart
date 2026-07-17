@@ -478,7 +478,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const CustomAppBar(showOnlineStatus: true, title: 'Marketplace'),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: Column(
         children: [
           // Search and Filter Section

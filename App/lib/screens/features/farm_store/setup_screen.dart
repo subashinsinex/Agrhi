@@ -740,7 +740,7 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       appBar: const BackAppBar(title: 'Farm Store Setup'),
       body: Column(
         children: [

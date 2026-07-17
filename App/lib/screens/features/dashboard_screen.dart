@@ -1,40 +1,41 @@
-import '/screens/features/crop_care/crop_history_screen.dart';
-import '/screens/features/disease_detection/model_manager_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import '../shared/custom_app_bar.dart';
-import '../../utils/colors.dart';
-import '../../src/services/language_service.dart';
-import '../../src/services/connectivity_manager.dart';
-import '../shared/smart_retranslator.dart';
-import '../shared/language_switcher.dart';
-import '../components/weather_card.dart';
-import '../components/upcoming_notification_card.dart';
-import '../components/profile_card.dart';
-import '../components/feature_grid.dart';
-import 'disease_detection/disease_detection_screen.dart';
-import 'subsidy_screen.dart';
-import 'crop_care/crop_care_screen.dart';
-import 'disease_detection/disease_history_screen.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../src/database/database_helper.dart';
-import 'feedback_screen.dart';
-import 'map.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
+
+import '../../../../src/database/database_helper.dart';
+import '../../../../src/services/connectivity_manager.dart';
+import '../../../../src/services/language_service.dart';
+import '../../../../src/services/notification_service.dart';
+import '../../../../src/services/reminders_manager.dart';
+import '../../../../src/services/retail_service.dart';
+import '../../../../utils/colors.dart';
 import '../auth/login_screen.dart';
+import '../components/feature_grid.dart';
+import '../components/profile_card.dart';
+import '../components/upcoming_notification_card.dart';
+import '../components/weather_card.dart';
+import '../features/feedback_screen.dart';
+import '../shared/language_switcher.dart';
+import '../shared/smart_retranslator.dart';
+import 'about_screen.dart';
+import 'map.dart';
 import 'profile_screen.dart';
-import './retail_management/shops_screen.dart';
-import '../../src/services/retail_service.dart';
-import '../../screens/features/farm_store/setup_screen.dart';
-import '../../screens/features/farm_store/farm_product_screen.dart';
-import '../../screens/features/market_place/market_place_screen.dart';
-import '../features/about_screen.dart';
-// import '../features/community/community_screen.dart';
-// import '../features/ai_chat/ai_chat_screen.dart';
-import '../../src/services/reminders_manager.dart';
-import '../../src/services/notification_service.dart';
+import 'retail_management/shops_screen.dart';
+import 'crop_care/crop_care_screen.dart';
+import 'crop_care/crop_history_screen.dart';
+import 'disease_detection/disease_detection_screen.dart';
+import 'disease_detection/disease_history_screen.dart';
+import 'disease_detection/model_manager_screen.dart';
+import 'farm_store/farm_product_screen.dart';
+import 'farm_store/setup_screen.dart';
+import 'market_place/market_place_screen.dart';
+import 'subsidy_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -46,15 +47,18 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver {
   Map<String, dynamic>? userData;
-  bool _isLoadingProfile = true;
-  bool _isRefreshingDashboard = false;
 
-  int _weatherRefreshKey = 0;
-  int _notificationRefreshKey = 0;
-  int _profileRefreshKey = 0;
-  int _featuresRefreshKey = 0;
+  bool isLoadingProfile = true;
+  bool isRefreshingDashboard = false;
 
-  static const _storage = FlutterSecureStorage(
+  final GlobalKey<WeatherCardState> weatherCardKey =
+      GlobalKey<WeatherCardState>();
+
+  int notificationRefreshKey = 0;
+  int profileRefreshKey = 0;
+  int featuresRefreshKey = 0;
+
+  static const storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.first_unlock,
@@ -67,9 +71,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _refreshDashboard();
-      await _preloadDashboardPhrases();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      refreshDashboard();
+      preloadDashboardPhrases();
     });
   }
 
@@ -82,167 +86,267 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _refreshDashboard();
+      refreshDashboard();
     }
   }
 
-  Future<void> _refreshDashboard() async {
-    if (_isRefreshingDashboard) return;
+  Future<void> refreshDashboard() async {
+    if (isRefreshingDashboard) return;
 
     if (mounted) {
-      setState(() {
-        _isRefreshingDashboard = true;
-      });
+      setState(() => isRefreshingDashboard = true);
     } else {
-      _isRefreshingDashboard = true;
+      isRefreshingDashboard = true;
     }
 
     try {
-      await _loadUserData();
+      await loadUserData();
 
+      final weatherState = weatherCardKey.currentState;
+      if (weatherState != null) {
+        unawaited(
+          weatherState.refreshWeather(
+            forceRefresh: true,
+            showLoaderOnlyIfEmpty: false,
+          ),
+        );
+      }
       if (!mounted) return;
 
       setState(() {
-        _weatherRefreshKey++;
-        _notificationRefreshKey++;
-        _profileRefreshKey++;
-        _featuresRefreshKey++;
+        notificationRefreshKey++;
+        profileRefreshKey++;
+        featuresRefreshKey++;
       });
     } catch (e, stackTrace) {
       debugPrint('DASHBOARD_REFRESH_ERROR: $e');
       debugPrintStack(stackTrace: stackTrace);
     } finally {
       if (mounted) {
-        setState(() {
-          _isRefreshingDashboard = false;
-        });
+        setState(() => isRefreshingDashboard = false);
       } else {
-        _isRefreshingDashboard = false;
+        isRefreshingDashboard = false;
       }
     }
   }
 
-  Future<void> _preloadDashboardPhrases() async {
-    final languageService = Provider.of<LanguageService>(
-      context,
-      listen: false,
-    );
+  Future<void> preloadDashboardPhrases() async {
+    try {
+      final languageService = Provider.of<LanguageService>(
+        context,
+        listen: false,
+      );
 
-    await languageService.preloadTexts([
-      'Profile',
-      'Guest User',
-      'Features',
-      'Crop Care',
-      'Plant Doctor',
-      'Subsidy',
-      'Crop History',
-      'Help & Support',
-      'Model Library',
-      'Detection History',
-      'Notifications',
-      'Notifications feature coming soon!',
-      'Sync',
-      'Syncing',
-      'Sync in progress...',
-      '✅ Sync complete!',
-      'Sync complete',
-      'Sync finished with some issues',
-      'Sync failed. Please try again.',
-      'Session expired. Please log in again.',
-      'Authentication required. Please log in.',
-      'Syncing data...',
-      'Upload',
-      'Downloaded',
-      'Images',
-      'analyses',
-      'Catalogs',
-      'updated',
-      'Farms',
-      'Crops',
-      'History',
-      'Settings',
-      'Logout',
-      'Confirm Logout',
-      'Are you sure you want to log out?',
-      'Cancel',
-      'No internet connection',
-      'My Shops',
-      'My Produce',
-      'Map',
-      'About Us',
-      'This feature requires internet connection',
-      'Language',
-      'AGRHI Assistant',
-      'Community',
-      'Upcoming Notifications',
-      'AI Chat',
-    ], highPriority: true);
+      await languageService.preloadTexts([
+        'Profile',
+        'Guest User',
+        'Features',
+        'Crop Care',
+        'Plant Doctor',
+        'Subsidy',
+        'Crop History',
+        'Help & Support',
+        'Model Library',
+        'Detection History',
+        'Sync',
+        'Syncing',
+        'Sync in progress...',
+        'Sync complete!',
+        'Sync complete',
+        'Sync finished with some issues',
+        'Sync failed. Please try again.',
+        'Session expired. Please log in again.',
+        'Authentication required. Please log in.',
+        'Syncing data...',
+        'Upload',
+        'Downloaded',
+        'Images',
+        'analyses',
+        'Catalogs',
+        'updated',
+        'Farms',
+        'Crops',
+        'History',
+        'Settings',
+        'Logout',
+        'Confirm Logout',
+        'Are you sure you want to log out?',
+        'Cancel',
+        'No internet connection',
+        'My Shops',
+        'My Produce',
+        'Map',
+        'About Us',
+        'This feature requires internet connection',
+        'Language',
+        'Upcoming Notifications',
+        'Good morning',
+        'Good afternoon',
+        'Good evening',
+        'Welcome',
+        'Grow Smart, Grow Better',
+        'Full sync completed',
+      ], highPriority: true);
+    } catch (e) {
+      debugPrint('Phrase preload failed: $e');
+    }
   }
 
-  Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
-    for (int i = 0; i < maxRetries; i++) {
-      try {
-        final value = await _storage.read(key: key);
-        if (value != null && value.isNotEmpty) {
-          return value;
-        }
-        if (i < maxRetries - 1) {
-          await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
-        }
-      } catch (e) {
-        if (i == maxRetries - 1) {
-          debugPrint('Storage read failed for $key: $e');
-          rethrow;
-        }
+  String? _pickFirstNonEmpty(Map<String, dynamic>? source, List<String> keys) {
+    if (source == null) return null;
+
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+
+      final text = value.toString().trim();
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
+        return text;
       }
     }
     return null;
   }
 
-  Future<void> _loadUserData() async {
+  bool _pickBool(Map<String, dynamic>? source, List<String> keys) {
+    if (source == null) return false;
+
+    for (final key in keys) {
+      final value = source[key];
+      if (value == null) continue;
+
+      if (value is bool) return value;
+
+      final text = value.toString().trim().toLowerCase();
+      if (text == 'true' || text == '1' || text == 'yes') return true;
+      if (text == 'false' || text == '0' || text == 'no') return false;
+    }
+
+    return false;
+  }
+
+  Future<void> loadUserData() async {
     if (!mounted) return;
-    setState(() => _isLoadingProfile = true);
+
+    setState(() => isLoadingProfile = true);
 
     try {
-      final profileJson = await _readWithRetry('user_profile');
-      final profileImagePath = await _readWithRetry('profile_image_local_path');
+      final allValues = await storage.readAll();
 
-      if (profileJson != null) {
-        final profile = jsonDecode(profileJson) as Map<String, dynamic>;
-        if (mounted) {
-          setState(() {
-            userData = {
-              'name': profile['name'] ?? 'Guest User',
-              'email': profile['email'],
-              'phone': profile['phone_number'],
-              'category': profile['user_category'],
-              'address': profile['address'],
-              'email_verified': profile['email_verified'] ?? false,
-              'profile_image_path': profileImagePath,
-            };
-            _isLoadingProfile = false;
-          });
-        }
-      } else {
-        debugPrint('User profile not found in storage');
-        if (mounted) {
-          setState(() {
-            userData = null;
-            _isLoadingProfile = false;
-          });
+      final profileImagePath =
+          allValues['profileimagelocalpath'] ??
+          allValues['profile_image_local_path'];
+
+      final profileJson =
+          allValues['userprofile'] ??
+          allValues['userProfile'] ??
+          allValues['profile'] ??
+          allValues['userdata'] ??
+          allValues['userData'] ??
+          allValues['user_profile'];
+
+      Map<String, dynamic> profile = {};
+
+      if (profileJson != null && profileJson.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(profileJson);
+          if (decoded is Map<String, dynamic>) {
+            profile = decoded;
+          }
+        } catch (e) {
+          debugPrint('Profile JSON decode failed: $e');
         }
       }
-    } catch (e) {
+
+      final normalizedProfile = {
+        'name':
+            _pickFirstNonEmpty(profile, ['name', 'username']) ??
+            _pickFirstNonEmpty(allValues, ['name', 'username']),
+        'email':
+            _pickFirstNonEmpty(profile, ['email']) ??
+            _pickFirstNonEmpty(allValues, ['email']),
+        'phone':
+            _pickFirstNonEmpty(profile, [
+              'phonenumber',
+              'phone',
+              'phone_number',
+            ]) ??
+            _pickFirstNonEmpty(allValues, [
+              'phonenumber',
+              'phone',
+              'phone_number',
+            ]),
+        'category':
+            _pickFirstNonEmpty(profile, [
+              'usercategory',
+              'category',
+              'user_category',
+            ]) ??
+            _pickFirstNonEmpty(allValues, [
+              'usercategory',
+              'category',
+              'user_category',
+            ]),
+        'address':
+            _pickFirstNonEmpty(profile, ['address']) ??
+            _pickFirstNonEmpty(allValues, ['address']),
+        'emailverified':
+            _pickBool(profile, ['emailverified', 'email_verified']) ||
+            _pickBool(allValues, ['emailverified', 'email_verified']),
+      };
+
+      final hasUsefulData =
+          (normalizedProfile['name']?.toString().trim().isNotEmpty ?? false) ||
+          (normalizedProfile['email']?.toString().trim().isNotEmpty ?? false) ||
+          (normalizedProfile['category']?.toString().trim().isNotEmpty ??
+              false);
+
+      if (!mounted) return;
+
+      setState(() {
+        userData = hasUsefulData
+            ? {
+                'name': normalizedProfile['name'] ?? 'Guest User',
+                'email': normalizedProfile['email'],
+                'phone': normalizedProfile['phone'],
+                'category': normalizedProfile['category'],
+                'address': normalizedProfile['address'],
+                'emailverified': normalizedProfile['emailverified'] ?? false,
+                'profileimagepath': profileImagePath,
+              }
+            : {
+                'name': 'Guest User',
+                'email': null,
+                'phone': null,
+                'category': null,
+                'address': null,
+                'emailverified': false,
+                'profileimagepath': profileImagePath,
+              };
+
+        isLoadingProfile = false;
+      });
+    } catch (e, stackTrace) {
       debugPrint('Error loading user data: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingProfile = false;
-        });
-      }
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (!mounted) return;
+
+      setState(() {
+        userData = {
+          'name': 'Guest User',
+          'email': null,
+          'phone': null,
+          'category': null,
+          'address': null,
+          'emailverified': false,
+          'profileimagepath': null,
+        };
+        isLoadingProfile = false;
+      });
     }
   }
 
-  void _showOfflineWarning() {
+  void showOfflineWarning() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const SmartReTranslator(
@@ -252,68 +356,58 @@ class _DashboardScreenState extends State<DashboardScreen>
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.errorColor,
         duration: const Duration(seconds: 3),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         margin: const EdgeInsets.all(16),
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: Colors.white,
-          onPressed: () {},
-        ),
       ),
     );
   }
 
-  void _navigateWithOnlineCheck(Widget screen) {
+  void navigateWithOnlineCheck(Widget screen) {
     final connectivityManager = context.read<ConnectivityManager>();
-
     if (connectivityManager.isOnline) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
+      Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
     } else {
-      _showOfflineWarning();
+      showOfflineWarning();
     }
   }
 
-  Future<void> _navigateToFarmStore() async {
+  Future<void> navigateToFarmStore() async {
     final connectivityManager = context.read<ConnectivityManager>();
-
     if (!connectivityManager.isOnline) {
-      _showOfflineWarning();
+      showOfflineWarning();
       return;
     }
 
     try {
-      final hasShopPlace = await _storage.read(key: 'has_shop_place');
+      final allValues = await storage.readAll();
+      final hasShopPlace =
+          allValues['hasshopplace'] ?? allValues['has_shop_place'];
+
+      if (!mounted) return;
 
       if (hasShopPlace == 'true') {
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const FarmProductsScreen()),
-          );
-        }
-      } else {
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const SetupScreen()),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('❌ Error reading shop place flag: $e');
-      if (mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const SetupScreen()),
+          MaterialPageRoute(builder: (_) => const FarmProductsScreen()),
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SetupScreen()),
         );
       }
+    } catch (e) {
+      debugPrint('Error reading shop place flag: $e');
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SetupScreen()),
+      );
     }
   }
 
-  List<FeatureItem> _buildFeatures() {
-    if (userData == null) return [];
-
-    final category = userData!['category']?.toString().toLowerCase() ?? '';
+  List<FeatureItem> buildFeatures() {
+    final category = userData?['category']?.toString().toLowerCase() ?? '';
     final isRetailer = category == 'retailer';
     final isAdmin = category == 'admin';
     final isFarmer = category == 'farmer';
@@ -322,109 +416,111 @@ class _DashboardScreenState extends State<DashboardScreen>
     return [
       FeatureItem(
         title: 'Plant Doctor',
-        icon: Icons.biotech,
+        icon: Icons.biotech_rounded,
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const DetectDiseaseScreen()),
+          MaterialPageRoute(builder: (_) => const DetectDiseaseScreen()),
         ),
+        backgroundColor: const Color(0xFFF8FAF4),
+        iconColor: const Color(0xFF2E6B2E),
       ),
       FeatureItem(
         title: 'Detection History',
-        icon: Icons.history,
+        icon: Icons.history_rounded,
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const DiseaseHistoryScreen()),
+          MaterialPageRoute(builder: (_) => const DiseaseHistoryScreen()),
         ),
+        backgroundColor: const Color(0xFFF8FAF4),
+        iconColor: const Color(0xFF2D7A22),
       ),
       FeatureItem(
-        icon: Icons.download,
         title: 'Model Library',
+        icon: Icons.cloud_download_rounded,
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const ModelManagerScreen()),
+          MaterialPageRoute(builder: (_) => const ModelManagerScreen()),
         ),
-      ),
-      FeatureItem(
-        title: 'Marketplace',
-        icon: Icons.shopping_cart,
-        onTap: () => _navigateWithOnlineCheck(const MarketplaceScreen()),
+        backgroundColor: const Color(0xFFF4F8FC),
+        iconColor: const Color(0xFF236C9E),
       ),
       if (!isConsumer)
         FeatureItem(
+          title: 'Marketplace',
+          icon: Icons.shopping_cart_rounded,
+          onTap: () => navigateWithOnlineCheck(const MarketplaceScreen()),
+          backgroundColor: const Color(0xFFFDF8F1),
+          iconColor: const Color(0xFFB6641B),
+        ),
+      if (!isConsumer)
+        FeatureItem(
           title: 'Crop Care',
-          icon: Icons.agriculture,
+          icon: Icons.agriculture_rounded,
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const CropCareScreen()),
+            MaterialPageRoute(builder: (_) => const CropCareScreen()),
           ),
+          backgroundColor: const Color(0xFFF8FAF4),
+          iconColor: const Color(0xFF497F2C),
         ),
       if (!isConsumer)
         FeatureItem(
           title: 'Crop History',
-          icon: Icons.history_edu,
+          icon: Icons.menu_book_rounded,
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const CropHistoryScreen()),
+            MaterialPageRoute(builder: (_) => const CropHistoryScreen()),
           ),
-        ),
-      if (isFarmer || isAdmin)
-        FeatureItem(
-          title: 'Farm Store',
-          icon: Icons.inventory_2,
-          onTap: () => _navigateToFarmStore(),
+          backgroundColor: const Color(0xFFF9FAF2),
+          iconColor: const Color(0xFF7C6A00),
         ),
       FeatureItem(
-        icon: Icons.map,
         title: 'Map',
-        onTap: () => _navigateWithOnlineCheck(const MapScreen()),
+        icon: Icons.location_on_rounded,
+        onTap: () => navigateWithOnlineCheck(const MapScreen()),
+        backgroundColor: const Color(0xFFF9FBF6),
+        iconColor: const Color(0xFF146A35),
       ),
       if (isRetailer || isAdmin)
         FeatureItem(
           title: 'My Shops',
-          icon: Icons.store,
-          onTap: () => _navigateWithOnlineCheck(const ShopsListScreen()),
+          icon: Icons.storefront_rounded,
+          onTap: () => navigateWithOnlineCheck(const ShopsListScreen()),
+          backgroundColor: const Color(0xFFF5F8FC),
+          iconColor: const Color(0xFF23689E),
+        ),
+      if (isFarmer || isAdmin)
+        FeatureItem(
+          title: 'Farm Store',
+          icon: Icons.inventory_2_rounded,
+          onTap: navigateToFarmStore,
+          backgroundColor: const Color(0xFFF7FAF5),
+          iconColor: const Color(0xFF356F31),
         ),
       FeatureItem(
         title: 'Subsidy',
-        icon: Icons.monetization_on,
-        onTap: () => _navigateWithOnlineCheck(const SubsidyScreen()),
+        icon: Icons.account_balance_wallet_rounded,
+        onTap: () => navigateWithOnlineCheck(const SubsidyScreen()),
+        backgroundColor: const Color(0xFFF9F7FC),
+        iconColor: const Color(0xFF6B4594),
       ),
-
-      /*
-      --- For Second Version
-      FeatureItem(
-        title: 'AI Assistant',
-        icon: Icons.smart_toy_outlined,
-        onTap: () => _navigateWithOnlineCheck(const AiChatScreen()),
-      ),
-      FeatureItem(
-        title: 'Community',
-        icon: Icons.people_alt_outlined,
-        onTap: () => _navigateWithOnlineCheck(const CommunityScreen()),
-      ),
-      */
-
     ];
   }
 
-  Future<void> _performManualSync() async {
+  Future<void> performManualSync() async {
     final connectivityManager = context.read<ConnectivityManager>();
 
     if (!connectivityManager.isOnline) {
-      _showSnackBar(
-        'No internet connection',
-        AppColors.errorColor,
-        duration: 3,
-      );
+      showSnackBar('No internet connection', AppColors.errorColor, duration: 3);
       return;
     }
 
     if (connectivityManager.isSyncing) {
-      _showSnackBar('Sync in progress...', AppColors.infoColor, duration: 2);
+      showSnackBar('Sync in progress...', AppColors.infoColor, duration: 2);
       return;
     }
 
-    _showSnackBar(
+    showSnackBar(
       'Syncing data...',
       AppColors.infoColor,
       duration: 2,
@@ -433,11 +529,11 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     final result = await connectivityManager.performManualSync();
 
-    if (result['success']) {
-      _showSyncSuccessSnackBar(result);
-      await _refreshDashboard();
+    if (result['success'] == true) {
+      showSyncSuccessSnackBar();
+      await refreshDashboard();
     } else {
-      _showSnackBar(
+      showSnackBar(
         result['error'] ?? 'Sync failed. Please try again.',
         AppColors.errorColor,
         duration: 3,
@@ -445,7 +541,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  void _showSnackBar(
+  void showSnackBar(
     String message,
     Color backgroundColor, {
     int duration = 3,
@@ -477,16 +573,16 @@ class _DashboardScreenState extends State<DashboardScreen>
         backgroundColor: backgroundColor,
         duration: Duration(seconds: duration),
         margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
 
-  void _showSyncSuccessSnackBar(Map<String, dynamic> result) {
+  void showSyncSuccessSnackBar() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const SmartReTranslator(
-          text: '✅ Full sync completed',
+      const SnackBar(
+        content: SmartReTranslator(
+          text: 'Full sync completed',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -494,63 +590,50 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.successColor,
-        duration: const Duration(seconds: 3),
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 3),
+        margin: EdgeInsets.all(16),
       ),
     );
   }
 
-  Future<void> _performBackgroundCleanup() async {
+  Future<void> performBackgroundCleanup() async {
     try {
-      debugPrint('🗑️ Starting background cleanup...');
-
-      debugPrint('🗑️ Clearing secure storage...');
-      await _storage.deleteAll();
+      await storage.deleteAll();
       await RetailService.clearCache();
-      debugPrint('✅ Secure storage cleared');
 
-      debugPrint('🗑️ Clearing database tables...');
       final db = await DatabaseHelper.instance.database;
-
       await RemindersManager.instance.clearAllNotificationsOnLogout();
       await NotificationService.debugPendingNotifications();
 
       await db.transaction((txn) async {
-        await txn.delete('disease_analysis_results');
+        await txn.delete('diseaseanalysisresults');
         await txn.delete('cropreminders');
-        await txn.delete('farm_soiltypes');
-        await txn.delete('farm_irrigations');
-        await txn.delete('farm_watersources');
+        await txn.delete('farmsoiltypes');
+        await txn.delete('farmirrigations');
+        await txn.delete('farmwatersources');
         await txn.delete('images');
         await txn.delete('usercrops');
         await txn.delete('farms');
       });
 
-      debugPrint('✅ Database tables cleared');
-
-      debugPrint('🗑️ Deleting disease images...');
-      await _deleteDirectoryIfExists(
+      await deleteDirectoryIfExists(
         await getApplicationDocumentsDirectory(),
-        'disease_images',
+        'diseaseimages',
       );
-      await _deleteDirectoryIfExists(
+      await deleteDirectoryIfExists(
         await getApplicationSupportDirectory(),
-        'disease_images',
+        'diseaseimages',
       );
 
-      debugPrint('🗑️ Clearing app cache...');
-      await _clearCacheDirectory();
-
-      debugPrint('🎉 Background cleanup complete');
+      await clearCacheDirectory();
     } catch (e, stackTrace) {
-      debugPrint('❌ Error during background cleanup: $e');
-      debugPrint('Stack trace: $stackTrace');
+      debugPrint('Error during background cleanup: $e');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
-  Future<void> _deleteDirectoryIfExists(
+  Future<void> deleteDirectoryIfExists(
     Directory baseDir,
     String subPath,
   ) async {
@@ -558,36 +641,32 @@ class _DashboardScreenState extends State<DashboardScreen>
       final dir = Directory('${baseDir.path}/$subPath');
       if (await dir.exists()) {
         await dir.delete(recursive: true);
-        debugPrint('✅ Deleted: ${dir.path}');
       }
     } catch (e) {
-      debugPrint('⚠️ Error deleting $subPath: $e');
+      debugPrint('Error deleting $subPath: $e');
     }
   }
 
-  Future<void> _clearCacheDirectory() async {
+  Future<void> clearCacheDirectory() async {
     try {
       final cacheDir = await getTemporaryDirectory();
       if (await cacheDir.exists()) {
-        await for (var entity in cacheDir.list()) {
+        await for (final entity in cacheDir.list()) {
           try {
             if (entity is File) {
               await entity.delete();
             } else if (entity is Directory) {
               await entity.delete(recursive: true);
             }
-          } catch (e) {
-            debugPrint('⚠️ Failed to delete: ${entity.path}');
-          }
+          } catch (_) {}
         }
-        debugPrint('✅ App cache cleared');
       }
     } catch (e) {
-      debugPrint('⚠️ Error clearing cache: $e');
+      debugPrint('Error clearing cache: $e');
     }
   }
 
-  void _showLogoutConfirmation() {
+  void showLogoutConfirmation() {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
@@ -616,10 +695,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
             return AlertDialog(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
               ),
-              elevation: 24,
-              backgroundColor: AppColors.primaryWhite,
+              backgroundColor: Colors.white,
               icon: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -650,6 +728,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                   height: 1.4,
                 ),
               ),
+              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+              titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
               actions: [
                 Row(
                   children: [
@@ -659,7 +740,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                             side: BorderSide(color: Colors.grey.shade300),
                           ),
                         ),
@@ -681,18 +762,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                             context,
                             rootNavigator: true,
                           );
-
                           navigator.pop();
 
                           try {
-                            await _performBackgroundCleanup().timeout(
+                            await performBackgroundCleanup().timeout(
                               const Duration(seconds: 8),
-                              onTimeout: () {
-                                debugPrint('LOGOUT_STEP: cleanup timeout');
-                              },
+                              onTimeout: () {},
                             );
                           } catch (e, stackTrace) {
-                            debugPrint('LOGOUT_STEP: cleanup failed $e');
+                            debugPrint('LOGOUT cleanup failed: $e');
                             debugPrintStack(stackTrace: stackTrace);
                           }
 
@@ -710,7 +788,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           foregroundColor: AppColors.textWhite,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                           elevation: 2,
                         ),
@@ -726,9 +804,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ],
                 ),
               ],
-              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-              titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
             );
           },
         );
@@ -736,8 +811,34 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  void _showLanguageSelectionDialog() {
+  void showLanguageSelectionDialog() {
     LanguageSwitcher.showBottomSheet(context);
+  }
+
+  void onMenuSelected(String value) {
+    switch (value) {
+      case 'language':
+        showLanguageSelectionDialog();
+        break;
+      case 'sync':
+        performManualSync();
+        break;
+      case 'feedback':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+        );
+        break;
+      case 'about':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AboutScreen()),
+        );
+        break;
+      case 'logout':
+        showLogoutConfirmation();
+        break;
+    }
   }
 
   @override
@@ -745,217 +846,76 @@ class _DashboardScreenState extends State<DashboardScreen>
     final currentLanguageCode = Provider.of<LanguageService>(
       context,
     ).currentLocale.languageCode;
+
     final bool showDashboardSkeleton =
-        _isLoadingProfile || _isRefreshingDashboard;
+        isLoadingProfile || isRefreshingDashboard;
 
-    return Scaffold(
-      appBar: DashboardAppBar.withSettings(
-        onSyncPressed: _performManualSync,
-        onHelpPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const FeedbackScreen()),
-          );
-        },
-        onAboutPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AboutScreen()),
-          );
-        },
-        onLogoutPressed: _showLogoutConfirmation,
-        onLanguagePressed: _showLanguageSelectionDialog,
-        isSyncing: context.watch<ConnectivityManager>().isSyncing,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
       ),
-      backgroundColor: AppColors.backgroundColor,
-      body: RefreshIndicator(
-        onRefresh: _refreshDashboard,
-        color: AppColors.primaryGreen,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-
-              showDashboardSkeleton
-                  ? _buildWeatherSkeleton()
-                  : WeatherCard(
-                      key: ValueKey(
-                        'weather_${currentLanguageCode}_$_weatherRefreshKey',
-                      ),
-                      useDeviceLocation: true,
-                    ),
-
-              const SizedBox(height: 5),
-
-              showDashboardSkeleton
-                  ? _buildUpcomingNotificationSkeleton()
-                  : UpcomingNotificationCard(
-                      key: ValueKey(
-                        'upcoming_notifications_$_notificationRefreshKey',
-                      ),
-                      backgroundColor: AppColors.primaryGreen,
-                      daysAhead: 30,
-                    ),
-
-              const SizedBox(height: 18),
-              _buildSectionHeader('Profile', Icons.person_outline),
-              const SizedBox(height: 12),
-
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: showDashboardSkeleton
-                    ? _buildProfileSkeleton()
-                    : ProfileCard(
-                        key: ValueKey('profile_card_$_profileRefreshKey'),
-                        name: userData?['name'] ?? 'Guest User',
-                        email: userData?['email'],
-                        category: userData?['category'],
-                        emailVerified: userData?['email_verified'] ?? false,
-                        profileImagePath: userData?['profile_image_path'],
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const ProfileScreen(),
-                            ),
-                          ).then((_) => _refreshDashboard());
-                        },
-                      ),
-              ),
-
-              const SizedBox(height: 18),
-              _buildSectionHeader('Features', Icons.grid_view_rounded),
-              const SizedBox(height: 12),
-
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: showDashboardSkeleton
-                    ? _buildFeaturesSkeleton()
-                    : DirectFeatureGrid(
-                        key: ValueKey(
-                          '${currentLanguageCode}_${userData?['category'] ?? "none"}_$_featuresRefreshKey',
-                        ),
-                        features: _buildFeatures(),
-                        crossAxisCount: 3,
-                        childAspectRatio: 0.9,
-                        spacing: 12,
-                      ),
-              ),
-
-              const SizedBox(height: 50),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWeatherSkeleton() {
-    return Container(
-      key: const ValueKey('weather_skeleton'),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryGreen.withOpacity(0.22),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primaryGreen.withOpacity(0.95),
-                AppColors.primaryGreen.withOpacity(0.82),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.18),
-              width: 1.4,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.28),
-                    width: 1.3,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: Colors.transparent,
+        body: RefreshIndicator(
+          onRefresh: refreshDashboard,
+          color: AppColors.primaryGreen,
+          backgroundColor: Colors.white,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 110,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.25),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: 150,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.30),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                    DashboardHeroHeader(onMenuSelected: onMenuSelected),
+                    const SizedBox(height: 12),
+                    WeatherCard(key: weatherCardKey, useDeviceLocation: true),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Container(
-                          width: 70,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.22),
-                            borderRadius: BorderRadius.circular(6),
+                    showDashboardSkeleton
+                        ? buildUpcomingNotificationSkeleton()
+                        : UpcomingNotificationCard(
+                            key: ValueKey(
+                              'upcomingnotifications$notificationRefreshKey',
+                            ),
+                            backgroundColor: const Color(0xFF124D22),
+                            daysAhead: 30,
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          width: 55,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.18),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 10),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: showDashboardSkeleton
+                          ? buildProfileSkeleton()
+                          : ProfileCard(
+                              key: ValueKey('profilecard$profileRefreshKey'),
+                              name: userData?['name'] ?? 'Guest User',
+                              email: userData?['email'],
+                              category: userData?['category'],
+                              emailVerified:
+                                  userData?['emailverified'] ?? false,
+                              profileImagePath: userData?['profileimagepath'],
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ProfileScreen(),
+                                  ),
+                                ).then((_) => refreshDashboard());
+                              },
+                            ),
                     ),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: Transform.translate(
+                        offset: const Offset(0, -12),
+                        child: showDashboardSkeleton
+                            ? buildFeaturesSkeleton()
+                            : buildModernFeatureBoard(currentLanguageCode),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                   ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.14),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.22),
-                    width: 1.2,
-                  ),
                 ),
               ),
             ],
@@ -965,142 +925,68 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildUpcomingNotificationSkeleton() {
+  Widget buildModernFeatureBoard(String currentLanguageCode) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: FeatureGrid(
+        key: ValueKey(
+          '$currentLanguageCode${userData?['category'] ?? 'none'}$featuresRefreshKey',
+        ),
+        features: buildFeatures(),
+        crossAxisCount: 3,
+        childAspectRatio: 1.02,
+        spacing: 10,
+      ),
+    );
+  }
+
+  Widget buildWeatherSkeleton() {
     return Container(
-      key: const ValueKey('notification_skeleton'),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      key: const ValueKey('weatherskeleton'),
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFD6DFC7)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryGreen.withOpacity(0.2),
-            blurRadius: 16,
-            offset: const Offset(0, 7),
-            spreadRadius: 1,
+            color: Colors.green.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primaryGreen.withOpacity(0.95),
-                AppColors.primaryGreen.withOpacity(0.82),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.18),
-              width: 1.4,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.28),
-                    width: 1.3,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 90,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.28),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: 130,
-                      height: 11,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.22),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: 105,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.16),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.14),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.22),
-                    width: 1.2,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
-              color: AppColors.primaryGreen.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 20, color: AppColors.primaryGreen),
-          ),
-          const SizedBox(width: 10),
-          SmartReTranslator(
-            text: title,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-              letterSpacing: 0.3,
+              color: const Color(0xFFDDE7B8),
+              borderRadius: BorderRadius.circular(18),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
-            child: Container(
-              height: 2,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.primaryGreen.withOpacity(0.3),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                skeletonLine(width: 120, height: 14),
+                const SizedBox(height: 8),
+                skeletonLine(width: 100, height: 26),
+                const SizedBox(height: 8),
+                skeletonLine(width: 130, height: 12),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF0F5E4),
+              shape: BoxShape.circle,
             ),
           ),
         ],
@@ -1108,284 +994,573 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildProfileSkeleton() {
+  Widget buildUpcomingNotificationSkeleton() {
     return Container(
-      key: const ValueKey('profile_skeleton'),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      key: const ValueKey('notificationskeleton'),
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      height: 118,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0B3920), Color(0xFF005D2F)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryGreen.withOpacity(0.22),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-            spreadRadius: 1,
+            color: Colors.green.withOpacity(0.14),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primaryGreen.withOpacity(0.90),
-                AppColors.primaryGreen.withOpacity(0.78),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFB7D36E), width: 4),
+              ),
             ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.18),
-              width: 1.4,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  skeletonLine(width: 100, height: 15, dark: true),
+                  const SizedBox(height: 8),
+                  skeletonLine(width: 80, height: 12, dark: true),
+                  const SizedBox(height: 8),
+                  skeletonLine(width: 150, height: 10, dark: true),
+                ],
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.20),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.28),
-                      width: 1.5,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 140,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.30),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        width: double.infinity,
-                        height: 13,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.22),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        width: 78,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.20),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.26),
-                            width: 1,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.14),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.24),
-                      width: 1.3,
-                    ),
-                  ),
-                ),
-              ],
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white30),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildFeaturesSkeleton() {
-    return Padding(
-      key: const ValueKey('features_skeleton'),
-      padding: const EdgeInsets.symmetric(horizontal: 12.0),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 0.9,
-        ),
-        itemCount: 6,
-        itemBuilder: (context, index) {
-          return Container(
+  Widget buildProfileSkeleton() {
+    return Container(
+      key: const ValueKey('profileskeleton'),
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFD6DFC7)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.white,
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.primaryGreen.withOpacity(0.88),
-                  AppColors.primaryGreen,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.18),
-                width: 1.3,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryGreen.withOpacity(0.22),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              color: const Color(0xFFE7ECD8),
+              borderRadius: BorderRadius.circular(18),
             ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.20),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.24),
-                      width: 1.1,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: 58,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.22),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  width: 48,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.16),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
+                skeletonLine(width: 120, height: 15),
+                const SizedBox(height: 8),
+                skeletonLine(width: 100, height: 12),
+                const SizedBox(height: 8),
+                skeletonLine(width: 150, height: 14),
               ],
             ),
-          );
-        },
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF0F5E4),
+              shape: BoxShape.circle,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildFeaturesSkeleton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Container(
+        key: const ValueKey('featuresskeleton'),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFAFBF5),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFD5DEC5)),
+        ),
+        child: GridView.builder(
+          itemCount: 9,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.02,
+          ),
+          itemBuilder: (_, __) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFDCE3CF)),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget skeletonLine({
+    required double width,
+    required double height,
+    bool dark = false,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: dark
+            ? Colors.white.withOpacity(0.22)
+            : AppColors.primaryGreen.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
       ),
     );
   }
 }
 
-class DirectFeatureGrid extends StatelessWidget {
-  final List<FeatureItem> features;
-  final int crossAxisCount;
-  final double childAspectRatio;
-  final double spacing;
+class DashboardHeroHeader extends StatelessWidget {
+  final ValueChanged<String> onMenuSelected;
 
-  const DirectFeatureGrid({
-    super.key,
-    required this.features,
-    this.crossAxisCount = 3,
-    this.childAspectRatio = 0.9,
-    this.spacing = 12,
-  });
+  const DashboardHeroHeader({super.key, required this.onMenuSelected});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: spacing),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: spacing,
-          mainAxisSpacing: spacing,
-          childAspectRatio: childAspectRatio,
+    final topInset = MediaQuery.of(context).padding.top;
+
+    return Container(
+      height: 205 + topInset,
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(26),
+          bottomRight: Radius.circular(26),
         ),
-        itemCount: features.length,
-        itemBuilder: (context, index) {
-          final feature = features[index];
-          return Material(
+        image: DecorationImage(
+          image: AssetImage('assets/images/dashboard_bg.jpg'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(26),
+            bottomRight: Radius.circular(26),
+          ),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFF0A3B1F).withOpacity(0.60),
+              const Color(0xFF1C5A2A).withOpacity(0.30),
+              const Color(0xFFB6A64A).withOpacity(0.10),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(18, topInset + 14, 18, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Spacer(),
+                  _DashboardSettingsButton(onSelected: onMenuSelected),
+                ],
+              ),
+              const Spacer(),
+              Icon(
+                Icons.eco_outlined,
+                color: Colors.lightGreen.shade300,
+                size: 36,
+              ),
+              const SizedBox(height: 6),
+              const SmartReTranslator(
+                text: 'Welcome',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Expanded(
+                    child: SmartReTranslator(
+                      text: 'Better Farming, Better Harvest.',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xFFFFF27E),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.spa_rounded,
+                    color: Colors.lightGreen.shade300,
+                    size: 15,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+class _DashboardSettingsButton extends StatelessWidget {
+  final ValueChanged<String> onSelected;
+
+  const _DashboardSettingsButton({required this.onSelected});
+
+  static const double _menuWidth = 198;
+  static const double _gapBelowButton = 6;
+
+  Future<void> _openMenu(BuildContext buttonContext) async {
+    final overlay =
+        Overlay.of(buttonContext).context.findRenderObject() as RenderBox;
+    final button = buttonContext.findRenderObject() as RenderBox;
+
+    final buttonBottomRight = button.localToGlobal(
+      button.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+
+    final screenSize = overlay.size;
+
+    double left = buttonBottomRight.dx - _menuWidth;
+    if (left < 12) left = 12;
+    if (left + _menuWidth > screenSize.width - 12) {
+      left = screenSize.width - _menuWidth - 12;
+    }
+
+    final top = buttonBottomRight.dy + _gapBelowButton;
+
+    final selected = await showGeneralDialog<String>(
+      context: buttonContext,
+      barrierLabel: 'Dashboard menu',
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.08),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => Navigator.of(context).pop(),
+                ),
+              ),
+              Positioned(
+                left: left,
+                top: top,
+                width: _menuWidth,
+                child: _DashboardDropdownMenu(
+                  onSelected: (value) => Navigator.of(context).pop(value),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+
+        return FadeTransition(
+          opacity: Tween<double>(begin: 0, end: 1).animate(curved),
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, -0.08),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+
+    if (selected != null) {
+      onSelected(selected);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Builder(
+      builder: (buttonContext) {
+        return Semantics(
+          button: true,
+          label: 'Open dashboard menu',
+          child: Material(
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: feature.onTap,
+              onTap: () => _openMenu(buttonContext),
+              customBorder: const CircleBorder(),
               child: Container(
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
+                  shape: BoxShape.circle,
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.primaryGreen.withOpacity(0.9),
-                      AppColors.primaryGreen,
+                      Colors.green.shade900.withOpacity(0.88),
+                      Colors.green.shade700.withOpacity(0.76),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
-                    width: 1.5,
+                    color: Colors.white.withOpacity(0.16),
+                    width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primaryGreen.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+                      color: Colors.black.withOpacity(0.16),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Icon(feature.icon, size: 32, color: Colors.white),
-                    ),
-                    const SizedBox(height: 10),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: SmartReTranslator(
-                        key: ValueKey('feature_${feature.title}_$index'),
-                        text: feature.title,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          letterSpacing: 0.2,
-                        ),
-                        maxLines: 2,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
+                child: const Icon(
+                  Icons.settings_outlined,
+                  color: Colors.white,
+                  size: 20,
                 ),
               ),
             ),
-          );
-        },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DashboardDropdownMenu extends StatelessWidget {
+  final ValueChanged<String> onSelected;
+
+  const _DashboardDropdownMenu({required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(0),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFDFEF9),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFD7E3C8), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Colors.green.withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _DashboardMenuAction(
+              value: 'language',
+              onSelected: onSelected,
+              child: const _DashboardMenuTile(
+                icon: Icons.language_outlined,
+                iconColor: Color(0xFF7A4BC2),
+                iconBg: Color(0xFFEDE4FB),
+                text: 'Language',
+              ),
+            ),
+            _DashboardMenuAction(
+              value: 'sync',
+              onSelected: onSelected,
+              child: const _DashboardMenuTile(
+                icon: Icons.sync_rounded,
+                iconColor: Color(0xFF2D8A57),
+                iconBg: Color(0xFFE2F4E8),
+                text: 'Sync',
+              ),
+            ),
+            _DashboardMenuAction(
+              value: 'feedback',
+              onSelected: onSelected,
+              child: const _DashboardMenuTile(
+                icon: Icons.feedback_rounded,
+                iconColor: Color(0xFF2D8A57),
+                iconBg: Color(0xFFE2F4E8),
+                text: 'Feedback',
+              ),
+            ),
+            _DashboardMenuAction(
+              value: 'about',
+              onSelected: onSelected,
+              child: const _DashboardMenuTile(
+                icon: Icons.info_outline_rounded,
+                iconColor: Color(0xFFE08A1E),
+                iconBg: Color(0xFFFFF0D9),
+                text: 'About Us',
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Divider(height: 1, thickness: 1, color: Color(0xFFE2EAD7)),
+            ),
+            _DashboardMenuAction(
+              value: 'logout',
+              onSelected: onSelected,
+              child: const _DashboardMenuTile(
+                icon: Icons.logout_rounded,
+                iconColor: Color(0xFFC44545),
+                iconBg: Color(0xFFFBE4E4),
+                text: 'Logout',
+                isDanger: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardMenuAction extends StatelessWidget {
+  final String value;
+  final Widget child;
+  final ValueChanged<String> onSelected;
+
+  const _DashboardMenuAction({
+    required this.value,
+    required this.child,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => onSelected(value),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _DashboardMenuTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String text;
+  final bool isDanger;
+
+  const _DashboardMenuTile({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.text,
+    this.isDanger = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBF4),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: const Color(0xFFDCE7D0), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, color: iconColor, size: 16),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SmartReTranslator(
+              text: text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isDanger
+                    ? const Color(0xFFB53D3D)
+                    : const Color(0xFF244628),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 16,
+            color: isDanger ? const Color(0xFFCC6B6B) : const Color(0xFF8AA07E),
+          ),
+        ],
       ),
     );
   }

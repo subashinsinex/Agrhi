@@ -1,10 +1,9 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../utils/colors.dart';
-import '../../utils/routes.dart';
-import '../../src/database/database_helper.dart';
-import '../../src/services/language_service.dart';
+
+import '../../../../src/database/database_helper.dart';
+import '../../../../src/services/language_service.dart';
+import '../../../../utils/routes.dart';
 import '../shared/smart_retranslator.dart';
 
 class UpcomingNotificationCard extends StatefulWidget {
@@ -22,63 +21,51 @@ class UpcomingNotificationCard extends StatefulWidget {
       _UpcomingNotificationCardState();
 }
 
-class _UpcomingNotificationCardState extends State<UpcomingNotificationCard>
-    with SingleTickerProviderStateMixin {
+class _UpcomingNotificationCardState extends State<UpcomingNotificationCard> {
+  final PageController _pageController = PageController();
+
   bool isLoading = true;
   bool isRefreshing = false;
 
-  List<Map<String, dynamic>> _reminders = [];
-  int _currentIndex = 0;
-
-  String _currentLanguage = '';
+  List<Map<String, dynamic>> reminders = [];
+  int currentIndex = 0;
+  String currentLanguage = '';
   Map<String, String> translatedTexts = {};
-
-  final PageController _pageController = PageController(viewportFraction: 1);
-
-  AnimationController? _pulseController;
-  Animation<double>? _pulseAnimation;
-
-  Color get _baseColor => widget.backgroundColor ?? AppColors.primaryGreen;
 
   @override
   void initState() {
     super.initState();
-
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 0.90, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController!, curve: Curves.easeInOut),
-    );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadCardData();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await loadTranslations();
+      await loadCardData();
     });
-  }
-
-  @override
-  void dispose() {
-    _pulseController?.dispose();
-    _pageController.dispose();
-    super.dispose();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final langService = Provider.of<LanguageService>(context);
-    if (_currentLanguage != langService.currentLocale.languageCode) {
-      _currentLanguage = langService.currentLocale.languageCode;
-      _loadTranslations();
+    final newLanguage = langService.currentLocale.languageCode;
+
+    if (currentLanguage != newLanguage) {
+      currentLanguage = newLanguage;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await loadTranslations();
+      });
     }
   }
 
-  Future<void> _loadTranslations() async {
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> loadTranslations() async {
     final langService = Provider.of<LanguageService>(context, listen: false);
 
-    final keys = {
+    const keys = {
       'title': 'Harvest Day',
       'today': 'Today',
       'tomorrow': 'Tomorrow',
@@ -101,16 +88,14 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard>
     }
 
     if (!mounted) return;
-    setState(() {
-      translatedTexts = newTexts;
-    });
+    setState(() => translatedTexts = newTexts);
   }
 
-  Future<void> _loadCardData({bool showRefresh = false}) async {
+  Future<void> loadCardData({bool showRefresh = false}) async {
     if (!mounted) return;
 
     setState(() {
-      if (_reminders.isEmpty) {
+      if (reminders.isEmpty) {
         isLoading = true;
       } else {
         isRefreshing = true;
@@ -119,37 +104,34 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard>
 
     try {
       final db = DatabaseHelper.instance;
-      final reminders = await db.getUpcomingReminders(
-        daysAhead: widget.daysAhead,
-      );
+      final data = await db.getUpcomingReminders(daysAhead: widget.daysAhead);
 
-      final filtered = reminders.where((item) {
-        final days = _extractDays(item);
+      final filtered = data.where((item) {
+        final days = extractDays(item);
         return days >= 0;
-      }).toList();
-
-      filtered.sort((a, b) => _extractDays(a).compareTo(_extractDays(b)));
+      }).toList()..sort((a, b) => extractDays(a).compareTo(extractDays(b)));
 
       if (!mounted) return;
 
       setState(() {
-        _reminders = filtered;
-        _currentIndex = 0;
+        reminders = filtered;
+        currentIndex = 0;
         isLoading = false;
         isRefreshing = false;
       });
 
-      if (_pageController.hasClients && filtered.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients || reminders.isEmpty){return;}
         _pageController.jumpToPage(0);
-      }
+      });
 
-      if (showRefresh && mounted) {
+      if (showRefresh) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               translatedTexts['refreshing'] ?? 'Refreshing harvests...',
             ),
-            backgroundColor: AppColors.primaryGreen,
+            backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
             duration: const Duration(seconds: 2),
@@ -157,19 +139,19 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard>
         );
       }
     } catch (e) {
-      debugPrint('❌ Error loading harvest cards: $e');
+      debugPrint('Error loading harvest cards: $e');
 
       if (!mounted) return;
       setState(() {
         isLoading = false;
         isRefreshing = false;
-        _reminders = [];
-        _currentIndex = 0;
+        reminders = [];
+        currentIndex = 0;
       });
     }
   }
 
-  int _extractDays(Map<String, dynamic> reminder) {
+  int extractDays(Map<String, dynamic> reminder) {
     final dynamic days =
         reminder['daysuntilharvest'] ?? reminder['days_until_harvest'];
 
@@ -179,17 +161,18 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard>
     return 9999;
   }
 
-  String _getPlantName(Map<String, dynamic> reminder) {
+  String getPlantName(Map<String, dynamic> reminder) {
     final name =
         reminder['plantname']?.toString() ??
         reminder['plant_name']?.toString() ??
         '';
+
     return name.trim().isNotEmpty
         ? name
         : (translatedTexts['unknownCrop'] ?? 'Crop');
   }
 
-  String _getHarvestDate(Map<String, dynamic> reminder) {
+  String getHarvestDate(Map<String, dynamic> reminder) {
     final raw =
         reminder['harvestreminderdate']?.toString() ??
         reminder['harvest_reminder_date']?.toString() ??
@@ -208,24 +191,15 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard>
     }
   }
 
-  String _getCountdownText(Map<String, dynamic> reminder) {
-    final days = _extractDays(reminder);
+  String getCountdownText(Map<String, dynamic> reminder) {
+    final days = extractDays(reminder);
 
-    if (days <= 0) return translatedTexts['harvestToday'] ?? 'Ready today';
+    if (days == 0) return translatedTexts['harvestToday'] ?? 'Ready today';
     if (days == 1) return '1 ${translatedTexts['dayLeft'] ?? 'day left'}';
     return '$days ${translatedTexts['daysLeft'] ?? 'days left'}';
   }
 
-  IconData _getReminderIcon(Map<String, dynamic> reminder) {
-    final days = _extractDays(reminder);
-
-    if (days <= 0) return Icons.notifications_active_rounded;
-    if (days == 1) return Icons.alarm_rounded;
-    if (days <= 3) return Icons.event_available_rounded;
-    return Icons.agriculture_rounded;
-  }
-
-  void _openCropCare(Map<String, dynamic> reminder) {
+  void openCropCare(Map<String, dynamic> reminder) {
     final cropId =
         reminder['cropid']?.toString() ?? reminder['crop_id']?.toString();
 
@@ -239,497 +213,337 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard>
     );
   }
 
-  void _openCropCareList() {
+  void openCropCareList() {
     Navigator.pushNamed(context, Routes.cropCare);
   }
 
-  Widget _buildLoadingCard() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      height: 156,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: _baseColor.withOpacity(0.30),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  _baseColor.withOpacity(0.85),
-                  _baseColor.withOpacity(0.95),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.2),
-                width: 1.5,
-              ),
-            ),
-            child: const Center(
-              child: SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  void showNextReminder() {
+    if (reminders.length <= 1) return;
+    if (!_pageController.hasClients) return;
 
-  Widget _buildEmptyCard() {
-    return GestureDetector(
-      onTap: _openCropCareList,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: _baseColor.withOpacity(0.30),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              height: 100,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    _baseColor.withOpacity(0.85),
-                    _baseColor.withOpacity(0.95),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                  width: 1.5,
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    right: -40,
-                    top: -40,
-                    child: Container(
-                      width: 140,
-                      height: 140,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.08),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: -30,
-                    bottom: -30,
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.05),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            color: Colors.white.withOpacity(0.2),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 2,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.agriculture_rounded,
-                              color: Colors.white,
-                              size: 34,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SmartReTranslator(
-                                text:
-                                    translatedTexts['noHarvestTitle'] ??
-                                    'No harvests lined up',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 0.2,
-                                  height: 1.0,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 5),
-                              SmartReTranslator(
-                                text:
-                                    translatedTexts['noHarvestSubtitle'] ??
-                                    'Harvest-day crops will appear here.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white.withOpacity(0.9),
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.2,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.15),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_forward_ios,
-                            color: Colors.white,
-                            size: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCard(Map<String, dynamic> reminder, int index) {
-    final plantName = _getPlantName(reminder);
-    final countdownText = _getCountdownText(reminder);
-    final harvestDate = _getHarvestDate(reminder);
-    final icon = _getReminderIcon(reminder);
-
-    return GestureDetector(
-      onTap: () => _openCropCare(reminder),
-      onLongPress: () => _loadCardData(showRefresh: true),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: _baseColor.withOpacity(0.30),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              height: 96,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    _baseColor.withOpacity(0.85),
-                    _baseColor.withOpacity(0.95),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                  width: 1.3,
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    right: -24,
-                    top: -24,
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.08),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: -18,
-                    bottom: -18,
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.05),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        _pulseAnimation != null
-                            ? ScaleTransition(
-                                scale: _pulseAnimation!,
-                                child: Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.3),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: Icon(
-                                      icon,
-                                      color: Colors.white,
-                                      size: 32,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.3),
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    icon,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                ),
-                              ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: SmartReTranslator(
-                                      text: plantName,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                        letterSpacing: 0.2,
-                                        height: 1.0,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  if (isRefreshing)
-                                    const SizedBox(
-                                      width: 11,
-                                      height: 11,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 1.7,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  else
-                                    Text(
-                                      '${index + 1}/${_reminders.length}',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        color: Colors.white.withOpacity(0.78),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                countdownText,
-                                style: TextStyle(
-                                  fontSize: 11.8,
-                                  color: Colors.white.withOpacity(0.95),
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.0,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.event_outlined,
-                                    size: 11,
-                                    color: Colors.white.withOpacity(0.9),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      '${translatedTexts['harvestDate'] ?? 'Harvest Date'} · $harvestDate',
-                                      style: TextStyle(
-                                        fontSize: 9.6,
-                                        color: Colors.white.withOpacity(0.88),
-                                        fontWeight: FontWeight.w500,
-                                        height: 1.0,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.all(7),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.15),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 1.2,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_forward_ios,
-                            color: Colors.white,
-                            size: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildIndicator() {
-    if (_reminders.length <= 1) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(_reminders.length, (index) {
-          final isActive = index == _currentIndex;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            width: isActive ? 20 : 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: isActive ? _baseColor : _baseColor.withOpacity(0.20),
-              borderRadius: BorderRadius.circular(20),
-            ),
-          );
-        }),
-      ),
+    final nextIndex = (currentIndex + 1) % reminders.length;
+    _pageController.animateToPage(
+      nextIndex,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOut,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return _buildLoadingCard();
-    }
+    if (isLoading) return buildLoadingCard();
+    if (reminders.isEmpty) return buildEmptyCard();
 
-    if (_reminders.isEmpty) {
-      return _buildEmptyCard();
-    }
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF082E1B),
+            const Color(0xFF005A2B),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF005A2B).withOpacity(0.15),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 112,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: reminders.length,
+              physics: reminders.length > 1
+                  ? const BouncingScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
+              onPageChanged: (index) {
+                if (!mounted) return;
+                setState(() => currentIndex = index);
+              },
+              itemBuilder: (context, index) {
+                final reminder = reminders[index];
+                final plantName = getPlantName(reminder);
+                final countdown = getCountdownText(reminder);
+                final harvestDate = getHarvestDate(reminder);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: 100,
-          child: PageView.builder(
-            controller: _pageController,
-            itemCount: _reminders.length,
-            onPageChanged: (index) {
-              if (!mounted) return;
-              setState(() {
-                _currentIndex = index;
-              });
-            },
-            itemBuilder: (context, index) {
-              return _buildCard(_reminders[index], index);
-            },
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () => openCropCare(reminder),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(15, 15, 15, 13),
+                      child: Row(
+                        children: [
+                          _buildCropIcon(),
+                          const SizedBox(width: 13),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SmartReTranslator(
+                                  text: plantName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  countdown,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.calendar_today_outlined,
+                                      color: Colors.white,
+                                      size: 14,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        '${translatedTexts['harvestDate'] ?? 'Harvest Date'} • $harvestDate',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.95),
+                                          fontSize: 12.2,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '${index + 1}/${reminders.length}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.2,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Material(
+                                color: Colors.white.withOpacity(0.06),
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: showNextReminder,
+                                  child: Container(
+                                    width: 42,
+                                    height: 42,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.20),
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.chevron_right_rounded,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (reminders.length > 1) ...[
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                reminders.length > 5 ? 5 : reminders.length,
+                (index) {
+                  final active = index == currentIndex;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    width: active ? 8 : 6,
+                    height: active ? 8 : 6,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: active
+                          ? const Color(0xFFB7D36E)
+                          : Colors.white.withOpacity(0.35),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (isRefreshing)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white.withOpacity(0.85),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCropIcon() {
+    return Container(
+      width: 70,
+      height: 70,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFF9EB955), width: 4),
+        gradient: const LinearGradient(
+          colors: [Color(0x553E5A12), Color(0x221B2A08)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Center(
+        child: Icon(Icons.eco_rounded, color: Colors.white, size: 34),
+      ),
+    );
+  }
+
+  Widget buildLoadingCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      height: 120,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0A331D), Color(0xFF005A2D)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: const Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.2,
+            color: Colors.white,
           ),
         ),
-        _buildIndicator(),
-      ],
+      ),
+    );
+  }
+
+  Widget buildEmptyCard() {
+    return GestureDetector(
+      onTap: openCropCareList,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0A331D), Color(0xFF005A2D)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withOpacity(0.15),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Row(
+            children: [
+              _buildCropIcon(),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SmartReTranslator(
+                      text:
+                          translatedTexts['noHarvestTitle'] ??
+                          'No harvests lined up',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 5),
+                    SmartReTranslator(
+                      text:
+                          translatedTexts['noHarvestSubtitle'] ??
+                          'Harvest-day crops will appear here.',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.88),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

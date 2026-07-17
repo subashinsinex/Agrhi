@@ -414,7 +414,7 @@ Future<void> _handleLogin() async {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Stack(

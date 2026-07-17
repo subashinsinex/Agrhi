@@ -193,7 +193,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
         showOnlineStatus: true,
         title: widget.shopName ?? 'Manage Products',
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: Column(
         children: [
           // ✅ Header section with count and add button

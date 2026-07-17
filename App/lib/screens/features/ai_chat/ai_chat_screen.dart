@@ -452,7 +452,7 @@ class _AiChatScreenState extends State<AiChatScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       appBar: _appBar(),
       drawer: _drawer(),
       body: Column(
@@ -1077,7 +1077,7 @@ class _AiChatScreenState extends State<AiChatScreen>
 
   Widget _drawer() {
     return Drawer(
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       child: Column(
         children: [
           Container(

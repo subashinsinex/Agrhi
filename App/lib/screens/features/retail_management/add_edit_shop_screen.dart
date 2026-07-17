@@ -368,7 +368,7 @@ class _ManageShopScreenState extends State<ManageShopScreen> {
         showOnlineStatus: true,
         title: _isEditing ? 'Edit Shop' : 'Create Shop',
       ),
-      backgroundColor: AppColors.backgroundColor,
+      backgroundColor: Colors.transparent,
       body: _isLoading
           ? Center(
               child: Column(

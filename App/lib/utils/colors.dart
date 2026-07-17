@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   // Primary Colors
-  static const Color primaryGreen = Color(0xFF0B6623); // Dark forest green
+  static const Color primaryGreen = Color.fromARGB(255, 36, 99, 50); // Dark forest green
   static const Color secondaryGreen = Color(0xFF1B8A3A); // Medium green
   static const Color tertiaryGreen = Color(
     0xFF77D889,
