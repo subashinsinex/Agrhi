@@ -4,6 +4,7 @@ import '../../../utils/colors.dart';
 import '../../../src/database/database_helper.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
+import 'add_edit_crop_screen.dart';
 
 class CropHistoryScreen extends StatefulWidget {
   const CropHistoryScreen({super.key});
@@ -357,7 +358,6 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
         crop['plant_name']?.toString() ??
         'this crop';
 
-    // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -390,13 +390,51 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
     try {
       final db = DatabaseHelper.instance;
 
-      // Reactivate the crop
-      await db.updateCropActiveStatus(
-        cropId: cropId,
-        isActive: 1, // ✅ Set to active
-      );
+      var canActivate = await db.canActivateCrop(cropId);
 
-      debugPrint('✅ Crop $cropId reactivated');
+      if (!canActivate) {
+        final updated = await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => AddCropScreen(crop: crop)),
+        );
+
+        if (updated == true) {
+          canActivate = await db.canActivateCrop(cropId);
+
+          if (canActivate) {
+            await db.updateCropActiveStatus(cropId: cropId, isActive: 1);
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: SmartReTranslator(
+                    text:
+                        'Harvest date updated and crop reactivated successfully',
+                  ),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: SmartReTranslator(
+                    text:
+                        'Please set a valid future harvest date to reactivate this crop',
+                  ),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+          }
+        }
+
+        await _loadInactiveCrops();
+        return;
+      }
+
+      await db.updateCropActiveStatus(cropId: cropId, isActive: 1);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -405,10 +443,9 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
             backgroundColor: Colors.green,
           ),
         );
-
-        // Refresh the list
-        _loadInactiveCrops();
       }
+
+      await _loadInactiveCrops();
     } catch (e) {
       debugPrint('❌ Error reactivating crop: $e');
       if (mounted) {
@@ -421,7 +458,7 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
       }
     }
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(

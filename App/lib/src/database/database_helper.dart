@@ -1953,15 +1953,95 @@ class DatabaseHelper {
   Future<void> updateCropActiveStatus({
     required String cropId,
     required int isActive,
+    String? status,
   }) async {
     final db = await database;
 
+    final data = <String, dynamic>{
+      'isactive': isActive,
+      'isdirty': 1,
+      'isuploaded': 0,
+    };
+
+    if (status != null) {
+      data['status'] = status;
+    }
+
     await db.update(
       'usercrops',
-      {'isactive': isActive, 'isdirty': 1},
+      data,
       where: 'usercropid = ?',
       whereArgs: [cropId],
     );
+  }
+
+  Future<int> autoDeactivateExpiredCrops() async {
+    final db = await database;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final activeCrops = await db.query(
+      'usercrops',
+      where:
+          'isactive = 1 AND isdeleted = 0 AND harvestdate IS NOT NULL AND TRIM(harvestdate) != ?',
+      whereArgs: [''],
+    );
+
+    int updatedCount = 0;
+
+    for (final crop in activeCrops) {
+      final harvestRaw = crop['harvestdate']?.toString();
+      if (harvestRaw == null || harvestRaw.trim().isEmpty) continue;
+
+      final parsed = DateTime.tryParse(harvestRaw);
+      if (parsed == null) continue;
+
+      final harvestDate = DateTime(parsed.year, parsed.month, parsed.day);
+
+      if (harvestDate.isBefore(today)) {
+        await db.update(
+          'usercrops',
+          {'isactive': 0, 'status': 'Harvested', 'isdirty': 1, 'isuploaded': 0},
+          where: 'usercropid = ?',
+          whereArgs: [crop['usercropid']],
+        );
+        updatedCount++;
+      }
+    }
+
+    return updatedCount;
+  }
+
+  Future<Map<String, dynamic>?> getCropById(String cropId) async {
+    final db = await database;
+
+    final rows = await db.query(
+      'usercrops',
+      where: 'usercropid = ? AND isdeleted = 0',
+      whereArgs: [cropId],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<bool> canActivateCrop(String cropId) async {
+    final crop = await getCropById(cropId);
+    if (crop == null) return false;
+
+    final harvestRaw = crop['harvestdate']?.toString();
+    if (harvestRaw == null || harvestRaw.trim().isEmpty) return false;
+
+    final parsed = DateTime.tryParse(harvestRaw);
+    if (parsed == null) return false;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final harvestDate = DateTime(parsed.year, parsed.month, parsed.day);
+
+    return !harvestDate.isBefore(today);
   }
 
   Future<void> cacheSubsidies(List<Map<String, dynamic>> subsidies) async {

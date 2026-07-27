@@ -1,4 +1,3 @@
-// lib/screens/auth/signup_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -14,12 +13,16 @@ import '../../src/services/api_service.dart';
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
+  static MaterialPageRoute route() =>
+      MaterialPageRoute(builder: (context) => const SignupScreen());
+
   @override
   State<SignupScreen> createState() => _SignupScreenState();
 }
 
 class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
+
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -36,6 +39,10 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _agreedToTerms = false;
   DateTime? _selectedDate;
   String? _selectedCategoryId;
+
+  static const Color primaryTextColor = Color(0xFF14332A);
+  static const Color secondaryTextColor = Color(0xB214332A);
+  static const Color hintTextColor = Color(0x8014332A);
 
   final List<Map<String, dynamic>> _categories = [
     {
@@ -107,6 +114,12 @@ class _SignupScreenState extends State<SignupScreen> {
       'Server error. Please try again later',
       'No internet connection',
       'Request timeout. Please try again',
+      'Please accept the Terms & Conditions and Privacy Policy',
+      'Welcome. Create your AGRHI account.',
+      'I have read and agree to the ',
+      'Terms & Conditions',
+      'Privacy Policy',
+      ' of AGRHI.',
     ], highPriority: true);
   }
 
@@ -126,16 +139,16 @@ class _SignupScreenState extends State<SignupScreen> {
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(2000),
+      initialDate: _selectedDate ?? DateTime(2000),
       firstDate: DateTime(1950),
       lastDate: DateTime.now(),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
+            colorScheme: const ColorScheme.light(
               primary: AppColors.primaryGreen,
               onPrimary: Colors.white,
-              onSurface: AppColors.textPrimary,
+              onSurface: primaryTextColor,
             ),
           ),
           child: child!,
@@ -190,6 +203,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
       if (response.isSuccess || response.statusCode == 201) {
         if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -212,11 +226,11 @@ class _SignupScreenState extends State<SignupScreen> {
             duration: const Duration(seconds: 2),
           ),
         );
+
         if (mounted) {
           Routes.navigateToLogin(context);
         }
       } else {
-        // Handle errors - extract only the server message
         String errorMessage;
 
         if (response.statusCode == 409) {
@@ -228,7 +242,6 @@ class _SignupScreenState extends State<SignupScreen> {
         } else if (response.isTimeout) {
           errorMessage = 'Request timeout. Please try again';
         } else {
-          // Extract message from server response
           final responseData = response.data;
           errorMessage =
               (responseData is Map && responseData.containsKey('message'))
@@ -243,13 +256,11 @@ class _SignupScreenState extends State<SignupScreen> {
 
       String errorMessage = e.toString();
 
-      // Clean up technical error messages
       if (errorMessage.contains('SocketException')) {
         errorMessage = 'No internet connection';
       } else if (errorMessage.contains('TimeoutException')) {
         errorMessage = 'Request timeout. Please try again';
       } else {
-        // Remove all common error prefixes and JSON formatting
         errorMessage = errorMessage
             .replaceFirst('Client error: ', '')
             .replaceAll('{"message":"', '')
@@ -287,273 +298,44 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                      child: Form(
-                        key: _formKey,
-                        autovalidateMode: AutovalidateMode.disabled,
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 40),
-
-                            // Header
-                            Column(
-                              children: [
-                                CircleAvatar(
-                                  radius: 80,
-                                  child: ClipOval(
-                                    child: Image.asset(
-                                      'assets/images/logo.png',
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                const SmartReTranslator(
-                                  text: 'Create Account',
-                                  style: TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primaryGreen,
-                                    letterSpacing: 1.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Form Fields
-                            _FormField(
-                              controller: _nameController,
-                              labelText: 'Full Name',
-                              icon: Icons.person,
-                              validator: Validators.validateName,
-                              enabled: !_isLoading,
-                            ),
-                            const SizedBox(height: 16),
-
-                            _FormField(
-                              controller: _phoneController,
-                              labelText: 'Phone Number',
-                              icon: Icons.phone,
-                              keyboardType: TextInputType.phone,
-                              validator: Validators.validatePhone,
-                              enabled: !_isLoading,
-                            ),
-                            const SizedBox(height: 16),
-
-                            _FormField(
-                              controller: _emailController,
-                              labelText: 'Email Address',
-                              icon: Icons.email,
-                              keyboardType: TextInputType.emailAddress,
-                              validator: _validateEmail,
-                              enabled: !_isLoading,
-                            ),
-                            const SizedBox(height: 16),
-
-                            _DatePickerField(
-                              controller: _dobController,
-                              labelText: 'Date of Birth',
-                              onTap: _isLoading ? null : _selectDate,
-                              validator: _validateDOB,
-                            ),
-                            const SizedBox(height: 16),
-
-                            _FormField(
-                              controller: _addressController,
-                              labelText: 'Address',
-                              icon: Icons.location_on,
-                              maxLines: 2,
-                              validator: _validateAddress,
-                              enabled: !_isLoading,
-                            ),
-                            const SizedBox(height: 16),
-
-                            _FormField(
-                              controller: _pincodeController,
-                              labelText: 'Postal Code',
-                              icon: Icons.pin_drop,
-                              keyboardType: TextInputType.number,
-                              validator: _validatePincode,
-                              enabled: !_isLoading,
-                            ),
-                            const SizedBox(height: 16),
-
-                            _CategoryDropdown(
-                              value: _selectedCategoryId,
-                              categories: _categories,
-                              onChanged: _isLoading
-                                  ? null
-                                  : (value) {
-                                      setState(() {
-                                        _selectedCategoryId = value;
-                                      });
-                                    },
-                              validator: _validateCategory,
-                            ),
-                            const SizedBox(height: 16),
-
-                            _PasswordField(
-                              controller: _passwordController,
-                              labelText: 'Password',
-                              obscureText: _obscurePassword,
-                              onToggle: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
-                              validator: Validators.validatePassword,
-                              enabled: !_isLoading,
-                            ),
-                            const SizedBox(height: 16),
-
-                            _PasswordField(
-                              controller: _confirmPasswordController,
-                              labelText: 'Verify Password',
-                              obscureText: _obscureConfirmPassword,
-                              icon: Icons.lock_outline,
-                              onToggle: () {
-                                setState(() {
-                                  _obscureConfirmPassword =
-                                      !_obscureConfirmPassword;
-                                });
-                              },
-                              validator: (value) =>
-                                  Validators.validateConfirmPassword(
-                                    value,
-                                    _passwordController.text,
-                                  ),
-                              enabled: !_isLoading,
-                            ),
-                            const SizedBox(height: 32),
-                            _buildTermsCheckbox(),
-                            const SizedBox(height: 32),
-
-                            // Sign Up Button
-                            SizedBox(
-                              width: double.infinity,
-                              height: 56,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _handleSignup,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primaryGreen,
-                                  foregroundColor: Colors.white,
-                                  disabledBackgroundColor: AppColors
-                                      .primaryGreen
-                                      .withOpacity(0.6),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  elevation: 2,
-                                ),
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                Colors.white,
-                                              ),
-                                        ),
-                                      )
-                                    : const SmartReTranslator(
-                                        text: 'Sign Up',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 1,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Sign In Link
-                            GestureDetector(
-                              onTap: _isLoading
-                                  ? null
-                                  : () => Routes.navigateToLogin(context),
-                              child: RichText(
-                                text: const TextSpan(
-                                  style: TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 16,
-                                  ),
-                                  children: [
-                                    WidgetSpan(
-                                      alignment: PlaceholderAlignment.baseline,
-                                      baseline: TextBaseline.alphabetic,
-                                      child: SmartReTranslator(
-                                        text: 'Already have an account?',
-                                        style: TextStyle(fontSize: 16),
-                                      ),
-                                    ),
-                                    TextSpan(text: ' '),
-                                    WidgetSpan(
-                                      alignment: PlaceholderAlignment.baseline,
-                                      baseline: TextBaseline.alphabetic,
-                                      child: SmartReTranslator(
-                                        text: 'Sign In',
-                                        style: TextStyle(
-                                          color: AppColors.primaryGreen,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 40),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-
-            // Language Switcher
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.primaryGreen,
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.shadowColor.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: const LanguageSwitcher(showAsIcon: true),
-              ),
-            ),
-          ],
-        ),
+  InputDecoration _modernInputDecoration({
+    required String hintText,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: const TextStyle(
+        color: hintTextColor,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      prefixIcon: Icon(icon, color: secondaryTextColor, size: 20),
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.22),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.30), width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: AppColors.primaryGreen, width: 1.6),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: AppColors.errorColor, width: 1.2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: AppColors.errorColor, width: 1.5),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.18), width: 1),
       ),
     );
   }
@@ -620,18 +402,19 @@ class _SignupScreenState extends State<SignupScreen> {
               if (states.contains(WidgetState.selected)) {
                 return AppColors.primaryGreen;
               }
-              return Colors.white;
+              return Colors.white.withOpacity(0.90);
             }),
+            checkColor: Colors.white,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(5),
             ),
             side: BorderSide(
               color: _agreedToTerms
                   ? AppColors.primaryGreen
-                  : AppColors.cardBackgroundGrey,
-              width: 1.5,
+                  : Colors.white.withOpacity(0.45),
+              width: 1.4,
             ),
-          )
+          ),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -643,7 +426,7 @@ class _SignupScreenState extends State<SignupScreen> {
               text: TextSpan(
                 style: const TextStyle(
                   fontSize: 13,
-                  color: AppColors.textSecondary,
+                  color: secondaryTextColor,
                   height: 1.5,
                 ),
                 children: [
@@ -658,7 +441,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.primaryGreen,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           decoration: TextDecoration.underline,
                           decorationColor: AppColors.primaryGreen,
                         ),
@@ -676,7 +459,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.primaryGreen,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           decoration: TextDecoration.underline,
                           decorationColor: AppColors.primaryGreen,
                         ),
@@ -700,22 +483,363 @@ class _SignupScreenState extends State<SignupScreen> {
       AboutScreen.showPrivacySheet(context);
     }
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 24,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.28),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 92,
+                                  height: 92,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.24),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.28),
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(14),
+                                    child: ClipOval(
+                                      child: Image.asset(
+                                        'assets/images/logo.png',
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'AGRHI',
+                                  style: TextStyle(
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w800,
+                                    color: primaryTextColor,
+                                    letterSpacing: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                const SmartReTranslator(
+                                  text: 'Create Account',
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    color: primaryTextColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                const SmartReTranslator(
+                                  text: 'Welcome. Create your AGRHI account.',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: secondaryTextColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+
+                          _ModernFormField(
+                            controller: _nameController,
+                            enabled: !_isLoading,
+                            keyboardType: TextInputType.name,
+                            validator: Validators.validateName,
+                            decoration: _modernInputDecoration(
+                              hintText: 'Full Name',
+                              icon: Icons.person_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _ModernFormField(
+                            controller: _phoneController,
+                            enabled: !_isLoading,
+                            keyboardType: TextInputType.phone,
+                            validator: Validators.validatePhone,
+                            decoration: _modernInputDecoration(
+                              hintText: 'Phone Number',
+                              icon: Icons.phone_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _ModernFormField(
+                            controller: _emailController,
+                            enabled: !_isLoading,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: _validateEmail,
+                            decoration: _modernInputDecoration(
+                              hintText: 'Email Address',
+                              icon: Icons.email_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _DatePickerField(
+                            controller: _dobController,
+                            enabled: !_isLoading,
+                            onTap: _isLoading ? null : _selectDate,
+                            validator: _validateDOB,
+                            decoration:
+                                _modernInputDecoration(
+                                  hintText: 'Date of Birth',
+                                  icon: Icons.calendar_today_rounded,
+                                ).copyWith(
+                                  suffixIcon: const Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: secondaryTextColor,
+                                  ),
+                                ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _ModernFormField(
+                            controller: _addressController,
+                            enabled: !_isLoading,
+                            maxLines: 2,
+                            validator: _validateAddress,
+                            decoration: _modernInputDecoration(
+                              hintText: 'Address',
+                              icon: Icons.location_on_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _ModernFormField(
+                            controller: _pincodeController,
+                            enabled: !_isLoading,
+                            keyboardType: TextInputType.number,
+                            validator: _validatePincode,
+                            decoration: _modernInputDecoration(
+                              hintText: 'Postal Code',
+                              icon: Icons.pin_drop_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _CategoryDropdown(
+                            value: _selectedCategoryId,
+                            categories: _categories,
+                            enabled: !_isLoading,
+                            onChanged: _isLoading
+                                ? null
+                                : (value) {
+                                    setState(() {
+                                      _selectedCategoryId = value;
+                                    });
+                                  },
+                            validator: _validateCategory,
+                            decoration: _modernInputDecoration(
+                              hintText: 'Select Category',
+                              icon: Icons.category_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _ModernPasswordField(
+                            controller: _passwordController,
+                            enabled: !_isLoading,
+                            obscureText: _obscurePassword,
+                            validator: Validators.validatePassword,
+                            onToggle: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                            decoration: _modernInputDecoration(
+                              hintText: 'Password',
+                              icon: Icons.lock_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _ModernPasswordField(
+                            controller: _confirmPasswordController,
+                            enabled: !_isLoading,
+                            obscureText: _obscureConfirmPassword,
+                            validator: (value) =>
+                                Validators.validateConfirmPassword(
+                                  value,
+                                  _passwordController.text,
+                                ),
+                            onToggle: () {
+                              setState(() {
+                                _obscureConfirmPassword =
+                                    !_obscureConfirmPassword;
+                              });
+                            },
+                            decoration: _modernInputDecoration(
+                              hintText: 'Verify Password',
+                              icon: Icons.lock_outline_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          _buildTermsCheckbox(),
+                          const SizedBox(height: 24),
+
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _handleSignup,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primaryGreen,
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor: AppColors.primaryGreen
+                                    .withOpacity(0.55),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.4,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : const SmartReTranslator(
+                                      text: 'Sign Up',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+
+                          Center(
+                            child: GestureDetector(
+                              onTap: _isLoading
+                                  ? null
+                                  : () => Routes.navigateToLogin(context),
+                              child: RichText(
+                                textAlign: TextAlign.center,
+                                text: const TextSpan(
+                                  style: TextStyle(
+                                    color: secondaryTextColor,
+                                    fontSize: 15,
+                                  ),
+                                  children: [
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.middle,
+                                      child: SmartReTranslator(
+                                        text: 'Already have an account?',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          color: secondaryTextColor,
+                                        ),
+                                      ),
+                                    ),
+                                    TextSpan(text: '  '),
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.middle,
+                                      child: SmartReTranslator(
+                                        text: 'Sign In',
+                                        style: TextStyle(
+                                          color: primaryTextColor,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Material(
+                color: Colors.transparent,
+                elevation: 8,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.30),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.28)),
+                  ),
+                  child: const LanguageSwitcher(showAsIcon: true),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-// ✅ Reusable form field widget
-class _FormField extends StatelessWidget {
+class _ModernFormField extends StatelessWidget {
   final TextEditingController controller;
-  final String labelText;
-  final IconData icon;
+  final InputDecoration decoration;
   final TextInputType? keyboardType;
   final String? Function(String?)? validator;
   final bool enabled;
-  final int? maxLines;
+  final int maxLines;
 
-  const _FormField({
+  const _ModernFormField({
     required this.controller,
-    required this.labelText,
-    required this.icon,
+    required this.decoration,
     this.keyboardType,
     this.validator,
     required this.enabled,
@@ -724,389 +848,147 @@ class _FormField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: SmartReTranslator(
-            text: labelText,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: AppColors.primaryGreen),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 1.5,
-              ),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 2,
-              ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-          keyboardType: keyboardType,
-          validator: validator,
-          enabled: enabled,
-          maxLines: maxLines,
-        ),
-      ],
+    return TextFormField(
+      controller: controller,
+      decoration: decoration,
+      keyboardType: keyboardType,
+      validator: validator,
+      enabled: enabled,
+      maxLines: maxLines,
+      style: const TextStyle(
+        color: _SignupScreenState.primaryTextColor,
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
     );
   }
 }
 
-// ✅ Date picker field widget
+class _ModernPasswordField extends StatelessWidget {
+  final TextEditingController controller;
+  final InputDecoration decoration;
+  final String? Function(String?)? validator;
+  final bool enabled;
+  final bool obscureText;
+  final VoidCallback onToggle;
+
+  const _ModernPasswordField({
+    required this.controller,
+    required this.decoration,
+    this.validator,
+    required this.enabled,
+    required this.obscureText,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      validator: validator,
+      enabled: enabled,
+      style: const TextStyle(
+        color: _SignupScreenState.primaryTextColor,
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
+      decoration: decoration.copyWith(
+        suffixIcon: IconButton(
+          onPressed: onToggle,
+          icon: Icon(
+            obscureText
+                ? Icons.visibility_rounded
+                : Icons.visibility_off_rounded,
+            color: _SignupScreenState.secondaryTextColor,
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DatePickerField extends StatelessWidget {
   final TextEditingController controller;
-  final String labelText;
+  final InputDecoration decoration;
   final VoidCallback? onTap;
   final String? Function(String?)? validator;
+  final bool enabled;
 
   const _DatePickerField({
     required this.controller,
-    required this.labelText,
-    this.onTap,
-    this.validator,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: SmartReTranslator(
-            text: labelText,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            prefixIcon: Icon(
-              Icons.calendar_today,
-              color: AppColors.primaryGreen,
-            ),
-            suffixIcon: Icon(
-              Icons.arrow_drop_down,
-              color: AppColors.textSecondary,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 1.5,
-              ),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 2,
-              ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-          readOnly: true,
-          onTap: onTap,
-          validator: validator,
-        ),
-      ],
-    );
-  }
-}
-
-// ✅ Password field widget
-class _PasswordField extends StatelessWidget {
-  final TextEditingController controller;
-  final String labelText;
-  final bool obscureText;
-  final VoidCallback onToggle;
-  final String? Function(String?)? validator;
-  final bool enabled;
-  final IconData? icon;
-
-  const _PasswordField({
-    required this.controller,
-    required this.labelText,
-    required this.obscureText,
-    required this.onToggle,
-    this.validator,
+    required this.decoration,
+    required this.onTap,
+    required this.validator,
     required this.enabled,
-    this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: SmartReTranslator(
-            text: labelText,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon ?? Icons.lock, color: AppColors.primaryGreen),
-            suffixIcon: IconButton(
-              icon: Icon(
-                obscureText ? Icons.visibility : Icons.visibility_off,
-                color: AppColors.textSecondary,
-              ),
-              onPressed: onToggle,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 1.5,
-              ),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 2,
-              ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-          obscureText: obscureText,
-          validator: validator,
-          enabled: enabled,
-        ),
-      ],
+    return TextFormField(
+      controller: controller,
+      readOnly: true,
+      onTap: onTap,
+      validator: validator,
+      enabled: enabled,
+      style: const TextStyle(
+        color: _SignupScreenState.primaryTextColor,
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
+      decoration: decoration,
     );
   }
 }
 
-// ✅ Category dropdown widget - FIXED VERSION
 class _CategoryDropdown extends StatelessWidget {
   final String? value;
   final List<Map<String, dynamic>> categories;
-  final void Function(String?)? onChanged;
+  final ValueChanged<String?>? onChanged;
   final String? Function(String?)? validator;
+  final InputDecoration decoration;
+  final bool enabled;
 
   const _CategoryDropdown({
-    this.value,
+    required this.value,
     required this.categories,
-    this.onChanged,
-    this.validator,
+    required this.onChanged,
+    required this.validator,
+    required this.decoration,
+    required this.enabled,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: const SmartReTranslator(
-            text: 'Category',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+    return DropdownButtonFormField<String>(
+      value: value,
+      onChanged: enabled ? onChanged : null,
+      validator: validator,
+      decoration: decoration,
+      icon: const Icon(
+        Icons.keyboard_arrow_down_rounded,
+        color: _SignupScreenState.secondaryTextColor,
+      ),
+      dropdownColor: const Color(0xFFF1FFF7),
+      style: const TextStyle(
+        color: _SignupScreenState.primaryTextColor,
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
+      items: categories.map((category) {
+        return DropdownMenuItem<String>(
+          value: category['id'] as String,
+          child: SmartReTranslator(
+            text: category['name'] as String,
+            style: const TextStyle(
+              color: _SignupScreenState.primaryTextColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ),
-        DropdownButtonFormField<String>(
-          value: value,
-          decoration: InputDecoration(
-            prefixIcon: Icon(Icons.category, color: AppColors.primaryGreen),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 1.5,
-              ),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 2,
-              ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-          isExpanded: true,
-          isDense: true,
-          icon: Icon(Icons.arrow_drop_down, color: AppColors.primaryGreen),
-          iconSize: 24,
-          elevation: 8,
-          style: const TextStyle(color: AppColors.textPrimary, fontSize: 16),
-          dropdownColor: Colors.white,
-          menuMaxHeight: 300,
-          itemHeight: 56,
-          borderRadius: BorderRadius.circular(12),
-          items: categories.map((category) {
-            final displayName = category['name'] as String;
-            return DropdownMenuItem<String>(
-              value: category['id'] as String,
-              child: SmartReTranslator(
-                text: displayName,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 16,
-                ),
-              ),
-            );
-          }).toList(),
-          onChanged: onChanged,
-          validator: validator,
-          selectedItemBuilder: (BuildContext context) {
-            return categories.map((category) {
-              final displayName = category['name'] as String;
-              return SmartReTranslator(
-                text: displayName,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 16,
-                ),
-              );
-            }).toList();
-          },
-        ),
-      ],
+        );
+      }).toList(),
     );
   }
 }

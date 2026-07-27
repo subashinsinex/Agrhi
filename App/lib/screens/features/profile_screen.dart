@@ -842,16 +842,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 16),
-          const SmartReTranslator(
-            text: 'Profile',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
           const SizedBox(height: 8),
           if (_isEditing)
             ConstrainedBox(

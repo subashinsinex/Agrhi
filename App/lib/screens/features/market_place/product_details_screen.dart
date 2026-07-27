@@ -1,18 +1,20 @@
-import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../src/services/market_place_services.dart';
 import '../../../utils/colors.dart';
+import '../../../utils/constants.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
-import '../../../src/services/market_place_services.dart';
-import '../../../utils/constants.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final String productId;
-  final String productType; // 'farm' or 'retail'
+  final String productType;
 
   const ProductDetailsScreen({
     super.key,
@@ -32,7 +34,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   double? _distanceToShop;
   String? _formattedAddress;
 
-  // Cache keys
   static const String _locationCacheKey = 'product_detail_location_cache';
   static const String _addressCachePrefix = 'geocode_cache_';
 
@@ -42,19 +43,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     _loadCachedDataThenFetch();
   }
 
-  /// ✅ Load cached location first, then fetch fresh data
   Future<void> _loadCachedDataThenFetch() async {
-    // Load cached location
     await _loadCachedLocation();
-
-    // Load product details (this will use cached location)
     await _loadProductDetails();
-
-    // Update location in background
     _updateLocationInBackground();
   }
 
-  /// Load cached location
   Future<void> _loadCachedLocation() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -62,8 +56,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
       if (locationJson != null) {
         final data = jsonDecode(locationJson) as Map<String, dynamic>;
-
-        // Check if cache is not too old (1 hour)
         final cachedTime = DateTime.parse(data['timestamp']);
         final age = DateTime.now().difference(cachedTime);
 
@@ -82,7 +74,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               headingAccuracy: 0,
             );
           });
-          debugPrint('📍 Using cached location for product details');
         }
       }
     } catch (e) {
@@ -90,7 +81,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     }
   }
 
-  /// Cache location
   Future<void> _cacheLocation(Position position) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -100,16 +90,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         'timestamp': DateTime.now().toIso8601String(),
       };
       await prefs.setString(_locationCacheKey, jsonEncode(locationData));
-      debugPrint('✅ Location cached for product details');
     } catch (e) {
       debugPrint('❌ Error caching location: $e');
     }
   }
 
-  /// Update location in background
   Future<void> _updateLocationInBackground() async {
     try {
-      // ✅ Try getLastKnownPosition first (fast)
       Position? position = await Geolocator.getLastKnownPosition();
 
       if (position != null && _currentPosition == null) {
@@ -120,10 +107,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         _calculateDistance();
       }
 
-      // ✅ Get accurate position with timeout
       final accuratePosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium, // Changed from high
-        timeLimit: Duration(seconds: 5),
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 5),
       );
 
       setState(() {
@@ -133,11 +119,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       _calculateDistance();
     } catch (e) {
       debugPrint('⚠️ Background location update failed: $e');
-      // Don't show error - using cached location is fine
     }
   }
 
-  /// Original getCurrentLocation (now just calls background update)
   Future<void> _getCurrentLocation() async {
     await _updateLocationInBackground();
   }
@@ -157,21 +141,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       );
 
       setState(() {
-        _distanceToShop = distance / 1000; // Convert to km
+        _distanceToShop = distance / 1000;
       });
     }
   }
 
-  /// ✅ Optimized geocoding with caching
   Future<void> _getAddressFromCoordinates(
     double latitude,
     double longitude,
   ) async {
-    // Create cache key from coordinates
     final cacheKey =
         '$_addressCachePrefix${latitude.toStringAsFixed(4)}_${longitude.toStringAsFixed(4)}';
 
-    // Check cache first
     try {
       final prefs = await SharedPreferences.getInstance();
       final cachedAddress = prefs.getString(cacheKey);
@@ -181,12 +162,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         final cachedTime = DateTime.parse(data['timestamp']);
         final age = DateTime.now().difference(cachedTime);
 
-        // Cache addresses for 7 days
         if (age.inDays < 7) {
           setState(() {
             _formattedAddress = data['address'];
           });
-          debugPrint('✅ Using cached address');
           return;
         }
       }
@@ -194,7 +173,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       debugPrint('⚠️ Error loading cached address: $e');
     }
 
-    // Fetch fresh address
     setState(() => _isLoadingAddress = true);
 
     try {
@@ -205,8 +183,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks.first;
-
-        // Build formatted address
         List<String> addressParts = [];
 
         if (place.street != null && place.street!.isNotEmpty) {
@@ -236,7 +212,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           _formattedAddress = formattedAddress;
         });
 
-        // Cache the address
         try {
           final prefs = await SharedPreferences.getInstance();
           final addressData = {
@@ -244,12 +219,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             'timestamp': DateTime.now().toIso8601String(),
           };
           await prefs.setString(cacheKey, jsonEncode(addressData));
-          debugPrint('✅ Address cached: $formattedAddress');
         } catch (e) {
           debugPrint('⚠️ Error caching address: $e');
         }
-
-        debugPrint('✅ Address: $_formattedAddress');
       }
     } catch (e) {
       debugPrint('❌ Error getting address: $e');
@@ -274,15 +246,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         setState(() {
           _product = product;
         });
+
         _calculateDistance();
 
-        // For farmers (farm products), always use lat/long to get address
-        // For retailers, use seller_address if available, otherwise use lat/long
         final shopLat = product['shop_latitude'];
         final shopLng = product['shop_longitude'];
 
         if (widget.productType == 'farm') {
-          // Farmer: Always convert lat/long to address
           if (shopLat != null && shopLng != null) {
             final lat = shopLat is String
                 ? double.parse(shopLat)
@@ -293,7 +263,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             await _getAddressFromCoordinates(lat, lng);
           }
         } else {
-          // Retailer: Use seller_address if available, otherwise convert lat/long
           final sellerAddress = product['seller_address'];
           if (sellerAddress == null ||
               sellerAddress.toString().trim().isEmpty) {
@@ -329,6 +298,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       SnackBar(
         content: SmartReTranslator(
           text: message,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: Colors.white),
         ),
         backgroundColor: isError
@@ -381,6 +352,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     }
   }
 
+  String _safeText(dynamic value, {String fallback = ''}) {
+    if (value == null) return fallback;
+    final text = value.toString().trim();
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _shortCoordinate(dynamic value) {
+    final text = value?.toString() ?? '';
+    if (text.isEmpty) return '--';
+    return text.length > 10 ? '${text.substring(0, 10)}...' : text;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -399,6 +382,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               children: [
                 Expanded(
                   child: SingleChildScrollView(
+                    padding: const EdgeInsets.only(bottom: 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -408,7 +392,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         _buildSellerInfo(),
                         const SizedBox(height: 12),
                         _buildLocationInfo(),
-                        const SizedBox(height: 24),
                       ],
                     ),
                   ),
@@ -427,7 +410,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       decoration: BoxDecoration(color: Colors.grey[100]),
       child: Stack(
         children: [
-          // Product Image
           imageUrl != null
               ? Image.network(
                   '${AppConstants.baseUrl.replaceAll('/api', '')}$imageUrl',
@@ -447,6 +429,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           const SizedBox(height: 8),
                           Text(
                             'Image not available',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(color: Colors.grey[600]),
                           ),
                         ],
@@ -466,45 +450,44 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'No image',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: Colors.grey[600]),
                       ),
                     ],
                   ),
                 ),
-
-          // Gradient Overlay
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
             child: Container(
               height: 100,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  colors: [Color(0xB3000000), Colors.transparent],
                 ),
               ),
             ),
           ),
-
-          // Product Type Badge (Farm Product / Retail Product)
           Positioned(
             top: 16,
             left: 16,
             child: Container(
+              constraints: const BoxConstraints(maxWidth: 180),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: widget.productType == 'farm'
                     ? const Color(0xFF4CAF50)
                     : const Color(0xFF2196F3),
                 borderRadius: BorderRadius.circular(30),
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Color(0x4D000000),
                     blurRadius: 8,
-                    offset: const Offset(0, 2),
+                    offset: Offset(0, 2),
                   ),
                 ],
               ),
@@ -519,37 +502,40 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     size: 18,
                   ),
                   const SizedBox(width: 6),
-                  SmartReTranslator(
-                    text: widget.productType == 'farm'
-                        ? 'Farm Product'
-                        : 'Retail Product',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: SmartReTranslator(
+                      text: widget.productType == 'farm'
+                          ? 'Farm Product'
+                          : 'Retail Product',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-
-          // Availability Status (In Stock / Out of Stock)
           Positioned(
             top: 16,
             right: 16,
             child: Container(
+              constraints: const BoxConstraints(maxWidth: 140),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: _product!['is_available'] == true
                     ? Colors.green
                     : Colors.red,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Color(0x4D000000),
                     blurRadius: 8,
-                    offset: const Offset(0, 2),
+                    offset: Offset(0, 2),
                   ),
                 ],
               ),
@@ -564,14 +550,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     size: 14,
                   ),
                   const SizedBox(width: 4),
-                  SmartReTranslator(
-                    text: _product!['is_available'] == true
-                        ? 'In Stock'
-                        : 'Out of Stock',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: SmartReTranslator(
+                      text: _product!['is_available'] == true
+                          ? 'In Stock'
+                          : 'Out of Stock',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -585,10 +575,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   Widget _buildProductInfo() {
     final pricePerUnit = _product!['price_per_unit'];
-    final unit = _product!['unit'];
+    final unit = _safeText(_product!['unit']);
     final quantityAvailable = _product!['quantity_available'];
-    final variety = _product!['variety'];
-    final description = _product!['description'];
+    final variety = _safeText(_product!['variety']);
+    final description = _safeText(_product!['description']);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -596,20 +586,24 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Color(0x0F000000),
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Product Name
           SmartReTranslator(
-            text: _product!['product_name'] ?? 'Unknown Product',
+            text: _safeText(
+              _product!['product_name'],
+              fallback: 'Unknown Product',
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.bold,
@@ -617,60 +611,54 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               height: 1.2,
             ),
           ),
-
-          // Variety
-          if (variety != null && variety.toString().isNotEmpty) ...[
+          if (variety.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(
+              constraints: const BoxConstraints(maxWidth: 220),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.primaryGreen.withOpacity(0.1),
+                color: const Color(0xFFEAF7EE),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.local_florist,
                     size: 14,
                     color: AppColors.primaryGreen,
                   ),
                   const SizedBox(width: 6),
-                  SmartReTranslator(
-                    text: variety,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.primaryGreen,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: SmartReTranslator(
+                      text: variety,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.primaryGreen,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
           ],
-
           const SizedBox(height: 24),
-
-          // Price and Stock Row
           Row(
             children: [
-              // Price Card
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.primaryGreen,
-                        AppColors.primaryGreen.withOpacity(0.8),
-                      ],
-                    ),
+                    color: AppColors.primaryGreen,
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
+                    boxShadow: const [
                       BoxShadow(
-                        color: AppColors.primaryGreen.withOpacity(0.3),
+                        color: Color(0x33000000),
                         blurRadius: 8,
-                        offset: const Offset(0, 4),
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
@@ -679,6 +667,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     children: [
                       const Text(
                         'Price',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.white70,
                           fontSize: 12,
@@ -698,6 +688,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           Expanded(
                             child: SmartReTranslator(
                               text: '$pricePerUnit',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,
@@ -709,6 +701,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       ),
                       Text(
                         'per $unit',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 12,
@@ -719,28 +713,27 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(width: 12),
-
-              // Stock Card
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.blue[50],
+                    color: const Color(0xFFF2F7FF),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: Colors.blue.withOpacity(0.2),
+                      color: const Color(0x332196F3),
                       width: 1.5,
                     ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Available Stock',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.blue[900],
+                          color: Color(0xFF123A73),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -748,28 +741,32 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.inventory_2,
-                            color: Colors.blue[700],
+                            color: Color(0xFF1976D2),
                             size: 20,
                           ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               '$quantityAvailable',
-                              style: TextStyle(
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.blue[900],
+                                color: Color(0xFF123A73),
                               ),
                             ),
                           ),
                         ],
                       ),
                       Text(
-                        unit ?? '',
-                        style: TextStyle(
-                          color: Colors.blue[700],
+                        unit,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF1976D2),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -780,9 +777,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               ),
             ],
           ),
-
-          // Description
-          if (description != null && description.toString().isNotEmpty) ...[
+          if (description.isNotEmpty) ...[
             const SizedBox(height: 24),
             const Divider(),
             const SizedBox(height: 16),
@@ -794,12 +789,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   color: Colors.grey[700],
                 ),
                 const SizedBox(width: 8),
-                const SmartReTranslator(
-                  text: 'Description',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                const Expanded(
+                  child: SmartReTranslator(
+                    text: 'Description',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
               ],
@@ -807,6 +806,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             const SizedBox(height: 10),
             SmartReTranslator(
               text: description,
+              maxLines: 5,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey[700],
@@ -820,10 +821,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   Widget _buildSellerInfo() {
-    final sellerName = _product!['seller_name'] ?? 'Unknown Seller';
+    final sellerName = _safeText(
+      _product!['seller_name'],
+      fallback: 'Unknown Seller',
+    );
     final sellerPic = _product!['seller_pic'];
-    final sellerPhone = _product!['seller_phone'];
-    final category = _product!['category']; // Get category for retail products
+    final sellerPhone = _safeText(_product!['seller_phone']);
+    final category = _safeText(_product!['category']);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -831,11 +835,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Color(0x0F000000),
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -847,7 +851,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryGreen.withOpacity(0.1),
+                  color: const Color(0xFFEAF7EE),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
@@ -860,6 +864,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               const Expanded(
                 child: SmartReTranslator(
                   text: 'Seller Information',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -872,7 +878,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           const SizedBox(height: 20),
           Row(
             children: [
-              // Seller Picture
               Container(
                 width: 70,
                 height: 70,
@@ -880,11 +885,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   color: Colors.grey[100],
                   shape: BoxShape.circle,
                   border: Border.all(color: AppColors.primaryGreen, width: 3),
-                  boxShadow: [
+                  boxShadow: const [
                     BoxShadow(
-                      color: AppColors.primaryGreen.withOpacity(0.2),
+                      color: Color(0x22000000),
                       blurRadius: 8,
-                      offset: const Offset(0, 4),
+                      offset: Offset(0, 4),
                     ),
                   ],
                 ),
@@ -905,58 +910,59 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     : Icon(Icons.person, size: 35, color: Colors.grey[400]),
               ),
               const SizedBox(width: 16),
-
-              // Seller Details (Name + Category)
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       sellerName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    // Show category for retail products
                     if (widget.productType == 'retail' &&
-                        category != null &&
-                        category.toString().isNotEmpty) ...[
+                        category.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Container(
+                        constraints: const BoxConstraints(maxWidth: 160),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
+                          color: const Color(0xFFEFF6FF),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.category,
                               size: 12,
-                              color: Colors.blue[700],
+                              color: Color(0xFF1976D2),
                             ),
                             const SizedBox(width: 4),
-                            SmartReTranslator(
-                              text: category.toString().toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue[700],
+                            Flexible(
+                              child: SmartReTranslator(
+                                text: category.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1976D2),
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
                     ],
-                    if (sellerPhone != null) ...[
+                    if (sellerPhone.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -966,12 +972,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                             color: Colors.grey[600],
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            sellerPhone,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                              fontWeight: FontWeight.w500,
+                          Expanded(
+                            child: Text(
+                              sellerPhone,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
@@ -980,18 +990,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   ],
                 ),
               ),
-
-              // Call Button
-              if (sellerPhone != null)
+              if (sellerPhone.isNotEmpty)
                 Container(
                   decoration: BoxDecoration(
                     color: AppColors.primaryGreen,
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
+                    boxShadow: const [
                       BoxShadow(
-                        color: AppColors.primaryGreen.withOpacity(0.3),
+                        color: Color(0x33000000),
                         blurRadius: 8,
-                        offset: const Offset(0, 4),
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
@@ -1017,8 +1025,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     final shopLng = _product!['shop_longitude'];
     final sellerAddress = _product!['seller_address'];
 
-    // For farmers: Always use reverse geocoded address from lat/long
-    // For retailers: Use seller_address if available, otherwise use reverse geocoded address
     String? displayAddress;
     if (widget.productType == 'farm') {
       displayAddress = _formattedAddress;
@@ -1035,11 +1041,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Color(0x0F000000),
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -1051,12 +1057,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
+                  color: const Color(0xFFFFF3E8),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.location_on,
-                  color: Colors.orange[700],
+                  color: Color(0xFFEF8A17),
                   size: 20,
                 ),
               ),
@@ -1064,6 +1070,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               const Expanded(
                 child: SmartReTranslator(
                   text: 'Location Details',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -1074,21 +1082,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Distance Badge
           if (_distanceToShop != null)
             Container(
+              constraints: const BoxConstraints(maxWidth: 180),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.orange[400]!, Colors.orange[600]!],
-                ),
+                color: const Color(0xFFEF8A17),
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.orange.withOpacity(0.3),
+                    color: Color(0x33000000),
                     blurRadius: 8,
-                    offset: const Offset(0, 4),
+                    offset: Offset(0, 4),
                   ),
                 ],
               ),
@@ -1097,27 +1102,29 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 children: [
                   const Icon(Icons.near_me, size: 18, color: Colors.white),
                   const SizedBox(width: 8),
-                  Text(
-                    MarketplaceService.formatDistance(_distanceToShop!),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  Flexible(
+                    child: Text(
+                      MarketplaceService.formatDistance(_distanceToShop!),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-
-          // Address with lat/long display
           if (displayAddress != null) ...[
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: const Color(0xFFF8F9FB),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey[200]!, width: 1),
+                border: Border.all(color: const Color(0xFFE4E7EC), width: 1),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1134,7 +1141,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       Expanded(
                         child: _isLoadingAddress
                             ? Row(
-                                children: [
+                                children: const [
                                   SizedBox(
                                     width: 16,
                                     height: 16,
@@ -1143,18 +1150,24 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                       color: AppColors.primaryGreen,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    'Loading address...',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey,
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Loading address...',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey,
+                                      ),
                                     ),
                                   ),
                                 ],
                               )
                             : Text(
                                 displayAddress,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[800],
@@ -1164,7 +1177,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       ),
                     ],
                   ),
-                  // Show lat/long coordinates
                   if (shopLat != null && shopLng != null) ...[
                     const SizedBox(height: 8),
                     Row(
@@ -1177,8 +1189,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Lat: ${shopLat.toString().substring(0, shopLat.toString().length > 10 ? 10 : shopLat.toString().length)}, '
-                            'Long: ${shopLng.toString().substring(0, shopLng.toString().length > 10 ? 10 : shopLng.toString().length)}',
+                            'Lat: ${_shortCoordinate(shopLat)}, Long: ${_shortCoordinate(shopLng)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey[600],
@@ -1197,11 +1210,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: const Color(0xFFF8F9FB),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
-                children: [
+                children: const [
                   SizedBox(
                     width: 18,
                     height: 18,
@@ -1210,19 +1223,20 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       color: AppColors.primaryGreen,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Fetching address from location...',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Fetching address from location...',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
                   ),
                 ],
               ),
             ),
           ],
-
           const SizedBox(height: 16),
-
-          // Open in Maps Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -1230,6 +1244,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               icon: const Icon(Icons.map_outlined, size: 20),
               label: const SmartReTranslator(
                 text: 'Open in Maps',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
               style: ElevatedButton.styleFrom(
@@ -1259,6 +1275,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             const SizedBox(height: 24),
             const SmartReTranslator(
               text: 'Product not found',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 22,
@@ -1270,6 +1288,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             const SmartReTranslator(
               text:
                   'This product may have been removed or is no longer available',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 15, color: AppColors.textPrimary),
               textAlign: TextAlign.center,
             ),
@@ -1279,6 +1299,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               label: const SmartReTranslator(
                 text: 'Go Back',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: Colors.white,

@@ -1,22 +1,23 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../shared/custom_app_bar.dart';
 import '../../../utils/colors.dart';
 import '../../src/services/api_service.dart';
 
-/// Custom tile provider with caching support
 class CachedTileProvider extends TileProvider {
   final CacheManager cacheManager;
+
   @override
-  // ignore: overridden_fields
   final Map<String, String> headers;
 
   CachedTileProvider({required this.cacheManager, this.headers = const {}});
@@ -24,7 +25,6 @@ class CachedTileProvider extends TileProvider {
   @override
   ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
     final url = getTileUrl(coordinates, options);
-
     return CachedNetworkImageProvider(
       url,
       cacheManager: cacheManager,
@@ -51,15 +51,31 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   final ApiService _apiService = ApiService.instance;
+  final Distance _distance = const Distance();
 
   LatLng? _currentPosition;
-  List<Marker> _markers = [];
   bool _isMapReady = false;
-  late AnimationController _pulseController;
-  double _currentZoom = 17.0;
   bool _isTracking = true;
+  bool _isLoadingLocations = false;
+  bool _isGettingLocation = false;
+  bool _hasLocationPermission = true;
+  bool _locationServiceEnabled = true;
+
+  late AnimationController _pulseController;
+
+  double _currentZoom = 17.0;
+  double _distanceFilter = 10.0;
+
   String? _profileImagePath;
+  String? _locationStatusMessage;
+  String? _storeLoadError;
+
   Timer? _locationUpdateTimer;
+  StreamSubscription<Position>? _positionSubscription;
+
+  List<LocationData> _locations = [];
+  List<_LocationDistanceEntry> _filteredEntries = [];
+  List<Marker> _storeMarkers = [];
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -69,7 +85,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ),
   );
 
-  // Optimized cache manager for map tiles
   static final customCacheManager = CacheManager(
     Config(
       'mapTileCache',
@@ -80,28 +95,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ),
   );
 
-  // Dynamic locations from API
-  List<LocationData> _locations = [];
-  bool _isLoadingLocations = false;
-
-  // Distance filter
-  double _distanceFilter = 10.0;
-
-  // Default center (Chennai)
   static const LatLng _defaultCenter = LatLng(13.0827, 80.2707);
 
-  List<LocationData> get _filteredLocations {
-    if (_currentPosition == null) return _locations;
-
-    return _locations.where((location) {
-      final distance = _calculateDistanceInKm(location.position);
-      return distance <= _distanceFilter;
-    }).toList()..sort((a, b) {
-      final distA = _calculateDistanceInKm(a.position);
-      final distB = _calculateDistanceInKm(b.position);
-      return distA.compareTo(distB);
-    });
+  List<Marker> get _markers {
+    final result = <Marker>[];
+    if (_currentPosition != null) {
+      result.add(_buildUserMarker());
+    }
+    result.addAll(_storeMarkers);
+    return result;
   }
+
+  List<LocationData> get _filteredLocations =>
+      _filteredEntries.map((e) => e.location).toList();
 
   @override
   void initState() {
@@ -111,49 +117,66 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       vsync: this,
     )..repeat(reverse: true);
 
-    // ✅ Load everything immediately in parallel
     _initializeMapData();
   }
 
-  /// ✅ Load profile image and location instantly, then stores
   Future<void> _initializeMapData() async {
-    // Start profile image and location loading immediately (non-blocking)
     unawaited(_loadProfileImage());
     unawaited(_getLocationFast());
-
-    // Load stores in background after a short delay
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) _loadStoreLocations();
-    });
+    unawaited(_loadStoreLocations());
   }
 
-  /// ✅ Fast location strategy: last known position first, then accurate position
+  Future<void> _loadProfileImage() async {
+    try {
+      final path = await _storage.read(key: 'profile_image_local_path');
+      if (!mounted || path == null || path.isEmpty) return;
+
+      final file = File(path);
+      if (await file.exists()) {
+        setState(() => _profileImagePath = path);
+      }
+    } catch (e) {
+      debugPrint('Error loading profile image: $e');
+    }
+  }
+
   Future<void> _getLocationFast() async {
+    if (mounted) {
+      setState(() {
+        _isGettingLocation = true;
+        _locationStatusMessage = 'Checking location access...';
+      });
+    }
+
     final hasPermission = await _handleLocationPermission();
-    if (!hasPermission) return;
+    if (!hasPermission) {
+      if (mounted) {
+        setState(() {
+          _isGettingLocation = false;
+          _recomputeFilteredDataAndMarkers();
+        });
+      }
+      return;
+    }
 
     try {
-      // ✅ Step 1: Get last known position INSTANTLY (cached, no GPS wait)
+      setState(() {
+        _locationStatusMessage = 'Using last known location...';
+      });
+
       final lastKnown = await Geolocator.getLastKnownPosition();
 
       if (lastKnown != null && mounted) {
         final lastPos = LatLng(lastKnown.latitude, lastKnown.longitude);
-        setState(() {
-          _currentPosition = lastPos;
-          _markers = _buildAllMarkers();
-        });
-
-        // Move map to last known position immediately
-        if (_isMapReady) {
-          _mapController.move(lastPos, _currentZoom);
-        }
-
-        debugPrint(
-          '✅ Showing last known position: ${lastPos.latitude}, ${lastPos.longitude}',
-        );
+        _updateCurrentPosition(lastPos, moveMap: true);
       }
 
-      // ✅ Step 2: Get accurate current position in background (may take 2-4 seconds)
+      if (mounted) {
+        setState(() {
+          _locationStatusMessage = 'Fetching precise location...';
+        });
+      }
+
       final currentPosition = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
@@ -165,75 +188,121 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           currentPosition.longitude,
         );
 
-        // Only update if position changed significantly (> 10 meters)
         if (_currentPosition == null ||
-            _calculateDistance(_currentPosition!, currentPos) > 10) {
-          setState(() {
-            _currentPosition = currentPos;
-            _markers = _buildAllMarkers();
-          });
-
-          // Smoothly move to accurate position
-          if (_isMapReady && _isTracking) {
-            _mapController.move(currentPos, _currentZoom);
-          }
-
-          debugPrint(
-            '✅ Updated to accurate position: ${currentPos.latitude}, ${currentPos.longitude}',
-          );
+            _calculateDistanceMeters(_currentPosition!, currentPos) > 10) {
+          _updateCurrentPosition(currentPos, moveMap: _isTracking);
         }
-      }
 
-      // Start listening for real-time updates
-      _listenToLocationUpdates();
+        _listenToLocationUpdates();
+      }
     } catch (e) {
       debugPrint('⚠️ Error getting location: $e');
 
-      // Fallback: try last known position one more time
       try {
         final fallbackPos = await Geolocator.getLastKnownPosition();
         if (fallbackPos != null && mounted) {
           final pos = LatLng(fallbackPos.latitude, fallbackPos.longitude);
-          setState(() {
-            _currentPosition = pos;
-            _markers = _buildAllMarkers();
-          });
-          if (_isMapReady) {
-            _mapController.move(pos, _currentZoom);
-          }
+          _updateCurrentPosition(pos, moveMap: true);
         }
-      } catch (e) {
-        debugPrint('⚠️ Fallback also failed: $e');
+      } catch (fallbackError) {
+        debugPrint('⚠️ Fallback also failed: $fallbackError');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGettingLocation = false;
+          _locationStatusMessage = _currentPosition == null
+              ? 'Unable to detect current location'
+              : 'Location ready';
+        });
       }
     }
   }
 
-  /// Calculate distance between two points in meters
-  double _calculateDistance(LatLng from, LatLng to) {
-    const Distance distance = Distance();
-    return distance.as(LengthUnit.Meter, from, to);
-  }
+  Future<bool> _handleLocationPermission() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
-  Future<void> _loadProfileImage() async {
-    try {
-      final path = await _storage.read(key: 'profile_image_local_path');
-      if (mounted && path != null && path.isNotEmpty) {
-        final file = File(path);
-        if (await file.exists()) {
+    if (!serviceEnabled) {
+      if (mounted) {
+        setState(() {
+          _locationServiceEnabled = false;
+          _hasLocationPermission = false;
+          _locationStatusMessage = 'Location services are disabled';
+        });
+      }
+      return false;
+    }
+
+    var permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
           setState(() {
-            _profileImagePath = path;
+            _locationServiceEnabled = true;
+            _hasLocationPermission = false;
+            _locationStatusMessage = 'Location permission denied';
           });
         }
+        return false;
       }
-    } catch (e) {
-      debugPrint('Error loading profile image: $e');
     }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        setState(() {
+          _locationServiceEnabled = true;
+          _hasLocationPermission = false;
+          _locationStatusMessage = 'Location permission permanently denied';
+        });
+      }
+      return false;
+    }
+
+    if (mounted) {
+      setState(() {
+        _locationServiceEnabled = true;
+        _hasLocationPermission = true;
+      });
+    }
+
+    return true;
+  }
+
+  void _listenToLocationUpdates() {
+    _positionSubscription?.cancel();
+
+    _positionSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10,
+          ),
+        ).listen((Position position) {
+          if (!mounted) return;
+
+          final newPos = LatLng(position.latitude, position.longitude);
+
+          _locationUpdateTimer?.cancel();
+          _locationUpdateTimer = Timer(const Duration(milliseconds: 300), () {
+            if (!mounted) return;
+
+            if (_currentPosition == null ||
+                _calculateDistanceMeters(_currentPosition!, newPos) > 10) {
+              _updateCurrentPosition(newPos, moveMap: _isTracking);
+            }
+          });
+        });
   }
 
   Future<void> _loadStoreLocations() async {
-    setState(() {
-      _isLoadingLocations = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingLocations = true;
+        _storeLoadError = null;
+      });
+    }
 
     try {
       final response = await _apiService.get(
@@ -246,36 +315,33 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
         final locations = data
             .map((json) => LocationData.fromRetailerJson(json))
-            .toList();
-
-        final validLocations = locations
+            .whereType<LocationData>()
             .where((loc) => loc.hasValidCoordinates())
             .toList();
 
-        if (mounted) {
-          setState(() {
-            _locations = validLocations;
-            _markers = _buildAllMarkers();
-            _isLoadingLocations = false;
-          });
+        if (!mounted) return;
 
-          debugPrint('✅ Loaded ${validLocations.length} store locations');
-        }
+        setState(() {
+          _locations = locations;
+          _recomputeFilteredDataAndMarkers();
+          _isLoadingLocations = false;
+        });
+
+        debugPrint('✅ Loaded ${locations.length} store locations');
       } else {
-        if (mounted) {
-          setState(() {
-            _isLoadingLocations = false;
-          });
-          debugPrint('⚠️ Failed to load stores: ${response.error}');
-        }
+        if (!mounted) return;
+        setState(() {
+          _isLoadingLocations = false;
+          _storeLoadError = response.error ?? 'Failed to load store locations';
+        });
       }
     } catch (e) {
       debugPrint('❌ Error loading store locations: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingLocations = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _isLoadingLocations = false;
+        _storeLoadError = 'Failed to load store locations';
+      });
     }
   }
 
@@ -283,78 +349,67 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     await _loadStoreLocations();
   }
 
-  Future<bool> _handleLocationPermission() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+  void _updateCurrentPosition(LatLng position, {required bool moveMap}) {
+    if (!mounted) return;
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      debugPrint('⚠️ Location services disabled');
-      return false;
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        debugPrint('⚠️ Location permission denied');
-        return false;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      debugPrint('⚠️ Location permission permanently denied');
-      return false;
-    }
-
-    return true;
-  }
-
-  void _listenToLocationUpdates() {
-    Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
-      ),
-    ).listen((Position position) {
-      if (!mounted) return;
-
-      final newPos = LatLng(position.latitude, position.longitude);
-
-      _locationUpdateTimer?.cancel();
-      _locationUpdateTimer = Timer(const Duration(milliseconds: 300), () {
-        if (!mounted) return;
-
-        setState(() {
-          _currentPosition = newPos;
-          _markers = _buildAllMarkers();
-        });
-
-        if (_isTracking && _isMapReady) {
-          _mapController.move(newPos, _currentZoom);
-        }
-      });
+    setState(() {
+      _currentPosition = position;
+      _recomputeFilteredDataAndMarkers();
     });
+
+    if (_isMapReady && moveMap) {
+      _mapController.move(position, _currentZoom);
+    }
   }
 
-  List<Marker> _buildAllMarkers() {
-    List<Marker> allMarkers = [];
+  void _recomputeFilteredDataAndMarkers() {
+    _filteredEntries = _computeFilteredEntries();
+    _storeMarkers = _buildLocationMarkers(_filteredEntries);
+  }
 
-    if (_currentPosition != null) {
-      allMarkers.add(_buildUserMarker());
+  List<_LocationDistanceEntry> _computeFilteredEntries() {
+    if (_currentPosition == null) {
+      return _locations
+          .map((loc) => _LocationDistanceEntry(location: loc, distanceKm: 0))
+          .toList();
     }
 
-    allMarkers.addAll(_buildLocationMarkers());
+    final entries =
+        _locations
+            .map(
+              (loc) => _LocationDistanceEntry(
+                location: loc,
+                distanceKm: _distance.as(
+                  LengthUnit.Kilometer,
+                  _currentPosition!,
+                  loc.position,
+                ),
+              ),
+            )
+            .where((entry) => entry.distanceKm <= _distanceFilter)
+            .toList()
+          ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
 
-    return allMarkers;
+    return entries;
   }
 
-  List<Marker> _buildLocationMarkers() {
-    return _filteredLocations.map((location) {
+  double _calculateDistanceMeters(LatLng from, LatLng to) {
+    return _distance.as(LengthUnit.Meter, from, to);
+  }
+
+  double _calculateDistanceInKm(LatLng destination) {
+    if (_currentPosition == null) return 0.0;
+    return _distance.as(LengthUnit.Kilometer, _currentPosition!, destination);
+  }
+
+  List<Marker> _buildLocationMarkers(List<_LocationDistanceEntry> entries) {
+    return entries.map((entry) {
+      final location = entry.location;
+
       return Marker(
         point: location.position,
-        width: 80,
-        height: 80,
+        width: 92,
+        height: 82,
         child: GestureDetector(
           onTap: () => _showLocationInfo(location),
           child: Column(
@@ -368,7 +423,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   border: Border.all(color: Colors.white, width: 3),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withOpacity(0.28),
                       blurRadius: 6,
                       spreadRadius: 1,
                     ),
@@ -381,27 +436,34 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
               const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 4,
-                    ),
-                  ],
-                ),
-                child: Text(
-                  location.name,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 84),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.18),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    location.name,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
             ],
@@ -467,7 +529,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -506,9 +567,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ],
                       ),
                     ),
-
                     const Divider(height: 1),
-
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -581,7 +640,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   _distanceFilter = newDistance;
                                 });
                                 setState(() {
-                                  _markers = _buildAllMarkers();
+                                  _recomputeFilteredDataAndMarkers();
                                 });
                               },
                             ),
@@ -589,9 +648,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ],
                       ),
                     ),
-
                     const Divider(height: 1),
-
                     Expanded(
                       child: _filteredLocations.isEmpty
                           ? Center(
@@ -616,7 +673,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     onPressed: () {
                                       setModalState(() => _distanceFilter = 50);
                                       setState(
-                                        () => _markers = _buildAllMarkers(),
+                                        () =>
+                                            _recomputeFilteredDataAndMarkers(),
                                       );
                                     },
                                     child: const Text(
@@ -629,14 +687,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           : ListView.separated(
                               controller: scrollController,
                               padding: const EdgeInsets.symmetric(vertical: 8),
-                              itemCount: _filteredLocations.length,
+                              itemCount: _filteredEntries.length,
                               separatorBuilder: (context, index) =>
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
-                                final location = _filteredLocations[index];
-                                final distance = _calculateDistanceInKm(
-                                  location.position,
-                                );
+                                final entry = _filteredEntries[index];
+                                final location = entry.location;
+                                final distance = entry.distanceKm;
 
                                 return ListTile(
                                   contentPadding: const EdgeInsets.symmetric(
@@ -694,7 +751,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       const SizedBox(height: 6),
                                       Row(
                                         children: [
-                                          Icon(
+                                          const Icon(
                                             Icons.location_on,
                                             size: 14,
                                             color: AppColors.primaryGreen,
@@ -723,7 +780,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     Future.delayed(
                                       const Duration(milliseconds: 500),
                                       () {
-                                        _showLocationInfo(location);
+                                        if (mounted) {
+                                          _showLocationInfo(location);
+                                        }
                                       },
                                     );
                                   },
@@ -751,7 +810,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   double _getDistanceFromSlider(double sliderValue) {
     const intervals = [1.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0];
-    int index = sliderValue.round().clamp(0, intervals.length - 1);
+    final index = sliderValue.round().clamp(0, intervals.length - 1);
     return intervals[index];
   }
 
@@ -816,7 +875,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ],
             ),
             const SizedBox(height: 16),
-
             if (location.address != null && location.address!.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(12),
@@ -843,7 +901,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(height: 12),
             ],
-
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -942,12 +999,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  double _calculateDistanceInKm(LatLng destination) {
-    if (_currentPosition == null) return 0.0;
-    const Distance distance = Distance();
-    return distance.as(LengthUnit.Kilometer, _currentPosition!, destination);
-  }
-
   void _navigateToLocation(LatLng position) {
     if (_isMapReady) {
       setState(() => _isTracking = false);
@@ -956,22 +1007,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _openDirections(LatLng destination) async {
-    if (_currentPosition == null) {
-      final url = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}',
-      );
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      }
-      return;
-    }
-
-    final url = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1'
-      '&origin=${_currentPosition!.latitude},${_currentPosition!.longitude}'
-      '&destination=${destination.latitude},${destination.longitude}'
-      '&travelmode=driving',
-    );
+    final url = _currentPosition == null
+        ? Uri.parse(
+            'https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}',
+          )
+        : Uri.parse(
+            'https://www.google.com/maps/dir/?api=1'
+            '&origin=${_currentPosition!.latitude},${_currentPosition!.longitude}'
+            '&destination=${destination.latitude},${destination.longitude}'
+            '&travelmode=driving',
+          );
 
     try {
       if (await canLaunchUrl(url)) {
@@ -1089,8 +1134,136 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _openAppSettingsForLocation() async {
+    await Geolocator.openAppSettings();
+  }
+
+  Future<void> _openDeviceLocationSettings() async {
+    await Geolocator.openLocationSettings();
+  }
+
+  Widget _buildLocationBanner() {
+    if (_hasLocationPermission && _locationServiceEnabled) {
+      if (_locationStatusMessage == null ||
+          _locationStatusMessage == 'Location ready') {
+        return const SizedBox.shrink();
+      }
+    }
+
+    return Positioned(
+      top: 102,
+      left: 16,
+      right: 16,
+      child: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _locationStatusMessage ?? 'Location unavailable',
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              if (!_locationServiceEnabled || !_hasLocationPermission) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (!_locationServiceEnabled)
+                      OutlinedButton(
+                        onPressed: _openDeviceLocationSettings,
+                        child: const Text('Enable location'),
+                      ),
+                    if (!_hasLocationPermission)
+                      ElevatedButton(
+                        onPressed: () async {
+                          await _getLocationFast();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryGreen,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Try again'),
+                      ),
+                    if (!_hasLocationPermission)
+                      TextButton(
+                        onPressed: _openAppSettingsForLocation,
+                        child: const Text('App settings'),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStoreErrorBanner() {
+    if (_storeLoadError == null) return const SizedBox.shrink();
+
+    return Positioned(
+      top: 102,
+      left: 16,
+      right: 16,
+      child: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.red.withOpacity(0.15)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _storeLoadError!,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: _refreshLocations,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final topBannerVisible =
+        (!_hasLocationPermission ||
+            !_locationServiceEnabled ||
+            (_locationStatusMessage != null &&
+                _locationStatusMessage != 'Location ready')) &&
+        _storeLoadError == null;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.transparent,
@@ -1143,17 +1316,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     enableMultiFingerGestureRace: true,
                   ),
                   onMapReady: () {
+                    if (!mounted) return;
                     setState(() => _isMapReady = true);
                     if (_currentPosition != null) {
                       _mapController.move(_currentPosition!, _currentZoom);
                     }
                   },
                   onPositionChanged: (position, hasGesture) {
+                    if (!mounted) return;
+
                     if (hasGesture && _isTracking) {
                       setState(() => _isTracking = false);
                     }
+
                     if (hasGesture) {
-                      setState(() => _currentZoom = position.zoom);
+                      setState(
+                        () => _currentZoom = position.zoom ?? _currentZoom,
+                      );
                     }
                   },
                 ),
@@ -1176,14 +1355,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             ),
           ),
-
-          // Controls on the right side
+          if (_storeLoadError != null)
+            _buildStoreErrorBanner()
+          else if (topBannerVisible)
+            _buildLocationBanner(),
           Positioned(
             bottom: 24,
             right: 16,
             child: Column(
               children: [
-                // Store badge
                 if (_locations.isNotEmpty)
                   Material(
                     color: Colors.transparent,
@@ -1242,9 +1422,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
-
                 if (_locations.isNotEmpty) const SizedBox(height: 12),
-
                 _buildControlButton(Icons.add, _zoomIn, isTop: true),
                 Container(height: 1, width: 44, color: AppColors.tertiaryGreen),
                 _buildControlButton(Icons.remove, _zoomOut, isBottom: true),
@@ -1253,8 +1431,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
-
-          // Bottom left badges
           Positioned(
             bottom: 12,
             left: 12,
@@ -1264,6 +1440,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 if (_currentPosition != null)
                   _buildInfoBadge(
                     '${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}',
+                    margin: const EdgeInsets.only(bottom: 6),
+                  ),
+                if (_isGettingLocation)
+                  _buildInfoBadge(
+                    'Locating...',
                     margin: const EdgeInsets.only(bottom: 6),
                   ),
                 GestureDetector(
@@ -1354,7 +1535,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       margin: margin,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withOpacity(0.92),
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: Colors.black.withOpacity(0.1), width: 1),
       ),
@@ -1372,14 +1553,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _locationUpdateTimer?.cancel();
+    _positionSubscription?.cancel();
     _pulseController.dispose();
     _mapController.dispose();
     super.dispose();
   }
 }
-
-// Helper for unawaited futures
-void unawaited(Future<void> future) {}
 
 class LocationData {
   final String id;
@@ -1399,33 +1578,43 @@ class LocationData {
   });
 
   factory LocationData.fromRetailerJson(Map<String, dynamic> json) {
+    final latitude = _parseCoordinate(json['latitude'], isLatitude: true);
+    final longitude = _parseCoordinate(json['longitude'], isLatitude: false);
+
+    if (latitude == null || longitude == null) {
+      throw const FormatException('Invalid coordinates');
+    }
+
     return LocationData(
-      id: json['retailer_id'] ?? '',
-      name: json['shop_name'] ?? 'Unknown Store',
-      position: LatLng(
-        _parseDouble(json['latitude']),
-        _parseDouble(json['longitude']),
-      ),
-      description: json['business_type'] ?? '',
-      type: _parseBusinessType(json['business_type']),
-      address: json['shop_address'],
+      id: (json['retailer_id'] ?? '').toString(),
+      name: (json['shop_name'] ?? 'Unknown Store').toString(),
+      position: LatLng(latitude, longitude),
+      description: (json['business_type'] ?? '').toString(),
+      type: _parseBusinessType((json['business_type'] ?? '').toString()),
+      address: json['shop_address']?.toString(),
     );
   }
 
-  static double _parseDouble(dynamic value) {
-    if (value == null) return 0.0;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) {
-      final parsed = double.tryParse(value);
-      if (parsed != null && parsed.abs() <= 180) return parsed;
-      return 0.0;
-    }
-    return 0.0;
+  static double? _parseCoordinate(dynamic value, {required bool isLatitude}) {
+    if (value == null) return null;
+
+    final parsed = switch (value) {
+      double v => v,
+      int v => v.toDouble(),
+      String v => double.tryParse(v),
+      _ => null,
+    };
+
+    if (parsed == null) return null;
+    if (isLatitude && (parsed < -90 || parsed > 90)) return null;
+    if (!isLatitude && (parsed < -180 || parsed > 180)) return null;
+    if (parsed == 0.0) return null;
+
+    return parsed;
   }
 
-  static LocationType _parseBusinessType(String? type) {
-    switch (type?.toLowerCase()) {
+  static LocationType _parseBusinessType(String type) {
+    switch (type.toLowerCase()) {
       case 'fertilizer':
       case 'seeds':
       case 'equipment':
@@ -1446,6 +1635,16 @@ class LocationData {
         position.latitude != 0.0 &&
         position.longitude != 0.0;
   }
+}
+
+class _LocationDistanceEntry {
+  final LocationData location;
+  final double distanceKm;
+
+  const _LocationDistanceEntry({
+    required this.location,
+    required this.distanceKm,
+  });
 }
 
 enum LocationType { retailer, farm, warehouse, other }

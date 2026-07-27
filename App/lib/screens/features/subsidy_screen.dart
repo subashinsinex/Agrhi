@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../utils/colors.dart';
 import '../shared/smart_retranslator.dart';
 import '../shared/custom_app_bar.dart';
@@ -54,103 +57,101 @@ class SubsidyScreen extends StatefulWidget {
 }
 
 class _SubsidyScreenState extends State<SubsidyScreen> {
-  List<Subsidy> _allSubsidies = [];
-  List<Subsidy> _filteredSubsidies = [];
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final AuthService _authService = AuthService();
   final DatabaseHelper _db = DatabaseHelper.instance;
 
-  // ✅ Translation cache for search
   final Map<String, String> _translatedTitles = {};
   final Map<String, String> _translatedStates = {};
+
+  List<Subsidy> _allSubsidies = [];
+  List<Subsidy> _filteredSubsidies = [];
 
   bool _hasError = false;
   bool _showScrollToTop = false;
   bool _isRetrying = false;
   bool _isRefreshing = false;
   bool _isInitialLoading = true;
+
   String _errorMessage = 'Please connect to the internet and try again.';
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     _loadData();
-    _searchController.addListener(_filterSubsidies);
+    _searchController.addListener(_onSearchChanged);
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.removeListener(_onSearchChanged);
+    _scrollController.removeListener(_onScroll);
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    if (_scrollController.offset > 200 && !_showScrollToTop) {
+    final shouldShow = _scrollController.offset > 240;
+    if (shouldShow != _showScrollToTop) {
       setState(() {
-        _showScrollToTop = true;
-      });
-    } else if (_scrollController.offset <= 200 && _showScrollToTop) {
-      setState(() {
-        _showScrollToTop = false;
+        _showScrollToTop = shouldShow;
       });
     }
+  }
+
+  void _onSearchChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 180),
+      _filterSubsidies,
+    );
+    setState(() {});
   }
 
   void _scrollToTop() {
     _scrollController.animateTo(
       0,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOut,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
     );
   }
 
-  /// ✅ Load data with cache-first strategy
   Future<void> _loadData() async {
     try {
-      print('📦 Loading subsidies...');
-
-      // ✅ 1. Load from cache first (instant display)
       final cachedSubsidies = await _loadFromCache();
 
       if (cachedSubsidies.isNotEmpty) {
-        print('✅ Loaded ${cachedSubsidies.length} subsidies from cache');
-
         setState(() {
           _allSubsidies = cachedSubsidies;
-          _filteredSubsidies = List.of(_allSubsidies);
+          _filteredSubsidies = List.of(cachedSubsidies);
           _hasError = false;
           _isInitialLoading = false;
         });
 
-        // ✅ Preload translations
         _preloadTranslations();
-
-        // ✅ 2. Fetch fresh data in background
         _refreshInBackground();
       } else {
-        // ✅ 3. No cache - fetch from server
-        print('⚠️ No cache found - fetching from server');
         await fetchSubsidies();
-
-        setState(() {
-          _isInitialLoading = false;
-        });
-
-        // ✅ Preload translations
+        if (mounted) {
+          setState(() {
+            _isInitialLoading = false;
+          });
+        }
         _preloadTranslations();
       }
-    } catch (e) {
-      print('❌ Error loading subsidies: $e');
-
-      // Try to load from cache as fallback
+    } catch (_) {
       final cachedSubsidies = await _loadFromCache();
+
       if (cachedSubsidies.isNotEmpty) {
         setState(() {
           _allSubsidies = cachedSubsidies;
-          _filteredSubsidies = List.of(_allSubsidies);
+          _filteredSubsidies = List.of(cachedSubsidies);
+          _hasError = false;
           _isInitialLoading = false;
         });
         _preloadTranslations();
@@ -163,78 +164,53 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     }
   }
 
-  /// ✅ Preload all subsidy translations
   Future<void> _preloadTranslations() async {
     final languageService = Provider.of<LanguageService>(
       context,
       listen: false,
     );
 
-    // Only translate if not English
-    if (languageService.currentLocale.languageCode == 'en') {
-      return;
-    }
+    if (languageService.currentLocale.languageCode == 'en') return;
 
-    print('🔄 Preloading ${_allSubsidies.length} subsidy translations...');
-
-    // Clear existing translations
     _translatedTitles.clear();
     _translatedStates.clear();
 
-    int count = 0;
-    for (var subsidy in _allSubsidies) {
-      // Translate title
+    for (final subsidy in _allSubsidies) {
       if (!_translatedTitles.containsKey(subsidy.title)) {
         try {
           final translated = await languageService.translate(subsidy.title);
           _translatedTitles[subsidy.title] = translated;
-          count++;
-        } catch (e) {
-          debugPrint('Translation error for ${subsidy.title}: $e');
-        }
+        } catch (_) {}
       }
 
-      // Translate state name
       if (!_translatedStates.containsKey(subsidy.stateName)) {
         try {
           final translated = await languageService.translate(subsidy.stateName);
           _translatedStates[subsidy.stateName] = translated;
-          count++;
-        } catch (e) {
-          debugPrint('Translation error for ${subsidy.stateName}: $e');
-        }
+        } catch (_) {}
       }
     }
 
-    print('✅ Preloaded $count translations');
-
     if (mounted) {
-      setState(() {}); // Refresh UI with translations
+      setState(() {});
     }
   }
 
-  /// ✅ Load subsidies from local cache
   Future<List<Subsidy>> _loadFromCache() async {
     try {
       final cachedData = await _db.getCachedSubsidies();
       return cachedData.map((json) => Subsidy.fromJson(json)).toList();
-    } catch (e) {
-      print('⚠️ Error loading from cache: $e');
+    } catch (_) {
       return [];
     }
   }
 
-  /// ✅ Save subsidies to local cache
   Future<void> _saveToCache(List<Subsidy> subsidies) async {
     try {
       await _db.cacheSubsidies(subsidies.map((s) => s.toJson()).toList());
-      print('✅ Saved ${subsidies.length} subsidies to cache');
-    } catch (e) {
-      print('⚠️ Error saving to cache: $e');
-    }
+    } catch (_) {}
   }
 
-  /// ✅ Refresh data in background without blocking UI
   Future<void> _refreshInBackground() async {
     if (_isRefreshing) return;
 
@@ -243,16 +219,9 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     });
 
     try {
-      print('🔄 Refreshing subsidies in background...');
-
       await fetchSubsidies();
-
-      // Reload translations
       _preloadTranslations();
-
-      print('✅ Background refresh completed');
-    } catch (e) {
-      print('⚠️ Background refresh failed (using cached data): $e');
+    } catch (_) {
     } finally {
       if (mounted) {
         setState(() {
@@ -262,64 +231,46 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
     }
   }
 
-  /// Intelligent retry with connectivity check and token refresh
   Future<void> _handleRetry() async {
     if (_isRetrying) return;
 
     setState(() {
       _isRetrying = true;
-      _errorMessage = 'Checking connection...';
-    });
-
-    print('🔄 Retry initiated - checking internet connectivity...');
-
-    setState(() {
       _errorMessage = 'Refreshing access token...';
     });
 
     try {
-      print('🔄 Attempting to refresh access token...');
       await _authService.refreshAccessToken();
-      print('✅ Access token refreshed successfully');
 
-      setState(() {
-        _hasError = false;
-        _isRetrying = false;
-        _errorMessage = 'Please connect to the internet and try again.';
-      });
-
-      print('🔄 Reloading subsidies...');
-      await _loadData();
-    } catch (e) {
-      print('❌ Failed to refresh access token: $e');
-
-      final errorMsg = e.toString();
-      if (errorMsg.contains('expired') || errorMsg.contains('invalid')) {
+      if (mounted) {
         setState(() {
+          _hasError = false;
           _isRetrying = false;
-          _errorMessage = 'Session expired. Please log in again.';
-        });
-      } else {
-        setState(() {
-          _isRetrying = false;
-          _errorMessage = 'Server is unavailable. Please try again later.';
+          _errorMessage = 'Please connect to the internet and try again.';
         });
       }
+
+      await _loadData();
+    } catch (e) {
+      final errorMsg = e.toString().toLowerCase();
+      setState(() {
+        _isRetrying = false;
+        _errorMessage =
+            errorMsg.contains('expired') || errorMsg.contains('invalid')
+            ? 'Session expired. Please log in again.'
+            : 'Server is unavailable. Please try again later.';
+      });
     }
   }
 
   Future<void> fetchSubsidies() async {
     try {
-      print('🔄 Fetching subsidies from server...');
-
       final response = await ApiService.instance.get(
         '/subsidies/getSubsidy',
         requiresAuth: true,
       );
 
       if (response.isSuccess) {
-        _hasError = false;
-
         final dynamic data = response.data;
 
         List<dynamic> subsidyList;
@@ -328,7 +279,6 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
         } else if (data is Map && data['data'] != null) {
           subsidyList = data['data'] as List;
         } else {
-          print('⚠️ Unexpected response format');
           subsidyList = [];
         }
 
@@ -338,16 +288,13 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
 
         setState(() {
           _allSubsidies = subsidies;
-          _filteredSubsidies = List.of(_allSubsidies);
+          _filteredSubsidies = _applyFilter(_searchController.text, subsidies);
+          _hasError = false;
         });
 
-        // ✅ Save to cache
         await _saveToCache(subsidies);
-
-        print('✅ Subsidies loaded successfully: ${subsidies.length} items');
       } else if (response.statusCode == 401) {
         _setError();
-        print('❌ Unauthorized - access token may be invalid or expired');
         throw Exception('Session expired - please log in again');
       } else if (response.isOffline) {
         _setError();
@@ -358,45 +305,124 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
           response.error ?? 'Failed to load subsidies: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (_) {
       _setError();
-      print('❌ Error fetching subsidies: $e');
       rethrow;
     }
   }
 
   void _setError() {
+    if (!mounted) return;
     setState(() {
       _hasError = true;
     });
   }
 
-  // ✅ Multilingual filter with translation support
   void _filterSubsidies() {
-    final query = _searchController.text.toLowerCase().trim();
+    final query = _searchController.text;
+    if (!mounted) return;
+
     setState(() {
-      if (query.isEmpty) {
-        _filteredSubsidies = List.of(_allSubsidies);
-      } else {
-        _filteredSubsidies = _allSubsidies.where((s) {
-          // Original English text
-          final title = s.title.toLowerCase();
-          final state = s.stateName.toLowerCase();
-
-          // Translated text
-          final translatedTitle = (_translatedTitles[s.title] ?? '')
-              .toLowerCase();
-          final translatedState = (_translatedStates[s.stateName] ?? '')
-              .toLowerCase();
-
-          // Search in both English and translated text
-          return title.contains(query) ||
-              state.contains(query) ||
-              translatedTitle.contains(query) ||
-              translatedState.contains(query);
-        }).toList();
-      }
+      _filteredSubsidies = _applyFilter(query, _allSubsidies);
     });
+  }
+
+  List<Subsidy> _applyFilter(String query, List<Subsidy> subsidies) {
+    final q = query.toLowerCase().trim();
+
+    if (q.isEmpty) return List.of(subsidies);
+
+    return subsidies.where((s) {
+      final title = s.title.toLowerCase();
+      final state = s.stateName.toLowerCase();
+      final description = s.description.toLowerCase();
+      final translatedTitle = (_translatedTitles[s.title] ?? '').toLowerCase();
+      final translatedState = (_translatedStates[s.stateName] ?? '')
+          .toLowerCase();
+
+      return title.contains(q) ||
+          state.contains(q) ||
+          description.contains(q) ||
+          translatedTitle.contains(q) ||
+          translatedState.contains(q);
+    }).toList();
+  }
+
+  void _openDetails(Subsidy subsidy) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => SubsidyDetailScreen(subsidy: subsidy)),
+    );
+  }
+
+  String _shortDescription(String text) {
+    final cleaned = text
+        .replaceAll(r'\n', ' ')
+        .replaceAll('\\n', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (cleaned.isEmpty) return '';
+    if (cleaned.length <= 140) return cleaned;
+    return '${cleaned.substring(0, 140).trim()}...';
+  }
+
+  Widget _buildBody() {
+    if (_isInitialLoading && _allSubsidies.isEmpty) {
+      return const SubsidyLoadingView();
+    }
+
+    if (_hasError && _allSubsidies.isEmpty) {
+      return SubsidyErrorView(
+        message: _errorMessage,
+        isRetrying: _isRetrying,
+        onRetry: _handleRetry,
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refreshInBackground,
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: SubsidySearchSection(
+                controller: _searchController,
+                totalCount: _allSubsidies.length,
+                filteredCount: _filteredSubsidies.length,
+              ),
+            ),
+          ),
+          if (_filteredSubsidies.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: SubsidyEmptyView(
+                hasQuery: _searchController.text.trim().isNotEmpty,
+                onClear: () => _searchController.clear(),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              sliver: SliverList.builder(
+                itemCount: _filteredSubsidies.length,
+                itemBuilder: (context, index) {
+                  final subsidy = _filteredSubsidies[index];
+                  return SubsidyCard(
+                    subsidy: subsidy,
+                    descriptionPreview: _shortDescription(subsidy.description),
+                    onTap: () => _openDetails(subsidy),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -407,13 +433,12 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
         title: 'Subsidy',
         showOnlineStatus: true,
         actions: [
-          // ✅ Show refresh indicator when background refresh is active
           if (_isRefreshing)
             const Padding(
-              padding: EdgeInsets.all(16.0),
+              padding: EdgeInsets.all(16),
               child: SizedBox(
-                width: 20,
-                height: 20,
+                width: 18,
+                height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -422,247 +447,633 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
             ),
         ],
       ),
-      body: _hasError && _allSubsidies.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _isRetrying ? Icons.refresh : Icons.wifi_off,
-                    size: 80,
-                    color: _isRetrying ? AppColors.primaryGreen : Colors.grey,
-                  ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: SmartReTranslator(
-                      text: _errorMessage,
-                      style: TextStyle(
-                        color: _isRetrying
-                            ? AppColors.primaryGreen
-                            : Colors.grey,
-                        fontSize: 16,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    icon: _isRetrying
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.refresh),
-                    label: SmartReTranslator(
-                      text: _isRetrying ? 'Retrying...' : 'Retry',
-                      style: const TextStyle(),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(26),
-                      ),
-                    ),
-                    onPressed: _isRetrying ? null : _handleRetry,
-                  ),
-                ],
-              ),
-            )
-          : _isInitialLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _allSubsidies.isEmpty
-          ? const Center(
-              child: SmartReTranslator(
-                text: 'No subsidies found',
-                style: TextStyle(),
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _refreshInBackground,
-              child: CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SmartReTranslator(
-                            text: 'Search by title or state',
-                            style: TextStyle(
-                              color: AppColors.primaryGreen,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          // ✅ Use ListenableBuilder for proper rebuild
-                          ListenableBuilder(
-                            listenable: _searchController,
-                            builder: (context, _) {
-                              return TextField(
-                                controller: _searchController,
-                                decoration: InputDecoration(
-                                  prefixIcon: const Icon(
-                                    Icons.search,
-                                    color: AppColors.primaryGreen,
-                                  ),
-                                  suffixIcon: _searchController.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(
-                                            Icons.clear,
-                                            color: Colors.grey,
-                                            size: 20,
-                                          ),
-                                          onPressed: () {
-                                            _searchController.clear();
-                                          },
-                                        )
-                                      : null,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 0,
-                                    horizontal: 14,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  _filteredSubsidies.isEmpty
-                      ? SliverFillRemaining(
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.search_off,
-                                  size: 80,
-                                  color: Colors.grey[400],
-                                ),
-                                const SizedBox(height: 16),
-                                SmartReTranslator(
-                                  text: 'No subsidies found',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                SmartReTranslator(
-                                  text: 'Try searching with different keywords',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : SliverList(
-                          delegate: SliverChildBuilderDelegate((
-                            context,
-                            index,
-                          ) {
-                            final subsidy = _filteredSubsidies[index];
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 0,
-                                vertical: 4,
-                              ),
-                              child: Card(
-                                key: ValueKey(subsidy.id),
-                                color: Colors.white,
-                                elevation: 3,
-                                shadowColor: AppColors.primaryGreen.withOpacity(
-                                  0.13,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 12,
-                                  ),
-                                  title: SmartReTranslator(
-                                    text: subsidy.title,
-                                    style: const TextStyle(
-                                      color: AppColors.primaryGreen,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  subtitle: SmartReTranslator(
-                                    text: subsidy.stateName,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  trailing: const Icon(
-                                    Icons.arrow_forward_ios,
-                                    size: 16,
-                                    color: Colors.grey,
-                                  ),
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            SubsidyDetailScreen(
-                                              subsidy: subsidy,
-                                            ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            );
-                          }, childCount: _filteredSubsidies.length),
-                        ),
-                ],
-              ),
-            ),
+      body: _buildBody(),
       floatingActionButton: _showScrollToTop
           ? FloatingActionButton(
               onPressed: _scrollToTop,
               backgroundColor: AppColors.primaryGreen,
-              child: const Icon(Icons.arrow_upward, color: Colors.white),
+              child: const Icon(
+                Icons.keyboard_arrow_up_rounded,
+                color: Colors.white,
+              ),
             )
           : null,
     );
   }
 }
 
-// SubsidyDetailScreen remains the same...
+class SubsidySearchSection extends StatelessWidget {
+  final TextEditingController controller;
+  final int totalCount;
+  final int filteredCount;
+
+  const SubsidySearchSection({
+    super.key,
+    required this.controller,
+    required this.totalCount,
+    required this.filteredCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasQuery = controller.text.trim().isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.96),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryGreen.withOpacity(0.07),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SmartReTranslator(
+            text: 'Search by title, description, or state',
+            style: TextStyle(
+              color: AppColors.primaryGreen,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search by title or state',
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                color: AppColors.primaryGreen,
+              ),
+              suffixIcon: hasQuery
+                  ? IconButton(
+                      onPressed: controller.clear,
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                    )
+                  : null,
+              filled: true,
+              fillColor: const Color(0xFFF7F8F7),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 14,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: AppColors.primaryGreen,
+                  width: 1.3,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _InfoChip(
+                icon: Icons.account_balance_wallet_rounded,
+                label: '$filteredCount shown',
+              ),
+              _InfoChip(
+                icon: Icons.dataset_rounded,
+                label: '$totalCount total',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _InfoChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.primaryGreen.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: AppColors.primaryGreen),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primaryGreen,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SubsidyCard extends StatelessWidget {
+  final Subsidy subsidy;
+  final String descriptionPreview;
+  final VoidCallback onTap;
+
+  const SubsidyCard({
+    super.key,
+    required this.subsidy,
+    required this.descriptionPreview,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDescription = descriptionPreview.trim().isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white.withOpacity(0.96),
+        elevation: 1.5,
+        shadowColor: Colors.black.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SmartReTranslator(
+                        text: subsidy.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          height: 1.3,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryGreen,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 15,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SmartReTranslator(
+                  text: hasDescription
+                      ? descriptionPreview
+                      : 'No description available.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: hasDescription
+                        ? AppColors.textSecondary
+                        : Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryGreen.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: SmartReTranslator(
+                              text: subsidy.stateName.isNotEmpty
+                                  ? subsidy.stateName
+                                  : 'Unknown state',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primaryGreen,
+                              ),
+                            ),
+                          ),
+                          if (subsidy.link.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.10),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Text(
+                                'Official link',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryGreen.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.open_in_new_rounded,
+                            size: 16,
+                            color: AppColors.primaryGreen,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'View',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primaryGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SubsidyLoadingView extends StatelessWidget {
+  const SubsidyLoadingView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: const [
+        _LoadingSearchCard(),
+        SizedBox(height: 14),
+        _LoadingSubsidyCard(),
+        _LoadingSubsidyCard(),
+        _LoadingSubsidyCard(),
+        _LoadingSubsidyCard(),
+      ],
+    );
+  }
+}
+
+class _LoadingSearchCard extends StatelessWidget {
+  const _LoadingSearchCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return _ShimmerBox(height: 150, borderRadius: BorderRadius.circular(20));
+  }
+}
+
+class _LoadingSubsidyCard extends StatelessWidget {
+  const _LoadingSubsidyCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _ShimmerBox(height: 150, borderRadius: BorderRadius.circular(20)),
+    );
+  }
+}
+
+class _ShimmerBox extends StatefulWidget {
+  final double height;
+  final BorderRadius borderRadius;
+
+  const _ShimmerBox({required this.height, required this.borderRadius});
+
+  @override
+  State<_ShimmerBox> createState() => _ShimmerBoxState();
+}
+
+class _ShimmerBoxState extends State<_ShimmerBox>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Container(
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: widget.borderRadius,
+            gradient: LinearGradient(
+              begin: Alignment(-1 + (2 * _controller.value), 0),
+              end: Alignment(1 + (2 * _controller.value), 0),
+              colors: const [
+                Color(0xFFECECEC),
+                Color(0xFFF7F7F7),
+                Color(0xFFECECEC),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class SubsidyErrorView extends StatelessWidget {
+  final String message;
+  final bool isRetrying;
+  final VoidCallback onRetry;
+
+  const SubsidyErrorView({
+    super.key,
+    required this.message,
+    required this.isRetrying,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.96),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withOpacity(0.55)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isRetrying ? Icons.refresh_rounded : Icons.wifi_off_rounded,
+                size: 72,
+                color: isRetrying ? AppColors.primaryGreen : Colors.grey,
+              ),
+              const SizedBox(height: 16),
+              const SmartReTranslator(
+                text: 'Unable to load subsidies',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryGreen,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              SmartReTranslator(
+                text: message,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: isRetrying ? null : onRetry,
+                  icon: isRetrying
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.3,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                  label: SmartReTranslator(
+                    text: isRetrying ? 'Retrying...' : 'Retry',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SubsidyEmptyView extends StatelessWidget {
+  final bool hasQuery;
+  final VoidCallback? onClear;
+
+  const SubsidyEmptyView({super.key, this.hasQuery = false, this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = hasQuery
+        ? 'No matching subsidies found'
+        : 'No subsidies found';
+    final subtitle = hasQuery
+        ? 'Try searching with a different title, description, or state name.'
+        : 'Subsidies will appear here when data becomes available.';
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.96),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withOpacity(0.55)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 84,
+                height: 84,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryGreen.withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  hasQuery ? Icons.search_off_rounded : Icons.inbox_outlined,
+                  size: 40,
+                  color: AppColors.primaryGreen,
+                ),
+              ),
+              const SizedBox(height: 18),
+              SmartReTranslator(
+                text: title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryGreen,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              SmartReTranslator(
+                text: subtitle,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (hasQuery && onClear != null) ...[
+                const SizedBox(height: 18),
+                OutlinedButton.icon(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close_rounded),
+                  label: const SmartReTranslator(
+                    text: 'Clear search',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primaryGreen,
+                    side: const BorderSide(color: AppColors.primaryGreen),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class SubsidyDetailScreen extends StatelessWidget {
   final Subsidy subsidy;
+
   const SubsidyDetailScreen({super.key, required this.subsidy});
 
   Future<void> _launchURL(BuildContext context, String url) async {
-    final uri = Uri.parse(url);
-    bool confirmed =
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const SmartReTranslator(
+            text: 'Invalid link',
+            style: TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.red[700],
+        ),
+      );
+      return;
+    }
+
+    final confirmed =
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -673,16 +1084,16 @@ class SubsidyDetailScreen extends StatelessWidget {
             title: const Row(
               children: [
                 Icon(
-                  Icons.open_in_browser,
+                  Icons.open_in_browser_rounded,
                   color: AppColors.primaryGreen,
-                  size: 28,
+                  size: 26,
                 ),
-                SizedBox(width: 12),
+                SizedBox(width: 10),
                 SmartReTranslator(
                   text: 'Open Link',
                   style: TextStyle(
                     color: AppColors.primaryGreen,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w700,
                     fontSize: 20,
                   ),
                 ),
@@ -691,75 +1102,62 @@ class SubsidyDetailScreen extends StatelessWidget {
             content: const SmartReTranslator(
               text: 'Do you want to open the link in your browser?',
               style: TextStyle(
+                fontSize: 15,
+                height: 1.45,
                 color: Colors.black87,
-                fontSize: 16,
-                height: 1.4,
               ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey[600],
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                ),
                 child: const SmartReTranslator(
                   text: 'Cancel',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
               ),
-              ElevatedButton.icon(
+              ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
-                icon: const Icon(Icons.open_in_new, size: 18),
-                label: const SmartReTranslator(
-                  text: 'Open',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryGreen,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  elevation: 2,
+                ),
+                child: const SmartReTranslator(
+                  text: 'Open',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ],
-            actionsPadding: const EdgeInsets.only(
-              right: 16,
-              bottom: 16,
-              left: 16,
-            ),
           ),
         ) ??
         false;
 
-    if (confirmed) {
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const SmartReTranslator(
-                text: 'Could not open the link',
-                style: TextStyle(color: Colors.white),
-              ),
-              backgroundColor: Colors.red[700],
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
-        }
-      }
+    if (!confirmed) return;
+
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const SmartReTranslator(
+            text: 'Could not open the link',
+            style: TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.red[700],
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
     }
+  }
+
+  String _extractHost(String url) {
+    final uri = Uri.tryParse(url);
+    return uri?.host.isNotEmpty == true ? uri!.host : url;
   }
 
   @override
@@ -767,94 +1165,205 @@ class SubsidyDetailScreen extends StatelessWidget {
     final descriptionText = subsidy.description.replaceAll(r'\n', '\n');
 
     return Scaffold(
-      appBar: CustomAppBar(title: subsidy.title, showOnlineStatus: true),
       backgroundColor: Colors.transparent,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            physics: const ClampingScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 32,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Material(
-                        color: Colors.white,
-                        elevation: 2,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: SmartReTranslator(
-                            text: descriptionText,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: AppColors.textPrimary,
-                              height: 1.5,
+      appBar: CustomAppBar(title: subsidy.title, showOnlineStatus: true),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _DetailHeader(subsidy: subsidy),
+                    const SizedBox(height: 16),
+                    _DetailSectionCard(
+                      title: 'Description',
+                      child: SmartReTranslator(
+                        text: descriptionText.isEmpty
+                            ? 'No description available.'
+                            : descriptionText,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          height: 1.65,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (subsidy.link.isNotEmpty)
+                      _DetailSectionCard(
+                        title: 'Reference link',
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.link_rounded,
+                              color: AppColors.primaryGreen,
                             ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryGreen.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: SmartReTranslator(
-                          text: subsidy.stateName,
-                          style: const TextStyle(
-                            color: AppColors.primaryGreen,
-                            fontWeight: FontWeight.w600,
-                            fontStyle: FontStyle.italic,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      DisclaimerBanner(
-                        'Subsidy information is for reference only. Eligibility and availability are governed by government authorities. \'More Info\' links redirect to official external websites.',
-                      ),
-                      const Spacer(),
-                      if (subsidy.link.isNotEmpty)
-                        Center(
-                          child: ElevatedButton.icon(
-                            icon: const Icon(Icons.open_in_new, size: 19),
-                            label: const SmartReTranslator(
-                              text: 'More Info',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryGreen,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 32,
-                                vertical: 14,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _extractHost(subsidy.link),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(26),
-                              ),
-                              elevation: 8,
                             ),
-                            onPressed: () => _launchURL(context, subsidy.link),
-                          ),
+                          ],
                         ),
-                    ],
-                  ),
+                      ),
+                    const SizedBox(height: 16),
+                    DisclaimerBanner(
+                      'Subsidy information is for reference only. Eligibility and availability are governed by government authorities. \'More Info\' links redirect to official external websites.',
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
               ),
             ),
-          );
-        },
+            if (subsidy.link.isNotEmpty)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _launchURL(context, subsidy.link),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                      label: const SmartReTranslator(
+                        text: 'More Info',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryGreen,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        elevation: 3,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailHeader extends StatelessWidget {
+  final Subsidy subsidy;
+
+  const _DetailHeader({required this.subsidy});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primaryGreen.withOpacity(0.95),
+            AppColors.primaryGreen.withOpacity(0.82),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryGreen.withOpacity(0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SmartReTranslator(
+            text: subsidy.title,
+            style: const TextStyle(
+              fontSize: 22,
+              height: 1.3,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: SmartReTranslator(
+              text: subsidy.stateName,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailSectionCard extends StatelessWidget {
+  final String title;
+  final Widget child;
+
+  const _DetailSectionCard({required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.96),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SmartReTranslator(
+            text: title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryGreen,
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
       ),
     );
   }

@@ -7,6 +7,7 @@ function getBoundingBox(latitude, longitude, maxDistance) {
   const latDelta = maxDistance / 111.32;
   const lngDelta =
     maxDistance / (111.32 * Math.cos((latitude * Math.PI) / 180));
+
   return {
     minLat: latitude - latDelta,
     maxLat: latitude + latDelta,
@@ -18,6 +19,7 @@ function getBoundingBox(latitude, longitude, maxDistance) {
 // Get unified marketplace products (farm + retail) by location
 exports.getMarketplaceProducts = async (req, res) => {
   const { lat, lng, search, max_distance, product_type } = req.query;
+
   logger.info("getMarketplaceProducts - Request", {
     lat,
     lng,
@@ -52,10 +54,10 @@ exports.getMarketplaceProducts = async (req, res) => {
       longitude,
       maxDistance,
     );
+
     const params = [latitude, longitude, minLat, maxLat, minLng, maxLng];
     let paramIndex = 7;
 
-    // Build optional search condition
     let searchCondition = "";
     if (search) {
       searchCondition = `AND (product_name ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`;
@@ -67,9 +69,9 @@ exports.getMarketplaceProducts = async (req, res) => {
       !product_type || product_type === "all" || product_type === "farm";
     const fetchRetailerProducts =
       !product_type || product_type === "all" || product_type === "retail";
+
     const queries = [];
 
-    // Farmer products query with bounding box filter
     if (fetchFarmerProducts) {
       queries.push(`
         SELECT
@@ -114,7 +116,6 @@ exports.getMarketplaceProducts = async (req, res) => {
       `);
     }
 
-    // Retailer products query with bounding box filter
     if (fetchRetailerProducts) {
       queries.push(`
         SELECT
@@ -177,7 +178,6 @@ exports.getMarketplaceProducts = async (req, res) => {
       });
     }
 
-    // CTE combining both product types ordered by distance
     const sql = `
       WITH all_products AS (
         ${queries.join(" UNION ALL ")}
@@ -194,6 +194,7 @@ exports.getMarketplaceProducts = async (req, res) => {
       fetchFarmerProducts,
       fetchRetailerProducts,
     });
+
     const result = await pool.query(sql, params);
 
     logger.info("getMarketplaceProducts - Success", {
@@ -201,7 +202,7 @@ exports.getMarketplaceProducts = async (req, res) => {
       maxDistance,
     });
 
-    res.json({
+    return res.json({
       success: true,
       products: result.rows,
       total: result.rowCount,
@@ -215,7 +216,7 @@ exports.getMarketplaceProducts = async (req, res) => {
     });
   } catch (error) {
     logger.error("getMarketplaceProducts - Error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error fetching marketplace products",
       error: error.message,
@@ -227,6 +228,7 @@ exports.getMarketplaceProducts = async (req, res) => {
 exports.getProductDetails = async (req, res) => {
   const { productId } = req.params;
   const { product_type } = req.query;
+
   logger.info("getProductDetails - Request", { productId, product_type });
 
   if (!product_type || !["farm", "retail"].includes(product_type)) {
@@ -248,9 +250,9 @@ exports.getProductDetails = async (req, res) => {
           fp.*,
           'farm' AS product_type,
           ud.name AS seller_name,
-          ud.pic_url AS seller_pic,
           ud.address AS seller_address,
           ua.phone_number AS seller_phone,
+          ud.pic_url AS seller_pic,
           i.image_url,
           fsp.latitude AS shop_latitude,
           fsp.longitude AS shop_longitude
@@ -277,9 +279,9 @@ exports.getProductDetails = async (req, res) => {
           rp.category,
           'retail' AS product_type,
           r.shop_name AS seller_name,
-          i_shop.image_url AS seller_pic,
           r.shop_address AS seller_address,
           ua.phone_number AS seller_phone,
+          i_shop.image_url AS seller_pic,
           i.image_url,
           r.latitude AS shop_latitude,
           r.longitude AS shop_longitude
@@ -306,10 +308,10 @@ exports.getProductDetails = async (req, res) => {
     }
 
     logger.info("getProductDetails - Success", { productId, product_type });
-    res.json({ success: true, product: result.rows[0] });
+    return res.json({ success: true, product: result.rows[0] });
   } catch (error) {
     logger.error("getProductDetails - Error:", { productId, error });
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error fetching product details",
       error: error.message,
@@ -320,6 +322,7 @@ exports.getProductDetails = async (req, res) => {
 // Get marketplace stats (seller and product counts by location)
 exports.getMarketplaceStats = async (req, res) => {
   const { lat, lng, max_distance } = req.query;
+
   logger.info("getMarketplaceStats - Request", { lat, lng, max_distance });
 
   if (!lat || !lng) {
@@ -362,9 +365,9 @@ exports.getMarketplaceStats = async (req, res) => {
           AND fsp.longitude BETWEEN $5 AND $6
         WHERE fp.is_available = true
         GROUP BY fp.farmer_id, fsp.latitude, fsp.longitude
-        
+
         UNION ALL
-        
+
         SELECT 
           rp.retailer_id as seller_id,
           'retail' as seller_type,
@@ -407,6 +410,7 @@ exports.getMarketplaceStats = async (req, res) => {
     ]);
 
     const stats = result.rows[0];
+
     logger.info("getMarketplaceStats - Success", {
       latitude,
       longitude,
@@ -414,18 +418,18 @@ exports.getMarketplaceStats = async (req, res) => {
       stats,
     });
 
-    res.json({
+    return res.json({
       success: true,
       stats: {
-        total_farm_products: parseInt(stats.total_farm_products || 0),
-        total_retail_products: parseInt(stats.total_retail_products || 0),
-        total_products: parseInt(stats.total_products || 0),
-        nearby_sellers: parseInt(stats.total_sellers || 0),
+        total_farm_products: parseInt(stats.total_farm_products || 0, 10),
+        total_retail_products: parseInt(stats.total_retail_products || 0, 10),
+        total_products: parseInt(stats.total_products || 0, 10),
+        nearby_sellers: parseInt(stats.total_sellers || 0, 10),
       },
     });
   } catch (error) {
     logger.error("getMarketplaceStats - Error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error fetching marketplace stats",
       error: error.message,
@@ -436,6 +440,7 @@ exports.getMarketplaceStats = async (req, res) => {
 // Search nearby sellers (farmers and retailers)
 exports.searchSellers = async (req, res) => {
   const { lat, lng, search, max_distance } = req.query;
+
   logger.info("searchSellers - Request", { lat, lng, search, max_distance });
 
   if (!lat || !lng) {
@@ -456,9 +461,9 @@ exports.searchSellers = async (req, res) => {
       longitude,
       maxDistance,
     );
+
     const params = [latitude, longitude, minLat, maxLat, minLng, maxLng];
 
-    // Build optional seller name search condition
     let searchCondition = "";
     if (search) {
       searchCondition = `AND seller_name ILIKE $7`;
@@ -496,9 +501,9 @@ exports.searchSellers = async (req, res) => {
         LEFT JOIN users_auth ua ON fp.farmer_id = ua.user_id
         WHERE fp.is_available = true
         GROUP BY fp.farmer_id, ud.name, ud.pic_url, ua.phone_number, fsp.latitude, fsp.longitude
-        
+
         UNION ALL
-        
+
         SELECT
           rp.retailer_id AS seller_id,
           r.shop_name AS seller_name,
@@ -542,14 +547,14 @@ exports.searchSellers = async (req, res) => {
       count: result.rowCount,
     });
 
-    res.json({
+    return res.json({
       success: true,
       sellers: result.rows,
       total: result.rowCount,
     });
   } catch (error) {
     logger.error("searchSellers - Error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error searching sellers",
       error: error.message,

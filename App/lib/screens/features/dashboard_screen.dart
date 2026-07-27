@@ -444,14 +444,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         backgroundColor: const Color(0xFFF4F8FC),
         iconColor: const Color(0xFF236C9E),
       ),
-      if (!isConsumer)
-        FeatureItem(
-          title: 'Marketplace',
-          icon: Icons.shopping_cart_rounded,
-          onTap: () => navigateWithOnlineCheck(const MarketplaceScreen()),
-          backgroundColor: const Color(0xFFFDF8F1),
-          iconColor: const Color(0xFFB6641B),
-        ),
+      FeatureItem(
+        title: 'Marketplace',
+        icon: Icons.shopping_cart_rounded,
+        onTap: () => navigateWithOnlineCheck(const MarketplaceScreen()),
+        backgroundColor: const Color(0xFFFDF8F1),
+        iconColor: const Color(0xFFB6641B),
+      ),
       if (!isConsumer)
         FeatureItem(
           title: 'Crop Care',

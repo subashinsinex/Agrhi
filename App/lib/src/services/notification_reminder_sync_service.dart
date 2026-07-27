@@ -1,4 +1,5 @@
-// notification_reminder_sync_service.dart
+// to check notification reminders are working correctly, run the following command in terminal to see if the alarms are set for the app
+// adb shell dumpsys alarm | findstr app.agrhi.com
 
 import 'package:flutter/foundation.dart';
 

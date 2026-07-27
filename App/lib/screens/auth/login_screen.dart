@@ -15,7 +15,7 @@ import '../../utils/constants.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/api_service.dart';
 import '../../src/services/farm_store_service.dart';
-import '../../src/database/database_helper.dart'; 
+import '../../src/database/database_helper.dart';
 import '../../src/services/connectivity_manager.dart';
 import 'forgot_password_screen.dart';
 
@@ -33,8 +33,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
+
+  static const Color primaryTextColor = Color(0xFF14332A);
+  static const Color secondaryTextColor = Color(0xB214332A);
+  static const Color hintTextColor = Color(0x8014332A);
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -74,6 +79,8 @@ class _LoginScreenState extends State<LoginScreen> {
       'Enter a valid phone number',
       'Password must be at least 6 characters',
       'Forgot Password?',
+      'Welcome back. Please enter your details.',
+      'Password is required',
     ], highPriority: true);
   }
 
@@ -84,7 +91,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// ✅ Fetch user profile from server
   Future<Map<String, dynamic>?> _fetchUserProfile(
     String accessToken,
     String userId,
@@ -106,27 +112,21 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// ✅ Store user profile in secure storage
   Future<void> _storeUserProfile(Map<String, dynamic> profileData) async {
     await _storage.write(key: 'user_profile', value: jsonEncode(profileData));
     debugPrint('💾 Profile data stored in secure storage');
   }
 
-  /// ✅ Download and save profile picture to local storage
   Future<void> _downloadAndSaveProfilePicture(
     String picUrl,
     String accessToken,
   ) async {
     try {
-      // Skip if no image or default image
       if (picUrl == 'no-image' || picUrl.isEmpty) {
         debugPrint('ℹ️ No profile picture to download');
         return;
       }
 
-      debugPrint('📥 Downloading profile picture: $picUrl');
-
-      // Construct full URL
       String fullUrl;
       if (picUrl.startsWith('http')) {
         fullUrl = picUrl;
@@ -135,9 +135,6 @@ class _LoginScreenState extends State<LoginScreen> {
         fullUrl = '$baseUrl$picUrl';
       }
 
-      debugPrint('🌐 Full URL: $fullUrl');
-
-      // Download image
       final response = await http
           .get(
             Uri.parse(fullUrl),
@@ -150,7 +147,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // Get app directory for storing images
       final directory = await getApplicationDocumentsDirectory();
       final profileDir = Directory('${directory.path}/profile_pictures');
 
@@ -158,33 +154,22 @@ class _LoginScreenState extends State<LoginScreen> {
         await profileDir.create(recursive: true);
       }
 
-      // Delete old profile pictures (keep only latest)
       await _deleteOldProfilePictures(profileDir);
 
-      // Generate local filename based on current timestamp
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final extension = picUrl.split('.').last.split('?').first;
       final localPath = '${profileDir.path}/profile_$timestamp.$extension';
 
-      // Save image to local file
       final file = File(localPath);
       await file.writeAsBytes(response.bodyBytes);
 
-      debugPrint('💾 Profile picture saved: $localPath');
-      debugPrint('📊 File size: ${await file.length()} bytes');
-
-      // Store local path and server URL in secure storage
       await _storage.write(key: 'profile_image_local_path', value: localPath);
       await _storage.write(key: 'profile_image_server_url', value: picUrl);
-
-      debugPrint('✅ Profile picture downloaded and saved successfully');
     } catch (e) {
       debugPrint('⚠️ Profile picture download failed: $e');
-      // Don't fail login if profile picture download fails
     }
   }
 
-  /// ✅ Delete old profile pictures to save space
   Future<void> _deleteOldProfilePictures(Directory profileDir) async {
     try {
       if (await profileDir.exists()) {
@@ -192,7 +177,6 @@ class _LoginScreenState extends State<LoginScreen> {
         for (var file in files) {
           if (file is File && file.path.contains('profile_')) {
             await file.delete();
-            debugPrint('🗑️ Deleted old profile picture: ${file.path}');
           }
         }
       }
@@ -201,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-Future<void> _handleLogin() async {
+  Future<void> _handleLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() => _isLoading = true);
@@ -271,8 +255,6 @@ Future<void> _handleLogin() async {
             final picUrl = profileData['pic_url'] as String?;
             if (picUrl != null && picUrl != 'no-image' && picUrl.isNotEmpty) {
               await _downloadAndSaveProfilePicture(picUrl, accessToken);
-            } else {
-              debugPrint('ℹ️ No profile picture available');
             }
           }
         }
@@ -344,8 +326,6 @@ Future<void> _handleLogin() async {
 
   Future<void> _checkAndStoreFarmerShopStatus() async {
     try {
-      debugPrint('🔍 Checking farmer shop place status...');
-
       final result = await FarmStoreService.getMyShopPlace();
 
       if (result['success'] == true && result['hasLocation'] == true) {
@@ -354,17 +334,15 @@ Future<void> _handleLogin() async {
           key: 'shop_place_data',
           value: jsonEncode(result['shopPlace']),
         );
-        debugPrint('✅ Farmer has shop place set');
       } else {
         await _storage.write(key: 'has_shop_place', value: 'false');
-        debugPrint('ℹ️ Farmer needs to set shop place');
       }
     } catch (e) {
       debugPrint('⚠️ Error checking shop place: $e');
       await _storage.write(key: 'has_shop_place', value: 'false');
     }
   }
-  
+
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -411,6 +389,48 @@ Future<void> _handleLogin() async {
     );
   }
 
+  InputDecoration _modernInputDecoration({
+    required String hintText,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: const TextStyle(
+        color: hintTextColor,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      prefixIcon: Icon(icon, color: secondaryTextColor, size: 20),
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.22),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.30), width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: AppColors.primaryGreen, width: 1.6),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: AppColors.errorColor, width: 1.2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: AppColors.errorColor, width: 1.5),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.18), width: 1),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -419,167 +439,221 @@ Future<void> _handleLogin() async {
       body: SafeArea(
         child: Stack(
           children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight,
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 24,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 430),
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.28),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                      child: Form(
-                        key: _formKey,
-                        autovalidateMode: AutovalidateMode.disabled,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            const SizedBox(height: 60),
-
-                            // Logo Section
-                            Column(
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: Column(
                               children: [
-                                CircleAvatar(
-                                  radius: 80,
-                                  child: ClipOval(
-                                    child: Image.asset(
-                                      'assets/images/logo.png',
-                                      fit: BoxFit.cover,
+                                Container(
+                                  width: 92,
+                                  height: 92,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.24),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.28),
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(14),
+                                    child: ClipOval(
+                                      child: Image.asset(
+                                        'assets/images/logo.png',
+                                        fit: BoxFit.cover,
+                                      ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 5),
-                                Text(
+                                const SizedBox(height: 16),
+                                const Text(
                                   'AGRHI',
                                   style: TextStyle(
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primaryGreen,
-                                    letterSpacing: 2,
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w800,
+                                    color: primaryTextColor,
+                                    letterSpacing: 1.4,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 6),
                                 const SmartReTranslator(
                                   text: 'Smart Farm Assistant',
                                   style: TextStyle(
-                                    fontSize: 16,
-                                    color: AppColors.textSecondary,
-                                    fontWeight: FontWeight.w500,
+                                    fontSize: 14,
+                                    color: secondaryTextColor,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
                             ),
-
-                            // Form Section
-                            Column(
-                              children: [
-                                _PhoneNumberField(
-                                  controller: _phoneController,
-                                  enabled: !_isLoading,
+                          ),
+                          const SizedBox(height: 28),
+                          const SmartReTranslator(
+                            text: 'Sign In',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: primaryTextColor,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const SmartReTranslator(
+                            text: 'Welcome back. Please enter your details.',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: secondaryTextColor,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _PhoneNumberField(
+                            controller: _phoneController,
+                            enabled: !_isLoading,
+                            decoration: _modernInputDecoration(
+                              hintText: 'Phone Number',
+                              icon: Icons.phone_rounded,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _PasswordField(
+                            controller: _passwordController,
+                            obscurePassword: _obscurePassword,
+                            enabled: !_isLoading,
+                            onToggleVisibility: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                            decoration: _modernInputDecoration(
+                              hintText: 'Password',
+                              icon: Icons.lock_rounded,
+                            ),
+                            onSubmit: _handleLogin,
+                          ),
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => Navigator.of(
+                                      context,
+                                    ).push(ForgotPasswordScreen.route()),
+                              style: TextButton.styleFrom(
+                                foregroundColor: primaryTextColor,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 6,
                                 ),
-                                const SizedBox(height: 16),
-                                _PasswordField(
-                                  controller: _passwordController,
-                                  obscurePassword: _obscurePassword,
-                                  enabled: !_isLoading,
-                                  onToggleVisibility: () {
-                                    setState(() {
-                                      _obscurePassword = !_obscurePassword;
-                                    });
-                                  },
+                              ),
+                              child: const SmartReTranslator(
+                                text: 'Forgot Password?',
+                                style: TextStyle(
+                                  color: primaryTextColor,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
                                 ),
-                                const SizedBox(height: 8),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed: _isLoading
-                                        ? null
-                                        : () => Navigator.of(
-                                            context,
-                                          ).push(ForgotPasswordScreen.route()),
-                                    child: const SmartReTranslator(
-                                      text: 'Forgot Password?',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _handleLogin,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primaryGreen,
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor: AppColors.primaryGreen
+                                    .withOpacity(0.55),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.4,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : const SmartReTranslator(
+                                      text: 'Sign In',
                                       style: TextStyle(
-                                        color: AppColors.primaryGreen,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
                                       ),
                                     ),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 56,
-                                  child: ElevatedButton(
-                                    onPressed: _isLoading ? null : _handleLogin,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.primaryGreen,
-                                      foregroundColor: Colors.white,
-                                      disabledBackgroundColor: AppColors
-                                          .primaryGreen
-                                          .withOpacity(0.6),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      elevation: 2,
-                                    ),
-                                    child: _isLoading
-                                        ? const SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2.5,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                    Colors.white,
-                                                  ),
-                                            ),
-                                          )
-                                        : const SmartReTranslator(
-                                            text: 'Sign In',
-                                            style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 1,
-                                            ),
-                                          ),
-                                  ),
-                                ),
-                              ],
                             ),
-
-                            // Sign Up Link
-                            GestureDetector(
+                          ),
+                          const SizedBox(height: 22),
+                          Center(
+                            child: GestureDetector(
                               onTap: _isLoading
                                   ? null
                                   : () => Routes.navigateToSignup(context),
                               child: RichText(
-                                text: TextSpan(
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 16,
+                                textAlign: TextAlign.center,
+                                text: const TextSpan(
+                                  style: TextStyle(
+                                    color: secondaryTextColor,
+                                    fontSize: 15,
                                   ),
                                   children: [
-                                    const WidgetSpan(
-                                      alignment: PlaceholderAlignment.baseline,
-                                      baseline: TextBaseline.alphabetic,
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.middle,
                                       child: SmartReTranslator(
                                         text: "Don't have an account?",
-                                        style: TextStyle(fontSize: 16),
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          color: secondaryTextColor,
+                                        ),
                                       ),
                                     ),
-                                    const TextSpan(text: ' '),
+                                    TextSpan(text: '  '),
                                     WidgetSpan(
-                                      alignment: PlaceholderAlignment.baseline,
-                                      baseline: TextBaseline.alphabetic,
+                                      alignment: PlaceholderAlignment.middle,
                                       child: SmartReTranslator(
                                         text: 'Sign Up',
                                         style: TextStyle(
-                                          color: AppColors.primaryGreen,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
+                                          color: primaryTextColor,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
                                         ),
                                       ),
                                     ),
@@ -587,32 +661,30 @@ Future<void> _handleLogin() async {
                                 ),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                );
-              },
+                ),
+              ),
             ),
 
-            // Language Switcher
             Positioned(
               top: 16,
               right: 16,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.primaryGreen,
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.shadowColor.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+              child: Material(
+                color: Colors.transparent,
+                elevation: 8,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.30),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.28)),
+                  ),
+                  child: const LanguageSwitcher(showAsIcon: true),
                 ),
-                child: const LanguageSwitcher(showAsIcon: true),
               ),
             ),
           ],
@@ -622,175 +694,90 @@ Future<void> _handleLogin() async {
   }
 }
 
-// ✅ Phone Number Field with label above
 class _PhoneNumberField extends StatelessWidget {
   final TextEditingController controller;
   final bool enabled;
+  final InputDecoration decoration;
 
-  const _PhoneNumberField({required this.controller, required this.enabled});
+  const _PhoneNumberField({
+    required this.controller,
+    required this.enabled,
+    required this.decoration,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: const SmartReTranslator(
-            text: 'Phone Number',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            prefixIcon: Icon(Icons.phone, color: AppColors.primaryGreen),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 1.5,
-              ),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 2,
-              ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-          keyboardType: TextInputType.phone,
-          validator: Validators.validatePhone,
-          enabled: enabled,
-        ),
-      ],
+    return TextFormField(
+      controller: controller,
+      keyboardType: TextInputType.phone,
+      textInputAction: TextInputAction.next,
+      validator: Validators.validatePhone,
+      enabled: enabled,
+      style: const TextStyle(
+        color: _LoginScreenState.primaryTextColor,
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
+      decoration: decoration,
     );
   }
 }
 
-// ✅ Password Field with label above
 class _PasswordField extends StatelessWidget {
   final TextEditingController controller;
   final bool obscurePassword;
   final bool enabled;
   final VoidCallback onToggleVisibility;
+  final InputDecoration decoration;
+  final Future<void> Function() onSubmit;
 
   const _PasswordField({
     required this.controller,
     required this.obscurePassword,
     required this.enabled,
     required this.onToggleVisibility,
+    required this.decoration,
+    required this.onSubmit,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: const SmartReTranslator(
-            text: 'Password',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
+    return TextFormField(
+      controller: controller,
+      obscureText: obscurePassword,
+      textInputAction: TextInputAction.done,
+      onFieldSubmitted: (_) {
+        if (enabled) {
+          onSubmit();
+        }
+      },
+      enabled: enabled,
+      style: const TextStyle(
+        color: _LoginScreenState.primaryTextColor,
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
+      validator: (value) {
+        if (value == null || value.trim().isEmpty) {
+          return 'Password is required';
+        }
+        if (value.trim().length < 4) {
+          return 'Password must be at least 4 characters';
+        }
+        return null;
+      },
+      decoration: decoration.copyWith(
+        suffixIcon: IconButton(
+          onPressed: onToggleVisibility,
+          icon: Icon(
+            obscurePassword
+                ? Icons.visibility_rounded
+                : Icons.visibility_off_rounded,
+            color: _LoginScreenState.secondaryTextColor,
+            size: 20,
           ),
         ),
-        TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            prefixIcon: Icon(Icons.lock, color: AppColors.primaryGreen),
-            suffixIcon: IconButton(
-              icon: Icon(
-                obscurePassword ? Icons.visibility : Icons.visibility_off,
-                color: AppColors.textSecondary,
-              ),
-              onPressed: onToggleVisibility,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey,
-                width: 1.5,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primaryGreen, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 1.5,
-              ),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.errorColor,
-                width: 2,
-              ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.cardBackgroundGrey.withOpacity(0.5),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-          obscureText: obscurePassword,
-          enabled: enabled,
-        ),
-      ],
+      ),
     );
   }
 }

@@ -83,20 +83,31 @@ class CropCareSyncService {
     try {
       debugPrint('🔄 Starting CropCare two-way sync...');
 
-      // ✅ Upload deletions FIRST, then other changes, then download
       final farmDeletionResult = await uploadPendingFarmDeletions(accessToken);
       final cropDeletionResult = await uploadPendingCropDeletions(accessToken);
       final farmUploadResult = await uploadPendingFarms(accessToken);
       final cropUploadResult = await uploadPendingCrops(accessToken);
 
-      // ✅ Upload inactive crop changes (reactivations)
       final reactivationResult = await uploadInactiveCropChanges(accessToken);
 
       final farmDownloadResult = await downloadServerFarms(accessToken);
       final cropDownloadResult = await downloadServerCrops(accessToken);
-
-      // ✅ Download crop history separately
       final historyDownloadResult = await downloadCropHistory(accessToken);
+
+      final autoDeactivatedCount = await _db.autoDeactivateExpiredCrops();
+
+      Map<String, dynamic> expiredCropUploadResult = {
+        'success': true,
+        'uploaded': 0,
+        'message': 'No expired crops to sync',
+      };
+
+      if (autoDeactivatedCount > 0) {
+        debugPrint(
+          '🌾 Auto-deactivated $autoDeactivatedCount expired crop(s), uploading changes...',
+        );
+        expiredCropUploadResult = await uploadPendingCrops(accessToken);
+      }
 
       final allSuccess =
           farmDeletionResult['success'] &&
@@ -106,7 +117,8 @@ class CropCareSyncService {
           reactivationResult['success'] &&
           farmDownloadResult['success'] &&
           cropDownloadResult['success'] &&
-          historyDownloadResult['success'];
+          historyDownloadResult['success'] &&
+          expiredCropUploadResult['success'];
 
       return {
         'success': allSuccess,
@@ -118,6 +130,8 @@ class CropCareSyncService {
         'farmDownload': farmDownloadResult,
         'cropDownload': cropDownloadResult,
         'historyDownload': historyDownloadResult,
+        'autoDeactivated': autoDeactivatedCount,
+        'expiredCropUpload': expiredCropUploadResult,
         'timestamp': DateTime.now().toIso8601String(),
       };
     } catch (e) {
@@ -129,7 +143,7 @@ class CropCareSyncService {
       };
     }
   }
-
+  
   // ==================== SOFT DELETE SYNC ====================
 
   /// Upload pending farm deletions to server
@@ -743,7 +757,7 @@ class CropCareSyncService {
             'harvestdate': crop['harvest_date'] ?? crop['harvestdate'],
             'fieldsize': crop['field_size'] ?? crop['fieldsize'],
             'soiltypeid': soilTypeId,
-            'status': crop['status'] ?? 'Completed',
+            'status': crop['status'] ?? 'Harvested',
             'isactive': 0,
             'createdat':
                 crop['created_at'] ??
@@ -1192,7 +1206,8 @@ class CropCareSyncService {
             'harvestdate': crop['harvest_date'] ?? crop['harvestdate'],
             'fieldsize': crop['field_size'] ?? crop['fieldsize'],
             'soiltypeid': soilTypeId,
-            'status': crop['status'] ?? 'Active',
+            'status':
+                crop['status'] ?? (isActive == 1 ? 'Growing' : 'Harvested'),
             'isactive': isActive,
             'createdat':
                 crop['created_at'] ??
