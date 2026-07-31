@@ -20,14 +20,14 @@ import {
   FaCheck,
 } from "react-icons/fa";
 import { axiosInstance } from "../api/login";
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
 /**
  * ------------------------------------------------------------------
  * CONSTANTS & CONFIGURATION
  * ------------------------------------------------------------------
  */
-const API_BASE = `http://${SERVER_IP}:${SERVER_PORT}/api/marketplace`;
+const API_BASE = `${SERVER_ADDR}/api/marketplace`;
 
 // Default coordinates (e.g., Chennai) to use if geolocation fails or is denied
 const DEFAULT_LOCATION = {
@@ -521,7 +521,7 @@ const Button = ({
 const getImageUrl = (imagePath) => {
   if (!imagePath) return "https://via.placeholder.com/150"; // Fallback
   if (imagePath.startsWith("http")) return imagePath; // Already a full URL
-  return `http://${SERVER_IP}:${SERVER_PORT}${imagePath}`;
+  return `${SERVER_ADDR}${imagePath}`;
 };
 
 // Product Details Modal

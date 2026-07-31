@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Lock, Eye, EyeOff, Check, AlertTriangle, Loader } from "lucide-react";
 import { axiosInstance } from "../api/login";
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
-const API_BASE_URL = `http://${SERVER_IP}:${SERVER_PORT}/api/forgot-password`;
+const API_BASE_URL = `${SERVER_ADDR}/api/forgot-password`;
 const VERIFY_TOKEN_URL = `${API_BASE_URL}/verify-token`;
 const RESET_PASSWORD_URL = `${API_BASE_URL}/reset`;
 

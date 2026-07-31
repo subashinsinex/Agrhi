@@ -1,8 +1,10 @@
 require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const requestIp = require("request-ip");
 const path = require("path");
+const { spawn } = require("child_process");
 
 const { asyncLocalStorage } = require("./db/database");
 const logger = require("./utils/logger");
@@ -11,12 +13,10 @@ const emailService = require("./utils/emailSender");
 
 const app = express();
 
-// Add at the top of server.js
-const { spawn } = require("child_process");
+const PYTHON_CMD = process.platform === "win32" ? "python" : "python3";
 
-// Auto-start Python embedding service
 const embeddingProcess = spawn(
-  "python",
+  PYTHON_CMD,
   [
     "-m",
     "uvicorn",
@@ -27,24 +27,43 @@ const embeddingProcess = spawn(
     "8001",
   ],
   {
-    cwd: path.join(__dirname, "services"), // points to Server/services/
-    stdio: "inherit", // shows Python logs in same terminal
+    cwd: path.join(__dirname, "services"),
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      HF_TOKEN: process.env.HF_TOKEN,
+    },
   },
 );
+
+embeddingProcess.on("spawn", () => {
+  console.log("[Embedding Service] Started on port 8001");
+});
 
 embeddingProcess.on("error", (err) => {
   console.error("[Embedding Service] Failed to start:", err.message);
 });
 
-console.log("[Embedding Service] Started on port 8001");
+embeddingProcess.on("exit", (code, signal) => {
+  console.log(
+    `[Embedding Service] Exited with code ${code ?? "null"} and signal ${signal ?? "null"}`,
+  );
+});
 
-// Trust proxy
+const shutdown = () => {
+  if (embeddingProcess && !embeddingProcess.killed) {
+    embeddingProcess.kill();
+  }
+  process.exit(0);
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
 app.set("trust proxy", true);
 
-// ALS context
 app.use((req, res, next) => asyncLocalStorage.run({ userId: null }, next));
 
-// Core middleware
 app.use(cors());
 app.use(express.json());
 app.use(requestIp.mw());
@@ -70,7 +89,7 @@ const productImageRoutes = require("./routes/productImageRoutes");
 const aiChatRoutes = require("./routes/aiChatRoutes");
 const communityRoutes = require("./routes/communityRoutes");
 
-// AI Chatbot route (before jwtChecker because it's /api/chatbot)
+// AI Chatbot route
 app.use("/api/chatbot", aiChatRoutes);
 
 app.use("/api/shop-images", shopImageRoutes);
@@ -93,7 +112,7 @@ app.use("/api/community", communityRoutes);
 
 // Static files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use("/models", express.static("models"));
+app.use("/models", express.static(path.join(__dirname, "models")));
 
 const PORT = process.env.PORT || 5000;
 

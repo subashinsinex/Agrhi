@@ -11,9 +11,9 @@ import {
   Sprout, // Added Sprout for thematic relevance
   Tractor, // Added Tractor if available, otherwise fallback to generic
 } from "lucide-react";
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
-const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/profile`;
+const apiBase = `${SERVER_ADDR}/api/profile`;
 
 // --- Thematic Sub-Component for Data ---
 const DetailCard = ({ Icon, label, value }) => (

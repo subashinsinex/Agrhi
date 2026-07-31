@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from "react";
 import { useNavigate } from "react-router-dom";
 
 /*
@@ -190,8 +196,8 @@ function Logo({ onNavClick }) {
       </div>
 
       <div className="logo-copy">
-        <span className="logo-name">CropLens</span>
-        <span className="logo-tag">Smart Agriculture for a Better Future</span>
+        <span className="logo-name">Farmlead</span>
+        <span className="logo-tag">Leading the Future of Agriculture.</span>
       </div>
     </a>
   );
@@ -380,6 +386,15 @@ export default function Home() {
     }
   }, []);
 
+  useLayoutEffect(() => {
+    const el = document.getElementById("home");
+    if (!el) return;
+
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    el.scrollIntoView({ behavior: "auto", block: "start" });
+    setActiveSection("home");
+  }, []);
+
   useEffect(() => {
     const sectionIds = ["home", "about", "features", "contact"];
     const sections = sectionIds
@@ -432,14 +447,14 @@ export default function Home() {
           scroll-behavior: smooth;
           margin: 0;
           padding: 0;
-          background: #ffffff;
+          background: #f3f2f2;
         }
 
         body {
           margin: 0;
           font-family: "Inter", Arial, sans-serif;
           color: var(--text);
-          background: #ffffff;
+          background: #f3f2f2;
           overflow-x: hidden;
           overscroll-behavior-y: none;
         }
@@ -463,8 +478,8 @@ export default function Home() {
         }
 
         .nav {
-          height: 82px;
-          background: #f3f2f2ef;
+        height: 82px;
+        background: #f3f2f2;
           border-bottom: 1px solid #dfe5dd;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
           position: sticky;
@@ -498,19 +513,25 @@ export default function Home() {
 
         .logo-mark {
           position: relative;
-          width: 59px;
+          width: 58px;
           height: 58px;
-          flex: 0 0 59px;
+          flex: 0 0 58px;
           display: flex;
           align-items: center;
           justify-content: center;
+          border-radius: 50%;
+          overflow: hidden;
+          background: #ffffff;
+          border: 1px solid #dfe5dd;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
         }
 
         .logo-img {
           width: 100%;
           height: 100%;
-          object-fit: contain;
+          object-fit: cover;
           display: block;
+          border-radius: 50%;
         }
 
         .logo-copy {
@@ -639,7 +660,7 @@ export default function Home() {
         }
 
         .hero-copy {
-          padding-top: 8px;
+          padding-top: 0px;
           min-width: 0;
         }
 
@@ -647,16 +668,16 @@ export default function Home() {
           margin: 0;
           color: var(--green-950);
           font-size: clamp(60px, 5.1vw, 78px);
-          line-height: 0.94;
+          line-height: 0.88;
           font-weight: 900;
           letter-spacing: 0;
         }
 
         .hero-title span {
           display: block;
-          margin-top: 8px;
+          margin-top: 0;
           font-size: clamp(34px, 2.55vw, 39px);
-          line-height: 1.05;
+          line-height: 1;
           font-weight: 800;
         }
 
@@ -1119,7 +1140,7 @@ export default function Home() {
         }
 
         .stats-inner {
-          width: min(1080px, calc(100% - 96px));
+          width: min(1080px, calc(100% - 96px)));
           margin: 0 auto;
           display: grid;
           grid-template-columns: repeat(4, 1fr);

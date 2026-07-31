@@ -27,7 +27,6 @@ const modules = [
   { to: "/diseases", label: "Disease & Remedies", icon: <Pill size={20} /> },
   { to: "/subsidies", label: "Subsidies", icon: <DollarSign size={20} /> },
   { to: "/farmcrop", label: "Farm Crop", icon: <Wheat size={20} /> },
-  { to: "/account", label: "Account", icon: <User size={20} /> },
   { to: "/reports", label: "Reports", icon: <BarChart2 size={20} /> },
   { to: "/retail-manager", label: "Retail Manager", icon: <Store size={20} /> },
   { to: "/feedback", label: "feedback", icon: <Lightbulb size={20} /> },
@@ -36,6 +35,7 @@ const modules = [
     label: "Marketplace",
     icon: <Store size={20} />,
   },
+  { to: "/account", label: "Account", icon: <User size={20} /> },
 ];
 
 // --- Sidebar Component ---

@@ -149,7 +149,7 @@ const LoginForm = () => {
             {/* Eye Icon SVG */}
             {showPassword ? (
               <svg
-                xmlns="http://www.w3.org/2000/svg"
+                xmlns="www.w3.org/2000/svg"
                 width="22"
                 height="22"
                 fill="none"
@@ -160,7 +160,7 @@ const LoginForm = () => {
               </svg>
             ) : (
               <svg
-                xmlns="http://www.w3.org/2000/svg"
+                xmlns="www.w3.org/2000/svg"
                 width="22"
                 height="22"
                 fill="none"

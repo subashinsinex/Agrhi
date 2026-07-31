@@ -18,6 +18,7 @@ class CachedTileProvider extends TileProvider {
   final CacheManager cacheManager;
 
   @override
+  // ignore: overridden_fields
   final Map<String, String> headers;
 
   CachedTileProvider({required this.cacheManager, this.headers = const {}});
@@ -153,16 +154,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _isGettingLocation = false;
-          _recomputeFilteredDataAndMarkers();
         });
+        _recomputeFilteredDataAndMarkers();
       }
       return;
     }
 
     try {
-      setState(() {
-        _locationStatusMessage = 'Using last known location...';
-      });
+      if (mounted) {
+        setState(() {
+          _locationStatusMessage = 'Using last known location...';
+        });
+      }
 
       final lastKnown = await Geolocator.getLastKnownPosition();
 
@@ -313,21 +316,51 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       if (response.isSuccess && response.data != null) {
         final List<dynamic> data = response.data is List ? response.data : [];
 
-        final locations = data
-            .map((json) => LocationData.fromRetailerJson(json))
-            .whereType<LocationData>()
-            .where((loc) => loc.hasValidCoordinates())
-            .toList();
+        final List<LocationData> parsedLocations = [];
+        int invalidCount = 0;
+
+        for (int i = 0; i < data.length; i++) {
+          final item = data[i];
+
+          try {
+            if (item is! Map) {
+              invalidCount++;
+              debugPrint(
+                'Skipping store at index $i: item is not a valid JSON object',
+              );
+              continue;
+            }
+
+            final json = Map<String, dynamic>.from(item);
+            final location = LocationData.tryFromRetailerJson(json);
+
+            if (location != null && location.hasValidCoordinates()) {
+              parsedLocations.add(location);
+            } else {
+              invalidCount++;
+              debugPrint(
+                'Skipping store at index $i due to invalid coordinates: $json',
+              );
+            }
+          } catch (e) {
+            invalidCount++;
+            debugPrint('Skipping store at index $i due to parse error: $e');
+          }
+        }
 
         if (!mounted) return;
 
         setState(() {
-          _locations = locations;
-          _recomputeFilteredDataAndMarkers();
+          _locations = parsedLocations;
           _isLoadingLocations = false;
+          _storeLoadError = null;
         });
 
-        debugPrint('✅ Loaded ${locations.length} store locations');
+        _recomputeFilteredDataAndMarkers();
+
+        debugPrint(
+          '✅ Loaded ${parsedLocations.length} store locations, skipped $invalidCount invalid records',
+        );
       } else {
         if (!mounted) return;
         setState(() {
@@ -354,8 +387,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     setState(() {
       _currentPosition = position;
-      _recomputeFilteredDataAndMarkers();
     });
+
+    _recomputeFilteredDataAndMarkers();
 
     if (_isMapReady && moveMap) {
       _mapController.move(position, _currentZoom);
@@ -365,6 +399,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void _recomputeFilteredDataAndMarkers() {
     _filteredEntries = _computeFilteredEntries();
     _storeMarkers = _buildLocationMarkers(_filteredEntries);
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   List<_LocationDistanceEntry> _computeFilteredEntries() {
@@ -639,9 +677,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 setModalState(() {
                                   _distanceFilter = newDistance;
                                 });
-                                setState(() {
-                                  _recomputeFilteredDataAndMarkers();
-                                });
+                                _recomputeFilteredDataAndMarkers();
                               },
                             ),
                           ),
@@ -672,10 +708,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   TextButton(
                                     onPressed: () {
                                       setModalState(() => _distanceFilter = 50);
-                                      setState(
-                                        () =>
-                                            _recomputeFilteredDataAndMarkers(),
-                                      );
+                                      _recomputeFilteredDataAndMarkers();
                                     },
                                     child: const Text(
                                       'Increase distance filter',
@@ -1330,9 +1363,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     }
 
                     if (hasGesture) {
-                      setState(
-                        () => _currentZoom = position.zoom ?? _currentZoom,
-                      );
+                      setState(() => _currentZoom = position.zoom);
                     }
                   },
                 ),
@@ -1577,12 +1608,12 @@ class LocationData {
     this.address,
   });
 
-  factory LocationData.fromRetailerJson(Map<String, dynamic> json) {
+  static LocationData? tryFromRetailerJson(Map<String, dynamic> json) {
     final latitude = _parseCoordinate(json['latitude'], isLatitude: true);
     final longitude = _parseCoordinate(json['longitude'], isLatitude: false);
 
     if (latitude == null || longitude == null) {
-      throw const FormatException('Invalid coordinates');
+      return null;
     }
 
     return LocationData(
@@ -1598,16 +1629,18 @@ class LocationData {
   static double? _parseCoordinate(dynamic value, {required bool isLatitude}) {
     if (value == null) return null;
 
-    final parsed = switch (value) {
+    final double? parsed = switch (value) {
       double v => v,
       int v => v.toDouble(),
-      String v => double.tryParse(v),
+      String v => double.tryParse(v.trim()),
       _ => null,
     };
 
     if (parsed == null) return null;
     if (isLatitude && (parsed < -90 || parsed > 90)) return null;
     if (!isLatitude && (parsed < -180 || parsed > 180)) return null;
+
+    // Keep this if backend uses 0 or 0.0 as unset coordinates.
     if (parsed == 0.0) return null;
 
     return parsed;

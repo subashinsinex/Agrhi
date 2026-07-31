@@ -17,9 +17,9 @@ import {
   RefreshCw,
   Calendar,
 } from "lucide-react";
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
-const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/feedback`;
+const apiBase = `${SERVER_ADDR}/api/feedback`;
 const STATUS_OPTIONS = ["not_viewed", "viewed", "responsed", "solved"];
 
 // --- AGRICULTURE THEME PALETTE ---

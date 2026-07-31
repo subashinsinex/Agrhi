@@ -3,9 +3,9 @@ import { axiosInstance } from "../api/login";
 import { Search, Plus, Trash2, Edit, ExternalLink, MapPin } from "lucide-react";
 
 // NOTE: This constant is assumed to be defined externally, keeping it here for context.
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
-const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/subsidies`;
+const apiBase = `${SERVER_ADDR}/api/subsidies`;
 
 // --- State mapping logic is now handled by the backend's JOIN query ---
 

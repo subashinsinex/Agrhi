@@ -27,10 +27,10 @@ import {
   //MapPin,
   Clock,
 } from "lucide-react";
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
 // --- Constants & Helper Configs ---
-const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/diseaseRemedies`;
+const apiBase = `${SERVER_ADDR}/api/diseaseRemedies`;
 
 /**
  * AGRHI THEME CONFIGURATION
@@ -177,7 +177,7 @@ const Report = () => {
 
   // --- Interaction Handlers ---
   const handleCopyLink = (url) => {
-    const fullUrl = `http://${SERVER_IP}:${SERVER_PORT}${url}`;
+    const fullUrl = `${SERVER_ADDR}${url}`;
     navigator.clipboard.writeText(fullUrl).then(() => {
       showToast("🔗 Analysis link copied to clipboard!");
     });
@@ -706,7 +706,7 @@ const Report = () => {
               <div className="report-card" key={`${report.id}-${index}`}>
                 <div className="image-fixed-container">
                   <img
-                    src={`http://${SERVER_IP}:${SERVER_PORT}${report.image_url}`}
+                    src={`${SERVER_ADDR}${report.image_url}`}
                     alt="Plant View"
                     onError={(e) => {
                       e.target.src =
@@ -863,7 +863,7 @@ const Report = () => {
 
             <div className="modal-side-image">
               <img
-                src={`http://${SERVER_IP}:${SERVER_PORT}${selectedReport.image_url}`}
+                src={`${SERVER_ADDR}${selectedReport.image_url}`}
                 alt="Large Analysis"
               />
               <div

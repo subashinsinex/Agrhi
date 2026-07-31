@@ -33,10 +33,10 @@ import {
   Database,
   UserPlus,
 } from "lucide-react";
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
-const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/retail`;
-const imageUploadBase = `http://${SERVER_IP}:${SERVER_PORT}/api`;
+const apiBase = `${SERVER_ADDR}/api/retail`;
+const imageUploadBase = `${SERVER_ADDR}/api`;
 
 const businessTypeOptions = [
   { value: "fertilizer", label: "Fertilizer" },
@@ -518,7 +518,7 @@ const RetailManager = ({ isSidebarOpen }) => {
     setIsAdminFormVisible(false);
     if (r.shop_image_url) {
       setShopImagePreview(
-        `http://${SERVER_IP}:${SERVER_PORT}${r.shop_image_url}`,
+        `${SERVER_ADDR}${r.shop_image_url}`,
       );
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -684,7 +684,7 @@ const RetailManager = ({ isSidebarOpen }) => {
     setIsProductEdit(true);
     if (p.product_image_url) {
       setProductImagePreview(
-        `http://${SERVER_IP}:${SERVER_PORT}${p.product_image_url}`,
+        `${SERVER_ADDR}${p.product_image_url}`,
       );
     }
   };

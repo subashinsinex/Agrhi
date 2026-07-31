@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { axiosInstance } from "../api/login";
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 import {
   Plus,
   Zap,
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 // API Base configuration
-const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/farmcrop`;
+const apiBase = `${SERVER_ADDR}/api/farmcrop`;
 
 const Master = ({ isSidebarOpen }) => {
   // --- STATE MANAGEMENT ---

@@ -12,7 +12,7 @@ import {
   CheckCircle,
   AlertTriangle,
 } from "lucide-react";
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
 // --- CSS String (Refactored to New 'userManage' Design with Primary Color #4F46E5) ---
 const newComponentStyles = `
@@ -565,8 +565,8 @@ const newComponentStyles = `
 // --- End CSS String ---
 
 // API endpoints
-const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/diseaseRemedies`;
-const plantApiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/farmcrop`;
+const apiBase = `${SERVER_ADDR}/api/diseaseRemedies`;
+const plantApiBase = `${SERVER_ADDR}/api/farmcrop`;
 
 // Utility component for status messages
 const StatusMessage = ({ msg, type }) => {

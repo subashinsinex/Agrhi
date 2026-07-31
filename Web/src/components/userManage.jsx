@@ -28,7 +28,7 @@ import {
   CloudSun,
 } from "lucide-react";
 
-import { SERVER_IP, SERVER_PORT } from "../constant";
+import { SERVER_ADDR } from "../constant";
 
 // --- CONFIGURATION & THEME HELPERS ---
 
@@ -75,7 +75,7 @@ const getCategoryDetails = (id) => {
   );
 };
 
-const apiBase = `http://${SERVER_IP}:${SERVER_PORT}/api/users`;
+const apiBase = `${SERVER_ADDR}/api/users`;
 
 const UserManage = ({ isSidebarOpen, toggleSidebar }) => {
   // State Management
