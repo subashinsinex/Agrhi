@@ -904,14 +904,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                               },
                             ),
                     ),
+                    const SizedBox(height: 10),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
-                      child: Transform.translate(
-                        offset: const Offset(0, -12),
-                        child: showDashboardSkeleton
-                            ? buildFeaturesSkeleton()
-                            : buildModernFeatureBoard(currentLanguageCode),
-                      ),
+                      child: showDashboardSkeleton
+                          ? buildFeaturesSkeleton()
+                          : buildModernFeatureBoard(currentLanguageCode),
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -932,7 +930,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           '$currentLanguageCode${userData?['category'] ?? 'none'}$featuresRefreshKey',
         ),
         features: buildFeatures(),
-        crossAxisCount: 3,
         childAspectRatio: 1.02,
         spacing: 10,
       ),

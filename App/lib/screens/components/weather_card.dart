@@ -72,29 +72,31 @@ class WeatherCardState extends State<WeatherCard>
     }
   }
 
-  Future<void> refreshWeather({
+Future<void> refreshWeather({
     bool forceRefresh = false,
     bool showLoaderOnlyIfEmpty = true,
   }) async {
-    if (isRefreshing || !widget.useDeviceLocation) return;
+    if (!mounted || isRefreshing || !widget.useDeviceLocation) return;
 
     final shouldShowFallbackState = showLoaderOnlyIfEmpty
         ? !hasCachedData
         : true;
 
+    setState(() => isRefreshing = true);
+
     if (mounted) {
-      setState(() => isRefreshing = true);
+      _rotateController.repeat();
     }
-    _rotateController.repeat();
 
     try {
       final cached = await _getCachedWeather();
 
+      if (!mounted) return;
+
       if (!forceRefresh && cached != null) {
         final age = DateTime.now().difference(cached.updatedAt);
-        if (age <= _cacheMaxAge) {
-          if (!mounted) return;
 
+        if (age <= _cacheMaxAge) {
           setState(() {
             hasCachedData = true;
             locationName = cached.locationName;
@@ -109,16 +111,21 @@ class WeatherCardState extends State<WeatherCard>
 
       final position = await _getSafePosition();
 
+      if (!mounted) return;
+
       final weatherFuture = _fetchWeather(
         position.latitude,
         position.longitude,
       );
+
       final locationFuture = _resolveLocationName(
         position.latitude,
         position.longitude,
       );
 
       final results = await Future.wait([weatherFuture, locationFuture]);
+
+      if (!mounted) return;
 
       final weather = results[0] as _WeatherData;
       final resolvedLocation = results[1] as String;
@@ -156,14 +163,15 @@ class WeatherCardState extends State<WeatherCard>
         });
       }
     } finally {
+      if (!mounted) return;
+
       _rotateController.stop();
       _rotateController.reset();
-      if (mounted) {
-        setState(() => isRefreshing = false);
-      }
+
+      setState(() => isRefreshing = false);
     }
   }
-
+  
   Future<void> _loadCachedWeather() async {
     try {
       final cached = await _getCachedWeather();

@@ -12,7 +12,7 @@ class AboutScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -520,16 +520,16 @@ class AboutScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: AppColors.primaryGreen,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'About Us',
           style: TextStyle(
-            color: Colors.white,
+            color: Colors.black,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
@@ -570,7 +570,7 @@ class AboutScreen extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
-        color: AppColors.primaryGreen,
+        color: Colors.transparent,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(30),
           bottomRight: Radius.circular(30),
@@ -583,7 +583,7 @@ class AboutScreen extends StatelessWidget {
             width: 100,
             height: 100,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Colors.black,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 4),
               boxShadow: [
@@ -601,7 +601,7 @@ class AboutScreen extends StatelessWidget {
           const Text(
             'AGRHI',
             style: TextStyle(
-              color: Colors.white,
+              color: Colors.black,
               fontSize: 28,
               fontWeight: FontWeight.bold,
               letterSpacing: 2,
@@ -610,7 +610,7 @@ class AboutScreen extends StatelessWidget {
           const Text(
             'Smart Farm Assistant',
             style: TextStyle(
-              color: Colors.white70,
+              color: Colors.black54,
               fontSize: 16,
               fontWeight: FontWeight.w400,
             ),

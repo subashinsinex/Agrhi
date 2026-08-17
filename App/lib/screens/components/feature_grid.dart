@@ -4,38 +4,54 @@ import '../shared/smart_retranslator.dart';
 
 class FeatureGrid extends StatelessWidget {
   final List<FeatureItem> features;
-  final int crossAxisCount;
   final double childAspectRatio;
   final double spacing;
 
   const FeatureGrid({
     super.key,
     required this.features,
-    this.crossAxisCount = 3,
-    this.childAspectRatio = 0.96,
+    this.childAspectRatio = 1.02,
     this.spacing = 10.0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: features.length,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: spacing,
-        mainAxisSpacing: spacing,
-        childAspectRatio: childAspectRatio,
-      ),
-      itemBuilder: (context, index) {
-        final feature = features[index];
-        return FeatureCard(
-          title: feature.title,
-          icon: feature.icon,
-          onTap: feature.onTap,
-          backgroundColor: feature.backgroundColor,
-          iconColor: feature.iconColor,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+
+        final int crossAxisCount;
+
+        if (width < 500) {
+          crossAxisCount = 3;
+        } else if (width < 800) {
+          crossAxisCount = 4;
+        } else {
+          crossAxisCount = 5;
+        }
+
+        return GridView.builder(
+          padding: EdgeInsets.zero,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: features.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: spacing,
+            mainAxisSpacing: spacing,
+            childAspectRatio: childAspectRatio,
+          ),
+          itemBuilder: (context, index) {
+            final feature = features[index];
+
+            return FeatureCard(
+              title: feature.title,
+              icon: feature.icon,
+              onTap: feature.onTap,
+              backgroundColor: feature.backgroundColor,
+              iconColor: feature.iconColor,
+            );
+          },
         );
       },
     );

@@ -120,6 +120,17 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
           .where((crop) => crop['isactive'] == 0)
           .toList();
 
+      inactiveCrops.sort((a, b) {
+        final dateA = DateTime.tryParse(a['harvestdate']?.toString() ?? '');
+        final dateB = DateTime.tryParse(b['harvestdate']?.toString() ?? '');
+
+        if (dateA == null && dateB == null) return 0;
+        if (dateA == null) return 1;
+        if (dateB == null) return -1;
+
+        return dateB.compareTo(dateA);
+      });
+
       setState(() {
         _inactiveCrops = inactiveCrops;
         _isLoading = false;
@@ -999,14 +1010,14 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
   }) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white, size: 28),
+        Icon(icon, color: Colors.black, size: 28),
         const SizedBox(height: 8),
         Text(
           value,
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: Colors.black,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -1016,7 +1027,7 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
           text: label,
           style: TextStyle(
             fontSize: 11,
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.black.withOpacity(0.9),
             fontWeight: FontWeight.w500,
           ),
           maxLines: 1,

@@ -652,7 +652,7 @@ const Report = () => {
           {
             label: "Critical risk",
             val: reports.filter((r) =>
-              r.disease_name?.toLowerCase().includes("rust")
+              r.disease_name?.toLowerCase().includes("rust"),
             ).length,
             icon: <AlertCircle />,
             color: THEME.error,
@@ -706,7 +706,7 @@ const Report = () => {
               <div className="report-card" key={`${report.id}-${index}`}>
                 <div className="image-fixed-container">
                   <img
-                    src={`${SERVER_ADDR}${report.image_url}`}
+                    src={`${SERVER_ADDR}${report.image_url.replace(/^\/+/, "")}`}
                     alt="Plant View"
                     onError={(e) => {
                       e.target.src =
@@ -790,7 +790,7 @@ const Report = () => {
                       <Clock size={12} />
                       <span style={{ fontSize: "0.75rem" }}>
                         {new Date(
-                          report.created_at || Date.now()
+                          report.created_at || Date.now(),
                         ).toLocaleDateString()}
                       </span>
                     </div>
@@ -863,7 +863,7 @@ const Report = () => {
 
             <div className="modal-side-image">
               <img
-                src={`${SERVER_ADDR}${selectedReport.image_url}`}
+                src={`${SERVER_ADDR}${selectedReport.image_url.replace(/^\/+/, "")}`}
                 alt="Large Analysis"
               />
               <div
@@ -1044,7 +1044,7 @@ const Report = () => {
                     <Calendar size={18} />
                     <span style={{ fontSize: "1.1rem", fontWeight: 600 }}>
                       {new Date(
-                        selectedReport.created_at || Date.now()
+                        selectedReport.created_at || Date.now(),
                       ).toLocaleString()}
                     </span>
                   </div>

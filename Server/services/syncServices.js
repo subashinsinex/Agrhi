@@ -1,110 +1,152 @@
-const pool = require("../db/database");
+const { basePool } = require("../db/database");
 const { v4: uuidv4 } = require("uuid");
 const logger = require("../utils/logger");
 
 // Generate unique UUID for any table
 async function generateUniqueId(client, tableName, idColumn) {
   logger.info("Generating unique ID", { tableName, idColumn });
+
   let id, exists;
+
   do {
     id = uuidv4();
+
     const check = await client.query(
       `SELECT 1 FROM ${tableName} WHERE ${idColumn} = $1`,
       [id],
     );
+
     exists = check.rowCount > 0;
   } while (exists);
+
   logger.info("Generated unique ID", id);
+
   return id;
 }
 
 // Batch upload disease analyses from mobile app
 async function batchUploadAnalyses(userId, analyses) {
   const uploadedIds = [];
+  let client = null;
+
   logger.info("Starting batch upload analyses", {
     userId,
     analysesCount: analyses.length,
   });
 
   try {
-    const client = await pool.connect();
+    client = await basePool.connect();
+
     await client.query("BEGIN");
 
-    try {
-      for (const analysis of analyses) {
-        // Validate required fields
-        if (
-          !analysis.id ||
-          !analysis.user_id ||
-          !analysis.plant_id ||
-          !analysis.disease_id ||
-          analysis.confidence === undefined
-        ) {
-          logger.error("Invalid analysis data", analysis);
-          throw new Error(`Invalid analysis data: ${JSON.stringify(analysis)}`);
-        }
+    for (const analysis of analyses) {
+      // Validate required fields
+      if (
+        !analysis.id ||
+        !analysis.user_id ||
+        !analysis.plant_id ||
+        !analysis.disease_id ||
+        analysis.confidence === undefined
+      ) {
+        logger.error("Invalid analysis data", analysis);
 
-        // Create image placeholder if image_id is provided
-        if (analysis.image_id) {
-          logger.info("Creating image placeholder", analysis.image_id);
-          const existingImage = await client.query(
-            "SELECT image_id FROM images WHERE image_id = $1",
-            [analysis.image_id],
-          );
-
-          if (existingImage.rows.length === 0) {
-            await client.query(
-              `INSERT INTO images (image_id, image_url) 
-               VALUES ($1, $2)`,
-              [analysis.image_id, "/uploads/images/pending"],
-            );
-            logger.info("Image placeholder created", analysis.image_id);
-          } else {
-            logger.info("Image already exists", analysis.image_id);
-          }
-        }
-
-        // Insert/update analysis (upsert)
-        await client.query(
-          `INSERT INTO disease_analysis_results 
-          (id, user_id, plant_id, image_id, disease_id, confidence, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-          ON CONFLICT (id) DO UPDATE SET
-            confidence = EXCLUDED.confidence,
-            disease_id = EXCLUDED.disease_id`,
-          [
-            analysis.id,
-            analysis.user_id,
-            analysis.plant_id,
-            analysis.image_id,
-            analysis.disease_id,
-            analysis.confidence,
-            analysis.created_at || new Date().toISOString(),
-          ],
-        );
-
-        uploadedIds.push(analysis.id);
+        throw new Error(`Invalid analysis data: ${JSON.stringify(analysis)}`);
       }
 
-      await client.query("COMMIT");
-      logger.info("Batch upload completed", {
-        userId,
-        uploadedCount: uploadedIds.length,
-        uploadedIds,
-      });
+      // Create image placeholder if image_id is provided
+      if (analysis.image_id) {
+        logger.info("Creating image placeholder", {
+          imageId: analysis.image_id,
+        });
 
-      return {
-        success: true,
-        uploaded_ids: uploadedIds,
-        count: uploadedIds.length,
-      };
-    } finally {
+        const existingImage = await client.query(
+          "SELECT image_id FROM images WHERE image_id = $1",
+          [analysis.image_id],
+        );
+
+        if (existingImage.rows.length === 0) {
+          await client.query(
+            `INSERT INTO images (image_id, image_url)
+             VALUES ($1, $2)`,
+            [analysis.image_id, "/uploads/images/pending"],
+          );
+
+          logger.info("Image placeholder created", {
+            imageId: analysis.image_id,
+          });
+        } else {
+          logger.info("Image already exists", {
+            imageId: analysis.image_id,
+          });
+        }
+      }
+
+      // Insert/update analysis
+      await client.query(
+        `INSERT INTO disease_analysis_results
+        (
+          id,
+          user_id,
+          plant_id,
+          image_id,
+          disease_id,
+          confidence,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (id) DO UPDATE SET
+          confidence = EXCLUDED.confidence,
+          disease_id = EXCLUDED.disease_id`,
+        [
+          analysis.id,
+          analysis.user_id,
+          analysis.plant_id,
+          analysis.image_id || null,
+          analysis.disease_id,
+          analysis.confidence,
+          analysis.created_at || new Date().toISOString(),
+        ],
+      );
+
+      uploadedIds.push(analysis.id);
+    }
+
+    await client.query("COMMIT");
+
+    logger.info("Batch upload completed", {
+      userId,
+      uploadedCount: uploadedIds.length,
+      uploadedIds,
+    });
+
+    return {
+      success: true,
+      uploaded_ids: uploadedIds,
+      count: uploadedIds.length,
+    };
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        logger.error("Rollback failed", {
+          userId,
+          rollbackError: rollbackError.message,
+        });
+      }
+    }
+
+    logger.error("Batch upload transaction error", {
+      userId,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    throw error;
+  } finally {
+    if (client) {
       client.release();
     }
-  } catch (error) {
-    logger.error("Batch upload transaction error", { userId, error });
-    if (client) await client.query("ROLLBACK");
-    throw error;
   }
 }
 
@@ -131,6 +173,7 @@ async function getAnalysisChanges(userId, since = null) {
       WHERE dar.user_id = $1 AND dar.created_at > $2
       ORDER BY dar.created_at DESC
     `;
+
     params = [userId, since];
   } else {
     query = `
@@ -148,10 +191,12 @@ async function getAnalysisChanges(userId, since = null) {
       WHERE dar.user_id = $1
       ORDER BY dar.created_at DESC
     `;
+
     params = [userId];
   }
 
-  const result = await pool.query(query, params);
+  const result = await basePool.query(query, params);
+
   logger.info("Fetched analysis changes", {
     userId,
     count: result.rows.length,
@@ -165,9 +210,12 @@ async function getAnalysisChanges(userId, since = null) {
 
 // Save uploaded image metadata
 async function saveImageMetadata(imageId, imageUrl) {
-  logger.info("Saving image metadata", { imageId, imageUrl });
+  logger.info("Saving image metadata", {
+    imageId,
+    imageUrl,
+  });
 
-  await pool.query(
+  await basePool.query(
     `INSERT INTO images (image_id, image_url)
      VALUES ($1, $2)
      ON CONFLICT (image_id) DO UPDATE SET
@@ -175,7 +223,9 @@ async function saveImageMetadata(imageId, imageUrl) {
     [imageId, imageUrl],
   );
 
-  logger.info("Image metadata saved", { imageId });
+  logger.info("Image metadata saved", {
+    imageId,
+  });
 }
 
 module.exports = {
