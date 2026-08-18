@@ -601,25 +601,16 @@ class _DashboardScreenState extends State<DashboardScreen>
       await storage.deleteAll();
       await RetailService.clearCache();
 
-      final db = await DatabaseHelper.instance.database;
       await RemindersManager.instance.clearAllNotificationsOnLogout();
       await NotificationService.debugPendingNotifications();
 
-      await db.transaction((txn) async {
-        await txn.delete('diseaseanalysisresults');
-        await txn.delete('cropreminders');
-        await txn.delete('farmsoiltypes');
-        await txn.delete('farmirrigations');
-        await txn.delete('farmwatersources');
-        await txn.delete('images');
-        await txn.delete('usercrops');
-        await txn.delete('farms');
-      });
+      await DatabaseHelper.instance.resetDatabase();
 
       await deleteDirectoryIfExists(
         await getApplicationDocumentsDirectory(),
         'diseaseimages',
       );
+
       await deleteDirectoryIfExists(
         await getApplicationSupportDirectory(),
         'diseaseimages',

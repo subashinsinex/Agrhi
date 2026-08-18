@@ -1,8 +1,8 @@
-// lib/screens/profile/profile_screen.dart
-
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
+import 'package:crop_image/crop_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
@@ -62,6 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+
     _nameCtrl = TextEditingController();
     _emailCtrl = TextEditingController();
     _addressCtrl = TextEditingController();
@@ -82,14 +83,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _addressCtrl.dispose();
     _pincodeCtrl.dispose();
     _dobCtrl.dispose();
+
     super.dispose();
   }
 
   Future<void> _checkPendingUpdates() async {
     final count = await SyncService.instance.getPendingProfileUpdatesCount();
+
     if (!mounted) return;
 
-    setState(() => _pendingProfileUpdatesCount = count);
+    setState(() {
+      _pendingProfileUpdatesCount = count;
+    });
 
     if (count > 0) {
       _triggerProfileSync();
@@ -103,10 +108,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     if (!mounted) return;
-    setState(() => _isSyncing = true);
+
+    setState(() {
+      _isSyncing = true;
+    });
 
     try {
       final accessToken = await _storage.read(key: 'access_token');
+
       if (accessToken != null) {
         final result = await SyncService.instance.syncAllProfileUpdates(
           accessToken,
@@ -126,20 +135,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       debugPrint('❌ Profile sync error: $e');
     } finally {
       if (mounted) {
-        setState(() => _isSyncing = false);
+        setState(() {
+          _isSyncing = false;
+        });
       }
     }
   }
 
   Future<void> _loadUserProfile() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
       await _reloadUserProfileQuietly();
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -156,10 +172,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
 
       String formattedDob = '';
+
       final dobValue = profileData['dob'];
+
       if (dobValue != null && dobValue.toString().isNotEmpty) {
         try {
           final dobDate = DateTime.parse(dobValue.toString());
+
           formattedDob = DateFormat('dd MMM yyyy').format(dobDate);
         } catch (_) {
           formattedDob = dobValue.toString();
@@ -188,6 +207,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await _loadProfilePicture();
     } catch (e) {
       debugPrint('❌ Error loading profile from storage: $e');
+
       _showError('Failed to load profile');
     }
   }
@@ -203,21 +223,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _profileImageKey = UniqueKey();
           });
         }
+
         return;
       }
 
       final file = File(localPath);
+
       if (await file.exists()) {
         if (_profileImagePath != null) {
           try {
-            FileImage(File(_profileImagePath!)).evict();
+            await FileImage(File(_profileImagePath!)).evict();
           } catch (e) {
             debugPrint('⚠️ Failed to evict old image cache: $e');
           }
         }
 
         try {
-          FileImage(file).evict();
+          await FileImage(file).evict();
         } catch (e) {
           debugPrint('⚠️ Failed to evict new image cache: $e');
         }
@@ -230,6 +252,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       } else {
         await _storage.delete(key: 'profile_image_local_path');
+
         if (mounted) {
           setState(() {
             _profileImagePath = null;
@@ -247,109 +270,111 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(20),
-        child: Container(
-          constraints: const BoxConstraints(maxHeight: 600),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(20),
-                    ),
-                    child: InteractiveViewer(
-                      minScale: 0.5,
-                      maxScale: 4.0,
-                      child: Image.file(
-                        File(_profileImagePath!),
-                        key: UniqueKey(),
-                        width: double.infinity,
-                        height: 400,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black.withOpacity(0.5),
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(20),
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 600),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
                   children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _showProfilePictureOptions();
-                        },
-                        icon: const Icon(Icons.edit, size: 20),
-                        label: const SmartReTranslator(
-                          text: 'Change',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                      child: InteractiveViewer(
+                        minScale: 0.5,
+                        maxScale: 4.0,
+                        child: Image.file(
+                          File(_profileImagePath!),
+                          key: UniqueKey(),
+                          width: double.infinity,
+                          height: 400,
+                          fit: BoxFit.cover,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _removeProfilePicture();
-                        },
-                        icon: const Icon(Icons.delete, size: 20),
-                        label: const SmartReTranslator(
-                          text: 'Remove',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withOpacity(0.5),
                         ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.errorColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
+                        onPressed: () => Navigator.pop(context),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showProfilePictureOptions();
+                          },
+                          icon: const Icon(Icons.edit, size: 20),
+                          label: const SmartReTranslator(
+                            text: 'Change',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _removeProfilePicture();
+                          },
+                          icon: const Icon(Icons.delete, size: 20),
+                          label: const SmartReTranslator(
+                            text: 'Remove',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.errorColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -358,78 +383,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 42,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 14),
-                decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(20),
+      builder: (context) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
                 ),
-              ),
-              const SmartReTranslator(
-                text: 'Profile Photo',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              if (_profileImagePath != null)
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                const SmartReTranslator(
+                  text: 'Profile Photo',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                if (_profileImagePath != null)
+                  _bottomSheetTile(
+                    icon: Icons.visibility_rounded,
+                    label: 'View Photo',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _viewProfilePictureDialog();
+                    },
+                  ),
                 _bottomSheetTile(
-                  icon: Icons.visibility_rounded,
-                  label: 'View Photo',
+                  icon: Icons.camera_alt_rounded,
+                  label: 'Take Photo',
                   onTap: () {
                     Navigator.pop(context);
-                    _viewProfilePictureDialog();
+                    _pickImage(ImageSource.camera);
                   },
                 ),
-              _bottomSheetTile(
-                icon: Icons.camera_alt_rounded,
-                label: 'Take Photo',
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.camera);
-                },
-              ),
-              _bottomSheetTile(
-                icon: Icons.photo_library_rounded,
-                label: 'Choose from Gallery',
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.gallery);
-                },
-              ),
-              if (_profileImagePath != null)
                 _bottomSheetTile(
-                  icon: Icons.delete_rounded,
-                  label: 'Remove Photo',
-                  iconColor: AppColors.errorColor,
-                  textColor: AppColors.errorColor,
+                  icon: Icons.photo_library_rounded,
+                  label: 'Choose from Gallery',
                   onTap: () {
                     Navigator.pop(context);
-                    _removeProfilePicture();
+                    _pickImage(ImageSource.gallery);
                   },
                 ),
-            ],
+                if (_profileImagePath != null)
+                  _bottomSheetTile(
+                    icon: Icons.delete_rounded,
+                    label: 'Remove Photo',
+                    iconColor: AppColors.errorColor,
+                    textColor: AppColors.errorColor,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _removeProfilePicture();
+                    },
+                  ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -451,7 +478,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  // ============================================================
+  // 1:1 SQUARE PROFILE IMAGE CROP
+  // ============================================================
+
+Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
@@ -460,23 +491,180 @@ class _ProfileScreenState extends State<ProfileScreen> {
         imageQuality: 90,
       );
 
-      if (pickedFile == null) return;
+      if (pickedFile == null || !mounted) return;
 
-      await _updateProfilePicture(File(pickedFile.path));
+      // Force 1:1 square crop
+      final controller = CropController(aspectRatio: 1.0);
+
+      final croppedFile = await showDialog<File?>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return Dialog(
+            backgroundColor: Colors.black,
+            insetPadding: const EdgeInsets.all(16),
+            child: SizedBox(
+              width: double.infinity,
+              height: MediaQuery.of(dialogContext).size.height * 0.75,
+              child: Column(
+                children: [
+                  AppBar(
+                    backgroundColor: AppColors.primaryGreen,
+                    foregroundColor: Colors.white,
+                    title: const Text('Crop Profile Picture'),
+                    automaticallyImplyLeading: false,
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () {
+                          Navigator.pop(dialogContext);
+                        },
+                      ),
+                    ],
+                  ),
+
+                  Expanded(
+                    child: CropImage(
+                      controller: controller,
+
+                      // IMPORTANT:
+                      // crop_image expects an Image widget,
+                      // not FileImage.
+                      image: Image.file(
+                        File(pickedFile.path),
+                        fit: BoxFit.contain,
+                      ),
+
+                      paddingSize: 20,
+
+                      // Correct parameter for crop_image 1.0.13
+                      alwaysShowThirdLines: true,
+
+                      minimumImageSize: 100,
+                      maximumImageSize: 2000,
+
+                      gridColor: Colors.white,
+                      gridInnerColor: Colors.white70,
+                      gridCornerColor: Colors.white,
+                      scrimColor: Colors.black54,
+                      showCorners: true,
+                    ),
+                  ),
+
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.black,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              Navigator.pop(dialogContext);
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+
+                        const SizedBox(width: 12),
+
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              try {
+                                // Get the cropped square bitmap
+                                final bitmap = await controller.croppedBitmap();
+
+                                final directory = await getTemporaryDirectory();
+
+                                final path =
+                                    '${directory.path}/cropped_profile_${DateTime.now().millisecondsSinceEpoch}.png';
+
+                                final file = File(path);
+
+                                final bytes = await bitmap.toByteData(
+                                  format: ui.ImageByteFormat.png,
+                                );
+
+                                if (bytes == null) {
+                                  if (dialogContext.mounted) {
+                                    Navigator.pop(dialogContext);
+                                  }
+                                  return;
+                                }
+
+                                await file.writeAsBytes(
+                                  bytes.buffer.asUint8List(),
+                                  flush: true,
+                                );
+
+                                if (dialogContext.mounted) {
+                                  Navigator.pop(dialogContext, file);
+                                }
+                              } catch (e) {
+                                debugPrint('❌ Crop error: $e');
+
+                                if (dialogContext.mounted) {
+                                  ScaffoldMessenger.of(
+                                    dialogContext,
+                                  ).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Failed to crop image: $e'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryGreen,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Crop & Use'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
+      if (croppedFile == null || !mounted) return;
+
+      await _updateProfilePicture(croppedFile);
     } catch (e) {
-      debugPrint('❌ Error picking image: $e');
-      _showError('Failed to pick image');
+      debugPrint('❌ Error picking/cropping image: $e');
+
+      if (mounted) {
+        _showError('Failed to crop profile picture');
+      }
     }
   }
+  
+  // ============================================================
+  // SAVE PROFILE IMAGE
+  // ============================================================
 
   Future<void> _updateProfilePicture(File image) async {
     try {
-      setState(() => _isUploadingImage = true);
+      setState(() {
+        _isUploadingImage = true;
+      });
 
       final profileJson = await _storage.read(key: 'user_profile');
-      if (profileJson == null) throw 'Profile data not found';
+
+      if (profileJson == null) {
+        throw 'Profile data not found';
+      }
 
       final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
+
       String imageId = profileData['image_id']?.toString() ?? '';
 
       if (imageId.isEmpty) {
@@ -484,40 +672,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       final oldLocalPath = await _storage.read(key: 'profile_image_local_path');
+
       if (oldLocalPath != null && oldLocalPath.isNotEmpty) {
         try {
-          FileImage(File(oldLocalPath)).evict();
+          await FileImage(File(oldLocalPath)).evict();
         } catch (e) {
           debugPrint('⚠️ Failed to evict old image: $e');
         }
 
         final oldFile = File(oldLocalPath);
+
         if (await oldFile.exists()) {
           await oldFile.delete();
         }
       }
 
       final directory = await getApplicationDocumentsDirectory();
+
       final profileDir = Directory('${directory.path}/profile_pictures');
+
       if (!await profileDir.exists()) {
         await profileDir.create(recursive: true);
       }
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
+
       final extension = image.path.split('.').last;
+
       final localPath =
           '${profileDir.path}/profile_${imageId}_$timestamp.$extension';
 
       await image.copy(localPath);
 
       await _storage.write(key: 'profile_image_id', value: imageId);
+
       await _storage.write(key: 'profile_image_local_path', value: localPath);
+
       await _storage.write(
         key: 'profile_picture_pending_upload',
         value: 'true',
       );
 
       profileData['image_id'] = imageId;
+
       await _storage.write(key: 'user_profile', value: jsonEncode(profileData));
 
       imageCache.clear();
@@ -528,20 +725,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _showSuccess('Profile picture saved locally');
 
       await _checkPendingUpdates();
+
       _triggerProfileSync();
     } catch (e) {
       debugPrint('❌ Error updating profile picture: $e');
+
       _showError('Failed to update profile picture');
     } finally {
-      if (mounted) setState(() => _isUploadingImage = false);
+      if (mounted) {
+        setState(() {
+          _isUploadingImage = false;
+        });
+      }
     }
   }
 
+  // ============================================================
+  // REMOVE PROFILE IMAGE
+  // ============================================================
+
   Future<void> _removeProfilePicture() async {
     try {
-      setState(() => _isUploadingImage = true);
+      setState(() {
+        _isUploadingImage = true;
+      });
 
       final userId = await _storage.read(key: 'user_id');
+
       final response = await ApiService.instance.delete(
         '/profile/remove-profile-picture/$userId',
         requiresAuth: true,
@@ -550,26 +760,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (response.isSuccess) {
         if (_profileImagePath != null) {
           try {
-            FileImage(File(_profileImagePath!)).evict();
+            await FileImage(File(_profileImagePath!)).evict();
           } catch (e) {
             debugPrint('⚠️ Failed to evict image: $e');
           }
 
           final file = File(_profileImagePath!);
+
           if (await file.exists()) {
             await file.delete();
           }
         }
 
         await _storage.delete(key: 'profile_image_id');
+
         await _storage.delete(key: 'profile_image_local_path');
+
         await _storage.delete(key: 'profile_picture_pending_upload');
 
         final profileJson = await _storage.read(key: 'user_profile');
+
         if (profileJson != null) {
           final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
+
           profileData['image_id'] = null;
           profileData['pic_url'] = 'no-image';
+
           await _storage.write(
             key: 'user_profile',
             value: jsonEncode(profileData),
@@ -587,14 +803,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       debugPrint('❌ Error removing profile picture: $e');
+
       _showError('Failed to remove profile picture');
     } finally {
-      if (mounted) setState(() => _isUploadingImage = false);
+      if (mounted) {
+        setState(() {
+          _isUploadingImage = false;
+        });
+      }
     }
   }
 
+  // ============================================================
+  // ERROR / SUCCESS
+  // ============================================================
+
   void _showError(String message) {
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -618,6 +844,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showSuccess(String message) {
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -638,6 +865,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // SAVE PROFILE
+  // ============================================================
 
   Future<void> _saveProfile() async {
     final Map<String, dynamic> updates = {};
@@ -662,35 +893,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (_dobCtrl.text.trim() != _dob.trim()) {
       String? dobIso;
+
       if (_dobCtrl.text.isNotEmpty) {
         try {
           final parsed = DateFormat('dd MMM yyyy').parse(_dobCtrl.text.trim());
+
           dobIso = parsed.toIso8601String();
         } catch (_) {
           dobIso = _dobCtrl.text.trim();
         }
       }
+
       updates['dob'] = dobIso;
     }
 
     if (updates.isEmpty) {
-      setState(() => _isEditing = false);
+      setState(() {
+        _isEditing = false;
+      });
+
       return;
     }
 
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+    });
 
     try {
       final currentJson = await _storage.read(key: 'user_profile');
+
       final profileData = currentJson != null && currentJson.isNotEmpty
           ? jsonDecode(currentJson) as Map<String, dynamic>
           : <String, dynamic>{};
 
       profileData.addAll(updates);
+
       profileData['updated_at'] = DateTime.now().toIso8601String();
 
       await _storage.write(key: 'user_profile', value: jsonEncode(profileData));
+
       await _storage.write(key: 'profile_data_pending', value: 'true');
+
       await _storage.write(
         key: 'profile_pending_updates',
         value: jsonEncode(updates),
@@ -699,17 +942,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await _reloadUserProfileQuietly();
 
       if (mounted) {
-        setState(() => _isEditing = false);
+        setState(() {
+          _isEditing = false;
+        });
       }
 
       _showSuccess('Profile updated (will sync when online)');
+
       await _checkPendingUpdates();
+
       _triggerProfileSync();
     } catch (e) {
       debugPrint('❌ Error saving profile: $e');
+
       _showError('Error updating profile: $e');
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
@@ -717,6 +969,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_isEditing) {
       setState(() {
         _isEditing = false;
+
         _nameCtrl.text = _name;
         _emailCtrl.text = _email;
         _addressCtrl.text = _address;
@@ -727,6 +980,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Navigator.of(context).pop();
     }
   }
+
+  // ============================================================
+  // PROFILE HEADER
+  // ============================================================
 
   Widget _buildProfileHeader() {
     return Padding(
@@ -918,8 +1175,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // ============================================================
+  // SYNC BANNER
+  // ============================================================
+
   Widget _buildProfileSyncBanner() {
-    if (_pendingProfileUpdatesCount == 0) return const SizedBox.shrink();
+    if (_pendingProfileUpdatesCount == 0) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -981,6 +1244,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // ============================================================
+  // EMAIL VERIFICATION
+  // ============================================================
+
   Widget _buildVerificationBanner() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1027,10 +1294,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (verified == true && mounted) {
                 try {
                   final profileJson = await _storage.read(key: 'user_profile');
+
                   if (profileJson != null) {
                     final profileData =
                         jsonDecode(profileJson) as Map<String, dynamic>;
+
                     profileData['email_verified'] = true;
+
                     await _storage.write(
                       key: 'user_profile',
                       value: jsonEncode(profileData),
@@ -1040,7 +1310,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   debugPrint('Error updating verification status: $e');
                 }
 
-                setState(() => _emailVerified = true);
+                setState(() {
+                  _emailVerified = true;
+                });
+
                 _showSuccess('Email verified successfully!');
               }
             },
@@ -1061,6 +1334,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // PROFILE DETAILS
+  // ============================================================
 
   Widget _buildProfileDetails() {
     return Padding(
@@ -1135,6 +1412,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String? helperText,
   }) {
     final showField = isEditing && controller != null;
+
     final isLockedField = showField && !enabledWhenEditing;
 
     return Container(
@@ -1229,7 +1507,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: isDate
                           ? () async {
                               final initialDate = _parseDob(_dobCtrl.text);
+
                               final now = DateTime.now();
+
                               final picked = await showDatePicker(
                                 context: context,
                                 initialDate: initialDate.isAfter(now)
@@ -1238,6 +1518,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 firstDate: DateTime(1900),
                                 lastDate: now,
                               );
+
                               if (picked != null) {
                                 controller.text = DateFormat(
                                   'dd MMM yyyy',
@@ -1339,6 +1620,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // ============================================================
+  // EDIT ACTION
+  // ============================================================
+
   Widget _buildEditAction() {
     if (_isSaving) {
       return const Padding(
@@ -1362,11 +1647,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (_isEditing) {
           await _saveProfile();
         } else {
-          setState(() => _isEditing = true);
+          setState(() {
+            _isEditing = true;
+          });
         }
       },
     );
   }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {

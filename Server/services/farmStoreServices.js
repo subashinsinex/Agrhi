@@ -146,8 +146,8 @@ exports.createFarmProduct = async (req, res) => {
 
     // Insert image placeholder
     await pool.query(
-      "INSERT INTO images (image_id, image_url) VALUES ($1, NULL)",
-      [image_id],
+      "INSERT INTO images (image_id, image_url) VALUES ($1, $2)",
+      [image_id, "no-image"],
     );
 
     const result = await pool.query(

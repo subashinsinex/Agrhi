@@ -311,6 +311,23 @@ class DatabaseHelper {
     print('✅ DB created with final schema');
   }
 
+  Future<void> resetDatabase() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, 'agrhi_offline.db');
+
+    if (await databaseExists(path)) {
+      await deleteDatabase(path);
+    }
+
+    // Recreate database immediately
+    _database = await _initDB('agrhi_offline.db');
+  }
+
   // ==================== REMINDER METHODS ====================
 
   Future<void> upsertCropReminder({

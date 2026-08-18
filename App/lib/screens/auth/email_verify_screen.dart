@@ -1,19 +1,23 @@
 // lib/screens/auth/email_verify_screen.dart
+
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../shared/smart_retranslator.dart';
+import 'package:http/http.dart' as http;
+
 import '../../utils/colors.dart';
 import '../../utils/constants.dart';
+import '../shared/custom_app_bar.dart';
+import '../shared/smart_retranslator.dart';
 
 class EmailVerifyScreen extends StatefulWidget {
   const EmailVerifyScreen({super.key});
 
   static MaterialPageRoute route() =>
-      MaterialPageRoute(builder: (context) => const EmailVerifyScreen());
+      MaterialPageRoute(builder: (_) => const EmailVerifyScreen());
 
   @override
   State<EmailVerifyScreen> createState() => _EmailVerifyScreenState();
@@ -32,24 +36,29 @@ class _EmailVerifyScreenState extends State<EmailVerifyScreen> {
     6,
     (_) => TextEditingController(),
   );
+
   final List<FocusNode> _otpFocusNodes = List.generate(6, (_) => FocusNode());
 
   bool _isLoading = false;
   bool _isSendingOTP = false;
-  String? _emailHint;
-  String? _fullEmail;
   bool _emailVerified = false;
   bool _hasPendingOTP = false;
   bool _otpSent = false;
+
+  String? _emailHint;
+  String? _fullEmail;
+
   int _attemptsRemaining = 5;
   int _cooldownSeconds = 0;
   int _expiresIn = 0;
+
   Timer? _cooldownTimer;
   Timer? _expiryTimer;
 
   @override
   void initState() {
     super.initState();
+
     _loadEmailFromStorage();
     _checkVerificationStatus();
   }
@@ -58,53 +67,102 @@ class _EmailVerifyScreenState extends State<EmailVerifyScreen> {
   void dispose() {
     _cooldownTimer?.cancel();
     _expiryTimer?.cancel();
-    for (var controller in _otpControllers) {
+
+    for (final controller in _otpControllers) {
       controller.dispose();
     }
-    for (var node in _otpFocusNodes) {
+
+    for (final node in _otpFocusNodes) {
       node.dispose();
     }
+
     super.dispose();
   }
 
-  Future<void> _loadEmailFromStorage() async {
-    try {
-      final profileJson = await _storage.read(key: 'user_profile');
-      if (profileJson != null && profileJson.isNotEmpty) {
-        final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
-        setState(() {
-          _fullEmail = profileData['email'];
-          _emailVerified = profileData['email_verified'] ?? false;
-        });
-        debugPrint('📧 Loaded email: $_fullEmail');
-        debugPrint('✅ Verified: $_emailVerified');
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading email: $e');
-    }
-  }
+  // ===========================================================================
+  // STORAGE
+  // ===========================================================================
 
   Future<String?> _readWithRetry(String key, {int maxRetries = 3}) async {
     for (int i = 0; i < maxRetries; i++) {
       try {
         final value = await _storage.read(key: key);
-        if (value != null && value.isNotEmpty) return value;
+
+        if (value != null && value.isNotEmpty) {
+          return value;
+        }
+
         if (i < maxRetries - 1) {
           await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
         }
       } catch (e) {
         debugPrint('Storage retry ${i + 1}: $e');
-        if (i == maxRetries - 1) rethrow;
+
+        if (i == maxRetries - 1) {
+          rethrow;
+        }
       }
     }
+
     return null;
   }
 
+  Future<void> _loadEmailFromStorage() async {
+    try {
+      final profileJson = await _storage.read(key: 'user_profile');
+
+      if (profileJson == null || profileJson.isEmpty) {
+        return;
+      }
+
+      final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
+
+      if (!mounted) return;
+
+      setState(() {
+        _fullEmail = profileData['email']?.toString();
+
+        _emailVerified =
+            profileData['email_verified'] == true ||
+            profileData['emailverified'] == true;
+      });
+    } catch (e) {
+      debugPrint('EMAIL_STORAGE_LOAD_ERROR: $e');
+    }
+  }
+
+  Future<void> _updateStorageVerificationStatus(bool verified) async {
+    try {
+      final profileJson = await _storage.read(key: 'user_profile');
+
+      if (profileJson == null || profileJson.isEmpty) {
+        return;
+      }
+
+      final profileData = jsonDecode(profileJson) as Map<String, dynamic>;
+
+      profileData['email_verified'] = verified;
+
+      await _storage.write(key: 'user_profile', value: jsonEncode(profileData));
+    } catch (e) {
+      debugPrint('EMAIL_VERIFICATION_STORAGE_ERROR: $e');
+    }
+  }
+
+  // ===========================================================================
+  // STATUS
+  // ===========================================================================
+
   Future<void> _checkVerificationStatus() async {
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final token = await _readWithRetry('access_token');
+
       if (token == null || token.isEmpty) {
         _showError('Please log in again');
         return;
@@ -120,40 +178,78 @@ class _EmailVerifyScreenState extends State<EmailVerifyScreen> {
           )
           .timeout(const Duration(seconds: 30));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      if (response.statusCode != 200) {
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      setState(() {
+        _emailVerified = data['emailVerified'] == true;
+
+        _emailHint = data['emailHint']?.toString();
+
+        _hasPendingOTP = data['hasPendingOTP'] == true;
+
+        _attemptsRemaining = data['attemptsRemaining'] ?? 5;
+
+        _cooldownSeconds = data['cooldownSeconds'] ?? 0;
+      });
+
+      if (_emailVerified) {
+        await _updateStorageVerificationStatus(true);
+
+        if (!mounted) return;
+
+        await Future.delayed(const Duration(milliseconds: 400));
+
+        if (mounted) {
+          Navigator.of(context).pop(true);
+        }
+
+        return;
+      }
+
+      if (_hasPendingOTP) {
         setState(() {
-          _emailVerified = data['emailVerified'] ?? false;
-          _emailHint = data['emailHint'];
-          _hasPendingOTP = data['hasPendingOTP'] ?? false;
-          _attemptsRemaining = data['attemptsRemaining'] ?? 5;
-          _cooldownSeconds = data['cooldownSeconds'] ?? 0;
+          _otpSent = true;
         });
 
-        if (_emailVerified) {
-          await _updateStorageVerificationStatus(true);
-          await Future.delayed(const Duration(milliseconds: 500));
-          if (mounted) Navigator.of(context).pop(true);
-        } else if (_hasPendingOTP) {
-          setState(() => _otpSent = true);
-          _startCooldownTimer();
-          _calculateExpiry(data['otpExpiresAt']);
-        }
+        _startCooldownTimer();
+        _calculateExpiry(data['otpExpiresAt']);
       }
     } catch (e) {
-      debugPrint('❌ Status check error: $e');
-      _showError('Connection error. Please try again.');
+      debugPrint('EMAIL_STATUS_ERROR: $e');
+
+      if (mounted) {
+        _showError('Connection error. Please try again.');
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
+  // ===========================================================================
+  // SEND OTP
+  // ===========================================================================
+
   Future<void> _sendOTP() async {
-    setState(() => _isSendingOTP = true);
+    if (_isSendingOTP) return;
+
+    setState(() {
+      _isSendingOTP = true;
+    });
 
     try {
       final token = await _readWithRetry('access_token');
-      if (token == null) {
+
+      if (token == null || token.isEmpty) {
         _showError('Please log in again');
         return;
       }
@@ -171,42 +267,68 @@ class _EmailVerifyScreenState extends State<EmailVerifyScreen> {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
+        if (!mounted) return;
+
         setState(() {
-          _emailHint = data['emailHint'];
+          _emailHint = data['emailHint']?.toString();
+
           _expiresIn = data['expiresIn'] ?? 600;
+
           _hasPendingOTP = true;
           _otpSent = true;
           _cooldownSeconds = 60;
         });
 
-        _showSuccess('OTP sent to $_emailHint');
+        _clearOTP();
+
+        _showSuccess(
+          'Verification code sent to '
+          '${_emailHint ?? 'your email'}',
+        );
+
         _startCooldownTimer();
         _startExpiryTimer();
 
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (mounted) _otpFocusNodes[0].requestFocus();
+        await Future.delayed(const Duration(milliseconds: 250));
+
+        if (mounted) {
+          _otpFocusNodes.first.requestFocus();
+        }
       } else {
         _showError(data['message'] ?? 'Failed to send OTP');
       }
     } catch (e) {
-      debugPrint('❌ Send OTP error: $e');
-      _showError('Connection error. Please try again.');
+      debugPrint('SEND_OTP_ERROR: $e');
+
+      if (mounted) {
+        _showError('Connection error. Please try again.');
+      }
     } finally {
-      setState(() => _isSendingOTP = false);
+      if (mounted) {
+        setState(() {
+          _isSendingOTP = false;
+        });
+      }
     }
   }
 
+  // ===========================================================================
+  // RESEND OTP
+  // ===========================================================================
+
   Future<void> _resendOTP() async {
-    if (_cooldownSeconds > 0) {
-      _showError('Please wait $_cooldownSeconds seconds');
+    if (_cooldownSeconds > 0 || _isSendingOTP) {
       return;
     }
 
-    setState(() => _isSendingOTP = true);
+    setState(() {
+      _isSendingOTP = true;
+    });
 
     try {
       final token = await _readWithRetry('access_token');
-      if (token == null) {
+
+      if (token == null || token.isEmpty) {
         _showError('Please log in again');
         return;
       }
@@ -224,43 +346,67 @@ class _EmailVerifyScreenState extends State<EmailVerifyScreen> {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
+        if (!mounted) return;
+
         setState(() {
           _expiresIn = data['expiresIn'] ?? 600;
+
           _cooldownSeconds = 60;
+          _hasPendingOTP = true;
+          _otpSent = true;
         });
 
-        _showSuccess('OTP resent to $_emailHint');
+        _clearOTP();
+
+        _showSuccess(
+          'Verification code resent to '
+          '${_emailHint ?? 'your email'}',
+        );
+
         _startCooldownTimer();
         _startExpiryTimer();
 
-        for (var controller in _otpControllers) {
-          controller.clear();
-        }
-        _otpFocusNodes[0].requestFocus();
+        _otpFocusNodes.first.requestFocus();
       } else {
         _showError(data['message'] ?? 'Failed to resend OTP');
       }
     } catch (e) {
-      debugPrint('❌ Resend error: $e');
-      _showError('Connection error. Please try again.');
+      debugPrint('RESEND_OTP_ERROR: $e');
+
+      if (mounted) {
+        _showError('Connection error. Please try again.');
+      }
     } finally {
-      setState(() => _isSendingOTP = false);
+      if (mounted) {
+        setState(() {
+          _isSendingOTP = false;
+        });
+      }
     }
   }
 
+  // ===========================================================================
+  // VERIFY OTP
+  // ===========================================================================
+
   Future<void> _verifyOTP() async {
-    final otp = _otpControllers.map((c) => c.text).join();
+    if (_isLoading) return;
+
+    final otp = _otpControllers.map((controller) => controller.text).join();
 
     if (otp.length != 6) {
       _showError('Please enter all 6 digits');
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
       final token = await _readWithRetry('access_token');
-      if (token == null) {
+
+      if (token == null || token.isEmpty) {
         _showError('Please log in again');
         return;
       }
@@ -279,54 +425,106 @@ class _EmailVerifyScreenState extends State<EmailVerifyScreen> {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
-        _showSuccess('Email verified successfully!');
-        setState(() => _emailVerified = true);
+        if (!mounted) return;
+
+        setState(() {
+          _emailVerified = true;
+          _hasPendingOTP = false;
+        });
+
+        _cooldownTimer?.cancel();
+        _expiryTimer?.cancel();
 
         await _updateStorageVerificationStatus(true);
 
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) Navigator.of(context).pop(true);
+        _showSuccess('Email verified successfully!');
+
+        await Future.delayed(const Duration(milliseconds: 900));
+
+        if (mounted) {
+          Navigator.of(context).pop(true);
+        }
       } else {
-        _showError(data['message'] ?? 'Invalid OTP');
+        if (!mounted) return;
+
         setState(() {
           _attemptsRemaining = (_attemptsRemaining - 1).clamp(0, 5);
         });
 
-        for (var controller in _otpControllers) {
-          controller.clear();
-        }
-        _otpFocusNodes[0].requestFocus();
+        _clearOTP();
+
+        _showError(data['message'] ?? 'Invalid verification code');
+
+        _otpFocusNodes.first.requestFocus();
       }
     } catch (e) {
-      debugPrint('❌ Verify error: $e');
-      _showError('Connection error. Please try again.');
+      debugPrint('VERIFY_OTP_ERROR: $e');
+
+      if (mounted) {
+        _showError('Connection error. Please try again.');
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
-  Future<void> _updateStorageVerificationStatus(bool verified) async {
-    try {
-      final profileJson = await _storage.read(key: 'user_profile');
-      if (profileJson != null) {
-        final profileData = jsonDecode(profileJson);
-        profileData['email_verified'] = verified;
-        await _storage.write(
-          key: 'user_profile',
-          value: jsonEncode(profileData),
-        );
-        debugPrint('✅ Updated email_verified: $verified');
-      }
-    } catch (e) {
-      debugPrint('❌ Update error: $e');
+  // ===========================================================================
+  // OTP HELPERS
+  // ===========================================================================
+
+  void _clearOTP() {
+    for (final controller in _otpControllers) {
+      controller.clear();
     }
   }
+
+  void _onOTPChanged(int index, String value) {
+    if (value.isNotEmpty && index < 5) {
+      _otpFocusNodes[index + 1].requestFocus();
+      return;
+    }
+
+    if (value.isEmpty && index > 0) {
+      _otpFocusNodes[index - 1].requestFocus();
+      return;
+    }
+
+    if (index == 5 && value.isNotEmpty) {
+      FocusScope.of(context).unfocus();
+
+      final otp = _otpControllers.map((controller) => controller.text).join();
+
+      if (otp.length == 6) {
+        _verifyOTP();
+      }
+    }
+  }
+
+  // ===========================================================================
+  // TIMERS
+  // ===========================================================================
 
   void _startCooldownTimer() {
     _cooldownTimer?.cancel();
+
+    if (_cooldownSeconds <= 0) {
+      return;
+    }
+
     _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
       if (_cooldownSeconds > 0) {
-        setState(() => _cooldownSeconds--);
+        setState(() {
+          _cooldownSeconds--;
+        });
       } else {
         timer.cancel();
       }
@@ -335,585 +533,828 @@ class _EmailVerifyScreenState extends State<EmailVerifyScreen> {
 
   void _startExpiryTimer() {
     _expiryTimer?.cancel();
+
+    if (_expiresIn <= 0) {
+      return;
+    }
+
     _expiryTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
       if (_expiresIn > 0) {
-        setState(() => _expiresIn--);
+        setState(() {
+          _expiresIn--;
+        });
       } else {
         timer.cancel();
-        setState(() => _hasPendingOTP = false);
+
+        setState(() {
+          _hasPendingOTP = false;
+        });
       }
     });
   }
 
   void _calculateExpiry(String? expiresAtString) {
-    if (expiresAtString == null) return;
+    if (expiresAtString == null) {
+      return;
+    }
 
     try {
       final expiresAt = DateTime.parse(expiresAtString);
-      final now = DateTime.now();
-      final difference = expiresAt.difference(now).inSeconds;
-      setState(() => _expiresIn = difference > 0 ? difference : 0);
+
+      final difference = expiresAt.difference(DateTime.now()).inSeconds;
+
+      if (!mounted) return;
+
+      setState(() {
+        _expiresIn = difference > 0 ? difference : 0;
+      });
+
       _startExpiryTimer();
     } catch (e) {
-      debugPrint('❌ Expiry calc error: $e');
+      debugPrint('OTP_EXPIRY_ERROR: $e');
     }
   }
 
+  // ===========================================================================
+  // SNACKBARS
+  // ===========================================================================
+
   void _showSuccess(String message) {
     if (!mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.check_circle, color: Colors.white, size: 20),
-            const SizedBox(width: 12),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: SmartReTranslator(
                 text: message,
-                style: const TextStyle(color: Colors.white, fontSize: 15),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
         ),
-        backgroundColor: AppColors.successColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: AppColors.successColor,
         margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
 
   void _showError(String message) {
     if (!mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.error_outline, color: Colors.white, size: 20),
-            const SizedBox(width: 12),
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: SmartReTranslator(
                 text: message,
-                style: const TextStyle(color: Colors.white, fontSize: 15),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
         ),
-        backgroundColor: AppColors.errorColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
+        backgroundColor: AppColors.errorColor,
         duration: const Duration(seconds: 3),
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
 
   String _formatTime(int seconds) {
     final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+
+    final remaining = seconds % 60;
+
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${remaining.toString().padLeft(2, '0')}';
   }
+
+  // ===========================================================================
+  // BUILD
+  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        backgroundColor: AppColors.primaryGreen,
+      appBar: CustomAppBar(
+        title: 'Email Verification',
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
-          onPressed: () => Navigator.of(context).pop(false),
-        ),
-        title: const SmartReTranslator(
-          text: 'Email Verification',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
+        showOnlineStatus: true,
+        onBackPressed: () => Navigator.of(context).pop(false),
       ),
-      body: _isLoading
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppColors.primaryGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SmartReTranslator(
-                    text: _emailVerified ? 'Verified!' : 'Loading...',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
+      body: _isLoading && !_otpSent
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primaryGreen),
             )
           : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: _emailVerified
-                            ? [
-                                AppColors.successColor.withOpacity(0.2),
-                                AppColors.successColor.withOpacity(0.1),
-                              ]
-                            : [
-                                AppColors.primaryGreen.withOpacity(0.15),
-                                AppColors.primaryGreen.withOpacity(0.05),
-                              ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _emailVerified
-                          ? Icons.verified
-                          : _otpSent
-                          ? Icons.mark_email_read
-                          : Icons.email_outlined,
-                      size: 70,
-                      color: _emailVerified
-                          ? AppColors.successColor
-                          : AppColors.primaryGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-
-                  SmartReTranslator(
-                    text: _emailVerified
-                        ? 'Email Verified!'
-                        : _otpSent
-                        ? 'Enter Verification Code'
-                        : 'Verify Your Email',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 10),
-
-                  if (_otpSent && !_emailVerified) ...[
-                    const SmartReTranslator(
-                      text: 'We\'ve sent a 6-digit code to',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryGreen.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _emailHint ?? _fullEmail ?? 'your email',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primaryGreen,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ] else if (!_emailVerified) ...[
-                    SmartReTranslator(
-                      text: _fullEmail != null
-                          ? 'Click below to send verification code to\n$_fullEmail'
-                          : 'Verify your email to secure your account',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                        height: 1.4,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-
-                  if (_emailVerified) ...[
-                    const SmartReTranslator(
-                      text: 'Your email has been successfully verified!',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: AppColors.successColor,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-
-                  const SizedBox(height: 32),
-
-                  if (!_emailVerified) ...[
-                    // ✅ Send OTP Button with text wrapping
-                    if (!_hasPendingOTP && !_otpSent) ...[
-                      Center(
-                        child: FractionallySizedBox(
-                          widthFactor: 0.75,
-                          child: SizedBox(
-                            height: 52,
-                            child: ElevatedButton(
-                              onPressed: _isSendingOTP ? null : _sendOTP,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primaryGreen,
-                                foregroundColor: Colors.white,
-                                elevation: 2,
-                                shadowColor: AppColors.primaryGreen.withOpacity(
-                                  0.4,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: _isSendingOTP
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              Colors.white,
-                                            ),
-                                      ),
-                                    )
-                                  : Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.send, size: 18),
-                                        const SizedBox(width: 8),
-                                        Flexible(
-                                          child: SmartReTranslator(
-                                            text: 'Send Verification Code',
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-
-                    if (_hasPendingOTP || _otpSent) ...[
-                      Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 350),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: List.generate(6, (index) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
-                                child: SizedBox(
-                                  width: 45,
-                                  child: TextFormField(
-                                    controller: _otpControllers[index],
-                                    focusNode: _otpFocusNodes[index],
-                                    decoration: InputDecoration(
-                                      counterText: '',
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(
-                                          color: AppColors.primaryGreen
-                                              .withOpacity(0.3),
-                                          width: 1.5,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(
-                                          color: AppColors.primaryGreen
-                                              .withOpacity(0.3),
-                                          width: 1.5,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: AppColors.primaryGreen,
-                                          width: 2.5,
-                                        ),
-                                      ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            vertical: 14,
-                                          ),
-                                    ),
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    keyboardType: TextInputType.number,
-                                    maxLength: 1,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    onChanged: (value) {
-                                      if (value.isNotEmpty && index < 5) {
-                                        _otpFocusNodes[index + 1]
-                                            .requestFocus();
-                                      } else if (value.isEmpty && index > 0) {
-                                        _otpFocusNodes[index - 1]
-                                            .requestFocus();
-                                      }
-
-                                      if (index == 5 && value.isNotEmpty) {
-                                        FocusScope.of(context).unfocus();
-                                        _verifyOTP();
-                                      }
-                                    },
-                                  ),
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      Center(
-                        child: FractionallySizedBox(
-                          widthFactor: 0.75,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.access_time,
-                                      size: 16,
-                                      color: _expiresIn < 60
-                                          ? AppColors.errorColor
-                                          : AppColors.primaryGreen,
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      _formatTime(_expiresIn),
-                                      style: TextStyle(
-                                        color: _expiresIn < 60
-                                            ? AppColors.errorColor
-                                            : AppColors.textPrimary,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Container(
-                                  width: 1,
-                                  height: 18,
-                                  color: Colors.grey.shade300,
-                                ),
-                                Flexible(
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.refresh,
-                                        size: 16,
-                                        color: _attemptsRemaining < 2
-                                            ? AppColors.errorColor
-                                            : AppColors.primaryGreen,
-                                      ),
-                                      const SizedBox(width: 5),
-                                      Flexible(
-                                        child: SmartReTranslator(
-                                          text:
-                                              '$_attemptsRemaining tries left',
-                                          style: TextStyle(
-                                            color: _attemptsRemaining < 2
-                                                ? AppColors.errorColor
-                                                : AppColors.textPrimary,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // ✅ Verify Button with text wrapping
-                      Center(
-                        child: FractionallySizedBox(
-                          widthFactor: 0.75,
-                          child: SizedBox(
-                            height: 52,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _verifyOTP,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primaryGreen,
-                                foregroundColor: Colors.white,
-                                elevation: 2,
-                                shadowColor: AppColors.primaryGreen.withOpacity(
-                                  0.4,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.check_circle_outline,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: SmartReTranslator(
-                                      text: 'Verify Code',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      Center(
-                        child: TextButton.icon(
-                          onPressed: _cooldownSeconds > 0 || _isSendingOTP
-                              ? null
-                              : _resendOTP,
-                          icon: Icon(
-                            _cooldownSeconds > 0 ? Icons.timer : Icons.refresh,
-                            size: 16,
-                          ),
-                          label: _cooldownSeconds > 0
-                              ? SmartReTranslator(
-                                  text: '$_cooldownSeconds seconds',
-                                  style: const TextStyle(fontSize: 14),
-                                )
-                              : const SmartReTranslator(
-                                  text: 'Resend Code',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                          style: TextButton.styleFrom(
-                            foregroundColor: _cooldownSeconds > 0
-                                ? AppColors.textSecondary
-                                : AppColors.primaryGreen,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-
-                  // ✅ Continue Button with text wrapping
-                  if (_emailVerified) ...[
-                    Center(
-                      child: FractionallySizedBox(
-                        widthFactor: 0.75,
-                        child: SizedBox(
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.successColor,
-                              foregroundColor: Colors.white,
-                              elevation: 2,
-                              shadowColor: AppColors.successColor.withOpacity(
-                                0.4,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.arrow_forward, size: 18),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: SmartReTranslator(
-                                    text: 'Continue',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  _buildVerificationHeader(),
+                  const SizedBox(height: 18),
+                  _buildEmailCard(),
+                  const SizedBox(height: 12),
+                  if (_emailVerified)
+                    _buildVerifiedSection()
+                  else if (_otpSent)
+                    _buildOTPSection()
+                  else
+                    _buildSendSection(),
                 ],
               ),
             ),
+    );
+  }
+
+  // ===========================================================================
+  // VERIFICATION HEADER
+  // ===========================================================================
+
+  Widget _buildVerificationHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: Column(
+        children: [
+          Container(
+            width: 86,
+            height: 86,
+            decoration: BoxDecoration(
+              color: _emailVerified
+                  ? AppColors.successColor.withOpacity(0.10)
+                  : AppColors.primaryGreen.withOpacity(0.10),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: _emailVerified
+                    ? AppColors.successColor.withOpacity(0.25)
+                    : AppColors.primaryGreen.withOpacity(0.20),
+                width: 1.5,
+              ),
+            ),
+            child: Icon(
+              _emailVerified
+                  ? Icons.verified_rounded
+                  : _otpSent
+                  ? Icons.mark_email_read_rounded
+                  : Icons.email_outlined,
+              size: 42,
+              color: _emailVerified
+                  ? AppColors.successColor
+                  : AppColors.primaryGreen,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SmartReTranslator(
+            text: _emailVerified
+                ? 'Email Verified!'
+                : _otpSent
+                ? 'Enter Verification Code'
+                : 'Verify Your Email',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SmartReTranslator(
+            text: _emailVerified
+                ? 'Your email has been successfully verified.'
+                : _otpSent
+                ? 'Enter the 6-digit code sent to your email address.'
+                : 'Verify your email to keep your Agrhi account secure.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.45,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // EMAIL CARD
+  // ===========================================================================
+
+  Widget _buildEmailCard() {
+    final email = _emailHint ?? _fullEmail;
+
+    if (email == null || email.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withOpacity(0.05)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.email_outlined,
+              color: AppColors.primaryGreen,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SmartReTranslator(
+                  text: 'Email Address',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  email,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_emailVerified)
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.successColor.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.verified,
+                color: AppColors.successColor,
+                size: 16,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // SEND SECTION
+  // ===========================================================================
+
+  Widget _buildSendSection() {
+    return _SectionCard(
+      child: Column(
+        children: [
+          _buildInfoRow(
+            icon: Icons.security_outlined,
+            title: 'Secure your account',
+            description: 'Verify your email to protect your Agrhi account.',
+          ),
+          const SizedBox(height: 16),
+          _PrimaryButton(
+            icon: Icons.mark_email_read_outlined,
+            text: 'Send Verification Code',
+            loading: _isSendingOTP,
+            onPressed: _sendOTP,
+          ),
+          const SizedBox(height: 10),
+          const SmartReTranslator(
+            text: 'The verification code will be valid for 10 minutes.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // OTP SECTION
+  // ===========================================================================
+
+  Widget _buildOTPSection() {
+    return _SectionCard(
+      child: Column(
+        children: [
+          _buildInfoRow(
+            icon: Icons.lock_outline_rounded,
+            title: 'Enter your verification code',
+            description: 'We sent a 6-digit code to the email address above.',
+          ),
+          const SizedBox(height: 20),
+          _buildOTPFields(),
+          const SizedBox(height: 16),
+          _buildOTPStatus(),
+          const SizedBox(height: 16),
+          _PrimaryButton(
+            icon: Icons.verified_outlined,
+            text: 'Verify Code',
+            loading: _isLoading,
+            onPressed: _isLoading ? null : _verifyOTP,
+          ),
+          const SizedBox(height: 6),
+          _buildResendButton(),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // INFO ROW
+  // ===========================================================================
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.primaryGreen.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: AppColors.primaryGreen, size: 20),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SmartReTranslator(
+                text: title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              SmartReTranslator(
+                text: description,
+                style: const TextStyle(
+                  fontSize: 11,
+                  height: 1.4,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ===========================================================================
+  // OTP FIELDS
+  // ===========================================================================
+
+  Widget _buildOTPFields() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final spacing = constraints.maxWidth < 340 ? 4.0 : 6.0;
+
+        final availableWidth = constraints.maxWidth - (spacing * 12);
+
+        final fieldWidth = (availableWidth / 6).clamp(40.0, 50.0);
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(6, (index) {
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: spacing),
+              child: SizedBox(
+                width: fieldWidth,
+                height: 54,
+                child: TextFormField(
+                  controller: _otpControllers[index],
+                  focusNode: _otpFocusNodes[index],
+                  keyboardType: TextInputType.number,
+                  textInputAction: index == 5
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  textAlign: TextAlign.center,
+                  maxLength: 1,
+                  cursorColor: AppColors.primaryGreen,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  decoration: InputDecoration(
+                    counterText: '',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAF7),
+                    contentPadding: EdgeInsets.zero,
+                    border: _otpBorder(),
+                    enabledBorder: _otpBorder(),
+                    focusedBorder: _otpFocusedBorder(),
+                  ),
+                  onChanged: (value) {
+                    _onOTPChanged(index, value);
+                  },
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+
+  OutlineInputBorder _otpBorder() {
+    return OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: Colors.black.withOpacity(0.08), width: 1),
+    );
+  }
+
+  OutlineInputBorder _otpFocusedBorder() {
+    return OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.primaryGreen, width: 1.5),
+    );
+  }
+
+  // ===========================================================================
+  // OTP STATUS
+  // ===========================================================================
+
+  Widget _buildOTPStatus() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAF7),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatusItem(
+              icon: Icons.timer_outlined,
+              value: _formatTime(_expiresIn),
+              label: 'Expires',
+              danger: _expiresIn < 60,
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.black.withOpacity(0.08),
+          ),
+          Expanded(
+            child: _StatusItem(
+              icon: Icons.lock_outline_rounded,
+              value: '$_attemptsRemaining',
+              label: 'Attempts',
+              danger: _attemptsRemaining < 2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // RESEND BUTTON
+  // ===========================================================================
+
+  Widget _buildResendButton() {
+    final canResend = _cooldownSeconds <= 0 && !_isSendingOTP;
+
+    return TextButton(
+      onPressed: canResend ? _resendOTP : null,
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.primaryGreen,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _cooldownSeconds > 0 ? Icons.timer_outlined : Icons.refresh_rounded,
+            size: 17,
+          ),
+          const SizedBox(width: 6),
+          SmartReTranslator(
+            text: _cooldownSeconds > 0
+                ? 'Resend in ${_cooldownSeconds}s'
+                : 'Resend Code',
+            style: TextStyle(
+              color: canResend
+                  ? AppColors.primaryGreen
+                  : AppColors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // VERIFIED SECTION
+  // ===========================================================================
+
+  Widget _buildVerifiedSection() {
+    return _SectionCard(
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.successColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AppColors.successColor.withOpacity(0.18),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: AppColors.successColor,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: SmartReTranslator(
+                    text: 'Your email is verified and your account is secure.',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SuccessButton(onPressed: () => Navigator.of(context).pop(true)),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// SECTION CARD
+// =============================================================================
+
+class _SectionCard extends StatelessWidget {
+  final Widget child;
+
+  const _SectionCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withOpacity(0.05)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+// =============================================================================
+// PRIMARY BUTTON
+// =============================================================================
+
+class _PrimaryButton extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final bool loading;
+  final VoidCallback? onPressed;
+
+  const _PrimaryButton({
+    required this.icon,
+    required this.text,
+    required this.loading,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primaryGreen,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppColors.primaryGreen.withOpacity(0.55),
+          disabledForegroundColor: Colors.white70,
+          elevation: 2,
+          shadowColor: AppColors.primaryGreen.withOpacity(0.22),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: loading
+            ? const SizedBox(
+                width: 21,
+                height: 21,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 19),
+                  const SizedBox(width: 9),
+                  Flexible(
+                    child: SmartReTranslator(
+                      text: text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// SUCCESS BUTTON
+// =============================================================================
+
+class _SuccessButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _SuccessButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.successColor,
+          foregroundColor: Colors.white,
+          elevation: 2,
+          shadowColor: AppColors.successColor.withOpacity(0.20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.arrow_forward_rounded, size: 19),
+            SizedBox(width: 8),
+            SmartReTranslator(
+              text: 'Continue',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// STATUS ITEM
+// =============================================================================
+
+class _StatusItem extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  final bool danger;
+
+  const _StatusItem({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.danger,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? AppColors.errorColor : AppColors.primaryGreen;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 17, color: color),
+        const SizedBox(width: 7),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                color: danger ? AppColors.errorColor : AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

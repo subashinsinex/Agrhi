@@ -4,7 +4,7 @@ class AppConstants {
   // production url = http://14.139.161.69:8000/api
 
   // API Configuration
-  static const String baseUrl = 'https://farmlead.in/v1/api';
+  static const String baseUrl = 'https://www.farmlead.in/v1/api';
 
   static const String appVersion = '1.0.0';
 

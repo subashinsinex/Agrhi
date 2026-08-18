@@ -64,7 +64,7 @@ exports.createRetailer = async (req, res) => {
     );
     const image_id = uuidv4();
 
-    await query("INSERT INTO images (image_id, image_url) VALUES ($1, NULL)", [
+    await query("INSERT INTO images (image_id, image_url) VALUES ($1, 'no-image')", [
       image_id,
     ]);
 
@@ -167,7 +167,7 @@ exports.createRetailerAdmin = async (req, res) => {
     );
     const image_id = uuidv4();
 
-    await query("INSERT INTO images (image_id, image_url) VALUES ($1, NULL)", [
+    await query("INSERT INTO images (image_id, image_url) VALUES ($1, 'no-image')", [
       image_id,
     ]);
 

@@ -1,14 +1,15 @@
 const logger = require("./logger");
-const web_ip = process.env.WEB_IP;
-const web_port = process.env.WEB_PORT;
 const nodemailer = require("nodemailer");
+const website = process.env.WEBSITE_URL;
 const emailTemplates = require("./emailTemplates");
 const { getLocationFromIP } = require("./ipGeolocation");
 
 class EmailService {
   constructor() {
     this.transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtpout.secureserver.net",
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD,
@@ -25,7 +26,7 @@ class EmailService {
     ipAddress,
   }) {
     try {
-      const resetUrl = `http://${web_ip}:${web_port}/reset-password?token=${resetToken}`;
+      const resetUrl = `https://${website}/reset-password?token=${resetToken}`;
 
       const location = await getLocationFromIP(ipAddress);
 
