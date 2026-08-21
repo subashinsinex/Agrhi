@@ -106,13 +106,14 @@ exports.getFarmById = async (req, res) => {
     if (result.rows.length > 0) {
       logger.info("getFarmById - Success", { id, count: result.rowCount });
       return res.json(result.rows);
+    } else {
+      logger.info("getFarmById - No farms Available", { id });
+      return res.json({ message: "No farms Available" });
     }
 
-    logger.warn("getFarmById - Not found", { id });
-    res.status(404).json({ message: "Farm not found" });
   } catch (error) {
     logger.error("getFarmById - Error:", { id, error });
-    res.status(500).json({ message: "Error fetching farm", error });
+    return res.status(500).json({ message: "Error fetching farm", error });
   }
 };
 

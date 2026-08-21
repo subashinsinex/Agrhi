@@ -17,6 +17,8 @@ import { Header } from "./components/header";
 import { DESKTOP_BREAKPOINT } from "./constant";
 import ProtectedRoute from "./components/protectedRoute";
 import ResetPassword from "./components/resetPassword";
+import DeleteAccount from "./components/deleteAccount";
+import Privacy from "./components/privacy";
 import Home from "./components/home";
 
 // Import the 3D Background component
@@ -31,7 +33,9 @@ function App() {
   const isLoginPage =
     location.pathname === "/" || location.pathname === "/login";
   const isResetPasswordPage = location.pathname.startsWith("/reset-password");
-  const useStandardLayout = !isLoginPage && !isResetPasswordPage;
+  const isDeleteAccountPage = location.pathname === "/delete-account";
+  const isPrivacyPage = location.pathname === "/privacy";
+  const useStandardLayout = !isLoginPage && !isResetPasswordPage && !isDeleteAccountPage && !isPrivacyPage;
 
   useEffect(() => {
     if (!useStandardLayout) return;
@@ -196,6 +200,13 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/delete-account"
+              element={
+                  <DeleteAccount />
+              }
+            />
+            <Route path="/privacy" element={<Privacy />} />
           </Routes>
         </main>
       </div>

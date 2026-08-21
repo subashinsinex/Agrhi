@@ -12,7 +12,7 @@ class AboutScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -293,7 +293,7 @@ class AboutScreen extends StatelessWidget {
                       body:
                           'For questions, concerns, or disputes regarding these Terms:\n\n'
                           '📱 In-App: Help & Support → Submit Feedback (toggle "Issue")\n'
-                          '📧 Email: projectagrhi@gmail.com\n'
+                          '📧 Email: support@farmlead.in\n'
                           '⏱ Response: Within 24 hours (general) / 30 days (formal disputes)\n'
                           '🏛 Programme: Erasmus+ AGRHI Consortium',
                       isLast: true,
@@ -310,7 +310,7 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  static void showPrivacySheet(BuildContext context) {
+static void showPrivacySheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -331,12 +331,13 @@ class AboutScreen extends StatelessWidget {
               title: 'Privacy Policy',
               icon: Icons.privacy_tip_outlined,
             ),
+
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               color: AppColors.primaryGreen.withOpacity(0.05),
               child: const Text(
-                'Effective Date: April 2026  •  Erasmus+ AGRHI Programme',
+                'Effective Date: August 2026  •  Erasmus+ AGRHI Programme',
                 style: TextStyle(
                   fontSize: 11,
                   color: AppColors.textSecondary,
@@ -344,6 +345,7 @@ class AboutScreen extends StatelessWidget {
                 ),
               ),
             ),
+
             Expanded(
               child: SingleChildScrollView(
                 controller: scrollController,
@@ -352,159 +354,290 @@ class AboutScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _legalIntro(
-                      'This Privacy Policy explains how the AGRHI mobile application '
-                      'collects, processes, stores, and protects your personal data. '
-                      'We are committed to protecting your privacy and handling your '
-                      'data in accordance with applicable data protection laws, including '
-                      'the Information Technology Act, 2000 (India) and GDPR (for EU-region users).',
+                      'This Privacy Policy explains how the AGRHI mobile '
+                      'application collects, uses, processes, stores, shares, '
+                      'and protects information when you use our services. '
+                      'AGRHI is committed to handling personal data responsibly '
+                      'and in accordance with applicable privacy and data '
+                      'protection laws.',
                     ),
+
                     _legalSection(
                       title: '1. Data We Collect',
                       body:
-                          'We collect the following categories of personal data:\n\n'
-                          '📋 Registration Data: Full name, phone number, email address, '
-                          'date of birth, address, postal code, and role category.\n\n'
-                          '📍 Location Data: GPS coordinates when you set up a Farm Store '
-                          'or use the Map module. Location access is requested only when needed.\n\n'
-                          '📸 Images: Crop photos you upload to the Plant Doctor feature. '
-                          'Images are processed for disease detection and may be stored to improve model accuracy.\n\n'
-                          '💬 Support Messages: Content of feedback and issue reports you '
-                          'submit via Help & Support.\n\n'
-                          '🛒 Marketplace Data: Product listings, shop details, and '
-                          'contact numbers (for Retailers).\n\n'
-                          '📊 Usage Data: App interactions, feature usage patterns, crash '
-                          'logs, and diagnostic data for app improvement.',
+                          'AGRHI may collect or process the following categories '
+                          'of information depending on the features you use:\n\n'
+                          '📋 Registration & Profile Data\n'
+                          '• Full name.\n'
+                          '• Phone number.\n'
+                          '• Email address.\n'
+                          '• Date of birth.\n'
+                          '• Address and postal code.\n'
+                          '• User role/category.\n'
+                          '• Profile image, where provided.\n\n'
+                          '📍 Location Data\n'
+                          'GPS coordinates may be accessed when you use '
+                          'location-based features such as Farm Store setup, '
+                          'weather information, or nearby stores on the Map.\n\n'
+                          '📸 Images\n'
+                          'Crop images submitted to Plant Doctor may be processed '
+                          'for disease detection. Profile, retailer, shop, or '
+                          'product images may also be processed when those '
+                          'features are used.\n\n'
+                          '💬 User-Provided Content\n'
+                          'Feedback, support messages, marketplace listings, '
+                          'shop information, product information, and other '
+                          'content that you choose to submit.\n\n'
+                          '🤖 AI Chatbot Data\n'
+                          'When the AI Chatbot is available and you choose to use '
+                          'it, the text you submit is processed to generate an '
+                          'AI response.\n\n'
+                          '📊 Technical & SDK Diagnostics\n'
+                          'Limited application, device, SDK, model-download, '
+                          'performance, and diagnostic information may be '
+                          'processed by integrated technologies used to operate '
+                          'and maintain AGRHI.',
                     ),
+
                     _legalSection(
                       title: '2. How We Use Your Data',
                       body:
-                          'Your personal data is used for the following purposes:\n\n'
-                          '• Account creation, authentication, and profile management.\n'
-                          '• Providing core app features: Plant Doctor, Marketplace, Farm Store, Subsidies, and Map.\n'
-                          '• Processing and displaying your Retailer shop profile after admin verification.\n'
-                          '• Enabling GPS-based Farm Store location and Marketplace proximity features.\n'
-                          '• Transmitting crop images to AI disease detection models for analysis.\n'
-                          '• Sending in-app notifications about important updates or policy changes.\n'
+                          'Information is used only for purposes related to '
+                          'operating and improving AGRHI, including:\n\n'
+                          '• Creating and authenticating user accounts.\n'
+                          '• Managing user profiles and application settings.\n'
+                          '• Providing Plant Doctor disease detection.\n'
+                          '• Managing farms, crops, reminders, and crop-care data.\n'
+                          '• Providing Marketplace and Farm Store features.\n'
+                          '• Verifying retailer shop profiles.\n'
+                          '• Displaying nearby shops and Farm Stores.\n'
+                          '• Providing weather and location-based information.\n'
+                          '• Processing AI Chatbot requests when that feature is used.\n'
                           '• Responding to Help & Support requests.\n'
-                          '• Improving app performance through aggregated, anonymised usage analytics.\n'
-                          '• Fulfilling obligations under the Erasmus+ Programme reporting requirements '
-                          '(aggregated, anonymised data only).',
+                          '• Sending important application and policy notifications.\n'
+                          '• Maintaining security and preventing misuse.\n'
+                          '• Diagnosing technical problems and improving reliability.\n'
+                          '• Preparing aggregated or anonymised Erasmus+ Programme '
+                          'reports where required.',
                     ),
+
                     _legalSection(
                       title: '3. Data Sharing & Third Parties',
                       body:
-                          'We do not sell your personal data. We share data only in the following circumstances:\n\n'
-                          '🤖 AI Processing: Crop images are processed by our in-app ML models. '
-                          'When the AI Chatbot is active, query text is sent to Groq API (LLaMA 3.1) '
-                          'and Google AI (Gemma 3) for response generation.\n\n'
-                          '🗺 Maps: When you tap "Directions", you are redirected to Google Maps. '
-                          'Google\'s Privacy Policy governs that interaction.\n\n'
-                          '🏛 Erasmus+ Programme: Aggregated, anonymised usage statistics may be '
-                          'shared with Erasmus+ programme evaluators as required under our grant agreement.\n\n'
-                          '⚖ Legal Requirements: We may disclose data to comply with a legal obligation, '
-                          'court order, or to protect the rights and safety of AGRHI users.',
+                          'AGRHI does not sell your personal data.\n\n'
+                          'Information may be processed by third-party services '
+                          'only where required to provide particular features:\n\n'
+                          '🤖 Groq API\n'
+                          'When the AGRHI AI Chatbot is enabled, chatbot query '
+                          'text may be sent to Groq for AI response generation.\n\n'
+                          '🤖 Google AI\n'
+                          'When applicable, chatbot query text may be sent to '
+                          'Google AI services for AI response generation.\n\n'
+                          '🌐 Google ML Kit Translation\n'
+                          'AGRHI uses Google ML Kit for on-device translation and '
+                          'language model downloads. Google ML Kit may process '
+                          'limited SDK, application, device, model-download, and '
+                          'diagnostic telemetry required to provide, maintain, '
+                          'and improve its services. Translation text used by the '
+                          'translation feature is processed on the device.\n\n'
+                          '🗺 Google Maps\n'
+                          'When you select "Directions", AGRHI may redirect you '
+                          'to Google Maps. Your interaction with Google Maps is '
+                          'governed by Google\'s own Privacy Policy and Terms.\n\n'
+                          '🏛 Erasmus+ Programme\n'
+                          'Aggregated or anonymised statistics may be shared with '
+                          'programme evaluators where required under programme '
+                          'reporting obligations.\n\n'
+                          '⚖ Legal Requirements\n'
+                          'Information may be disclosed where required by '
+                          'applicable law, valid legal process, or where necessary '
+                          'to protect users, AGRHI, or its systems.',
                     ),
+
                     _legalSection(
                       title: '4. Data Storage & Security',
                       body:
-                          'Your data is stored on secure servers. We implement appropriate technical '
-                          'and organisational security measures including:\n\n'
-                          '• Encrypted data transmission (HTTPS/TLS).\n'
-                          '• Hashed password storage (passwords are never stored in plain text).\n'
-                          '• Access controls restricting data access to authorised personnel only.\n'
-                          '• Regular security reviews of our infrastructure.\n\n'
-                          'While we take all reasonable precautions, no system is completely immune '
-                          'to security breaches. In the event of a data breach affecting your rights, '
-                          'we will notify you within 72 hours as required by applicable law.',
+                          'AGRHI uses reasonable technical and organisational '
+                          'security measures to protect information, including:\n\n'
+                          '• HTTPS/TLS encrypted communication with production servers.\n'
+                          '• Secure authentication mechanisms.\n'
+                          '• Password hashing instead of plain-text password storage.\n'
+                          '• Protected storage for authentication credentials on supported devices.\n'
+                          '• Access controls for authorised personnel.\n'
+                          '• Server and application security reviews.\n\n'
+                          'No electronic system can guarantee absolute security. '
+                          'If a security incident affects personal data, AGRHI '
+                          'will take appropriate action and provide notifications '
+                          'where required by applicable law.',
                     ),
+
                     _legalSection(
                       title: '5. Location Data',
                       body:
-                          'Location access is used only for specific features:\n\n'
-                          '• Farm Store Setup: Your GPS coordinates are captured once to set your '
-                          'permanent selling location. This location is visible to nearby AGRHI users.\n\n'
-                          '• Map Module: Used to show nearby stores relative to your position.\n\n'
-                          'We do not track your location continuously in the background. '
-                          'Location permission is requested in-context when you use a location-dependent feature.',
+                          'AGRHI accesses location only when required by '
+                          'location-dependent features.\n\n'
+                          '🌾 Farm Store Setup\n'
+                          'Your GPS coordinates may be saved as your Farm Store '
+                          'selling location. This location may be visible to other '
+                          'AGRHI users using nearby-store features.\n\n'
+                          '🗺 Map Module\n'
+                          'Your current location may be used to calculate and show '
+                          'nearby stores relative to your position.\n\n'
+                          '🌦 Weather\n'
+                          'Your location may be used to provide locally relevant '
+                          'weather information.\n\n'
+                          'AGRHI does not continuously track your location in the '
+                          'background. Location access is requested in context '
+                          'when a feature requires it.',
                     ),
+
                     _legalSection(
                       title: '6. Crop Images & Plant Doctor',
                       body:
-                          'Images you capture or upload via Plant Doctor are:\n\n'
-                          '• Processed by our on-device or server-side ML model for disease detection.\n'
-                          '• Potentially retained to improve model accuracy under anonymised conditions.\n'
-                          '• Not shared with third parties for commercial purposes.\n\n'
-                          'You retain ownership of images you upload. By uploading, you grant AGRHI '
-                          'a licence to use those images for model training and improvement purposes only.',
+                          'Crop images selected or captured through Plant Doctor '
+                          'may be processed on the device or by AGRHI server-side '
+                          'services for crop disease detection.\n\n'
+                          'Images may be retained for a limited period where '
+                          'required for application functionality or model '
+                          'improvement.\n\n'
+                          'Where images are used for model improvement, AGRHI will '
+                          'take reasonable steps to separate them from directly '
+                          'identifying account information where appropriate.\n\n'
+                          'AGRHI does not sell crop images or provide them to '
+                          'third parties for advertising purposes.\n\n'
+                          'You retain ownership of images you upload. By submitting '
+                          'an image through Plant Doctor, you permit AGRHI to '
+                          'process it for disease detection and the purposes '
+                          'described in this Privacy Policy.',
                     ),
+
                     _legalSection(
                       title: '7. Children\'s Privacy',
                       body:
-                          'AGRHI is not intended for children under the age of 13 (or 16 in EU regions). '
-                          'We do not knowingly collect personal data from children under these ages.\n\n'
-                          'If you are a parent or guardian and believe your child has registered without '
-                          'consent, please contact us immediately via Help & Support or at '
-                          'projectagrhi@gmail.com. We will promptly delete the account.',
+                          'AGRHI is not intended for children below the minimum '
+                          'age permitted to independently use the service under '
+                          'applicable law.\n\n'
+                          'AGRHI does not knowingly collect personal information '
+                          'from children where parental or guardian consent is '
+                          'legally required and has not been obtained.\n\n'
+                          'If you believe a child has provided personal information '
+                          'without appropriate consent, contact us at '
+                          'support@farmlead.in so that the account and associated '
+                          'information can be reviewed and removed where required.',
                     ),
+
                     _legalSection(
-                      title: '8. Your Rights',
+                      title: '8. Your Privacy Rights',
                       body:
-                          'Depending on your location, you have the following rights over your personal data:\n\n'
-                          '• Right of Access: Request a copy of the personal data we hold about you.\n'
-                          '• Right to Rectification: Request correction of inaccurate or incomplete data.\n'
-                          '• Right to Erasure: Request deletion of your account and associated data.\n'
-                          '• Right to Restrict Processing: Request that we limit how we use your data.\n'
-                          '• Right to Data Portability: Request your data in a machine-readable format.\n'
-                          '• Right to Object: Object to processing based on legitimate interests.\n\n'
-                          'EU/EEA users have full GDPR rights. Indian users have rights under the '
-                          'Information Technology Act, 2000 and the Digital Personal Data Protection '
-                          'Act, 2023.\n\n'
-                          'To exercise any of these rights, contact us via Help & Support or email '
-                          'projectagrhi@gmail.com. We will respond within 30 days.',
+                          'Depending on applicable law and your location, you may '
+                          'have rights concerning your personal information, '
+                          'including:\n\n'
+                          '• Right to request access to your personal data.\n'
+                          '• Right to request correction of inaccurate data.\n'
+                          '• Right to request deletion of your account and data.\n'
+                          '• Right to request restriction of certain processing.\n'
+                          '• Right to data portability where applicable.\n'
+                          '• Right to object to certain processing where applicable.\n'
+                          '• Right to withdraw consent where processing is based on consent.\n\n'
+                          'EU/EEA users may have rights under the GDPR.\n\n'
+                          'Users in India may have rights under applicable Indian '
+                          'privacy and data-protection legislation, including the '
+                          'Digital Personal Data Protection Act, 2023, where applicable.\n\n'
+                          'Requests can be submitted through Help & Support or '
+                          'by emailing support@farmlead.in.',
                     ),
+
                     _legalSection(
-                      title: '9. Data Retention',
+                      title: '9. Data Retention & Account Deletion',
                       body:
-                          'We retain your personal data for as long as your account is active or as '
-                          'needed to provide services. Specific retention periods:\n\n'
-                          '• Account data: Retained until account deletion is requested and processed.\n'
-                          '• Crop images: Retained for up to 12 months for model improvement, then anonymised.\n'
-                          '• Support messages: Retained for 24 months for quality assurance.\n'
-                          '• Usage analytics: Aggregated and anonymised after 6 months.\n\n'
-                          'Accounts inactive for more than 24 months will receive a deletion notice '
-                          'before data is removed.',
+                          'AGRHI retains personal information only for as long as '
+                          'reasonably necessary to provide the service or comply '
+                          'with legitimate legal, security, fraud-prevention, '
+                          'regulatory, or programme requirements.\n\n'
+                          'Typical retention periods include:\n\n'
+                          '• Account data — retained while your account is active '
+                          'and deleted after an account deletion request is completed, '
+                          'except where retention is legally required.\n\n'
+                          '• Crop images — may be retained for up to 12 months for '
+                          'model improvement and then deleted or anonymised where applicable.\n\n'
+                          '• Support messages — may be retained for up to 24 months '
+                          'for issue resolution and service quality purposes.\n\n'
+                          '• Aggregated analytics — may be anonymised after approximately '
+                          '6 months where applicable.\n\n'
+                          '• Third-party SDK diagnostic information — retention may '
+                          'also be governed by the applicable service provider\'s policies.\n\n'
+                          'You can request deletion of your AGRHI account and '
+                          'associated personal information through the application '
+                          'or using our public account deletion page:\n\n'
+                          'https://farmlead.in/delete-account\n\n'
+                          'Certain information may be retained after deletion only '
+                          'where required for legal, regulatory, security, fraud '
+                          'prevention, or compliance purposes.',
                     ),
+
                     _legalSection(
-                      title: '10. Cookies & Local Storage',
+                      title: '10. Cookies, Device Storage & Identifiers',
                       body:
-                          'The AGRHI mobile app does not use browser cookies. We use local device '
-                          'storage (shared preferences) solely to store:\n\n'
-                          '• Your selected language preference.\n'
-                          '• Downloaded language pack data.\n'
-                          '• Session authentication tokens (encrypted).\n\n'
-                          'No tracking cookies or advertising identifiers are used.',
+                          'The AGRHI mobile application does not use browser '
+                          'tracking cookies.\n\n'
+                          'AGRHI uses local device storage for application '
+                          'functionality, including:\n\n'
+                          '• Language preferences.\n'
+                          '• Downloaded language packs and models.\n'
+                          '• Offline application data.\n'
+                          '• Application settings.\n'
+                          '• Authentication/session information stored using '
+                          'protected storage where supported.\n\n'
+                          'AGRHI does not use personal information for advertising. '
+                          'Some integrated SDKs may process limited technical '
+                          'identifiers or diagnostic information as described in '
+                          'Section 3 of this Privacy Policy.',
                     ),
+
                     _legalSection(
-                      title: '11. Changes to This Privacy Policy',
+                      title: '11. AI Chatbot Privacy',
                       body:
-                          'We may update this Privacy Policy from time to time. When we make significant '
-                          'changes, you will be notified via an in-app notification before the changes '
-                          'take effect.\n\n'
-                          'Continued use of AGRHI after the effective date of an updated Privacy Policy '
-                          'constitutes your acceptance of the changes.',
+                          'When the AGRHI AI Chatbot is available, the message '
+                          'you submit may be transmitted to third-party AI '
+                          'providers such as Groq or Google AI to generate a response.\n\n'
+                          'You should not enter sensitive personal information, '
+                          'financial details, passwords, confidential business '
+                          'information, or other information that you do not want '
+                          'processed by those services.\n\n'
+                          'AI Chatbot processing occurs only when you actively use '
+                          'the chatbot feature.',
                     ),
+
                     _legalSection(
-                      title: '12. Contact Us',
+                      title: '12. Changes to This Privacy Policy',
                       body:
-                          'For privacy-related questions, data requests, or concerns:\n\n'
-                          '📱 In-App: Help & Support → Submit Feedback (toggle "Issue")\n'
-                          '📧 Email: projectagrhi@gmail.com\n'
-                          '⏱ Response: Within 30 days for formal data requests\n'
-                          '🏛 Programme: Erasmus+ AGRHI Consortium',
+                          'AGRHI may update this Privacy Policy when application '
+                          'features, technologies, legal requirements, or data '
+                          'practices change.\n\n'
+                          'Where required, significant changes will be communicated '
+                          'through an appropriate in-app notice.\n\n'
+                          'The latest effective date will be shown at the top of '
+                          'this Privacy Policy.',
+                    ),
+
+                    _legalSection(
+                      title: '13. Developer & Privacy Contact',
+                      body:
+                          'Application: AGRHI — Smart Farm Assistant\n\n'
+                          'Website / Service: Farmlead\n\n'
+                          'Developer / Programme Operator: Erasmus+ AGRHI Programme Consortium\n\n'
+                          'Privacy & Support Email: support@farmlead.in\n\n'
+                          'Website: https://farmlead.in\n\n'
+                          'Account Deletion: https://farmlead.in/delete-account\n\n'
+                          'For privacy questions, access requests, corrections, '
+                          'account deletion requests, or other privacy concerns, '
+                          'contact AGRHI through Help & Support or email '
+                          'support@farmlead.in.',
                       isLast: true,
                     ),
+
                     const SizedBox(height: 16),
-                    _lastUpdated('April 2026'),
+                    _lastUpdated('August 2026'),
                   ],
                 ),
               ),
@@ -895,14 +1028,14 @@ class AboutScreen extends StatelessWidget {
           _buildContactRow(
             icon: Icons.email_outlined,
             label: 'Support Email',
-            value: 'projectagrhi@gmail.com',
+            value: 'support@farmlead.in',
             isFirst: true,
           ),
           _buildDivider(),
           _buildContactRow(
             icon: Icons.language_rounded,
             label: 'Website',
-            value: 'www.agrhi.com',
+            value: 'farmlead.in',
           ),
         ],
       ),

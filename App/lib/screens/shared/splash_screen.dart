@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../../../utils/routes.dart';
 import '../../../src/services/app_config_service.dart';
 import '../../../src/database/database_helper.dart';
@@ -22,14 +24,17 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late AnimationController _pulseController;
+
   late Animation<double> _fadeAnimation;
   late Animation<double> _pulseAnimation;
 
   String _statusMessage = 'Initializing services...';
   String _progressName = 'Booting';
+
   double _progressValue = 0.08;
 
   final bool _showOfflineBadge = false;
+
   bool _configChecked = false;
   bool _hasNavigated = false;
 
@@ -44,12 +49,15 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
+
     _setupAnimations();
+
     _updateProgress(
       step: 'Booting',
       message: 'Initializing services...',
       value: 0.08,
     );
+
     _checkAuthAndNavigate();
   }
 
@@ -77,8 +85,11 @@ class _SplashScreenState extends State<SplashScreen>
 
   double _scaleText(BuildContext context, double size) {
     final width = MediaQuery.of(context).size.width;
+
     final scaledBase = size * (width / 390).clamp(0.90, 1.12);
+
     final accessibilityScale = MediaQuery.of(context).textScaler.scale(1.0);
+
     return scaledBase * accessibilityScale.clamp(0.95, 1.08);
   }
 
@@ -100,7 +111,9 @@ class _SplashScreenState extends State<SplashScreen>
     required String message,
     required double value,
   }) {
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     setState(() {
       _progressName = step;
@@ -112,6 +125,7 @@ class _SplashScreenState extends State<SplashScreen>
   Future<bool> _hasUnsyncedData() async {
     try {
       final db = DatabaseHelper.instance;
+
       final pendingFarms = await db.getPendingFarms();
       final pendingCrops = await db.getPendingCrops();
       final pendingAnalyses = await db.getPendingAnalyses();
@@ -142,7 +156,9 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _checkAuthAndNavigate() async {
     await Future.delayed(const Duration(seconds: 2));
 
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     if (_configChecked) {
       debugPrint('Config already checked, skipping...');
@@ -150,6 +166,7 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     _configChecked = true;
+
     _updateProgress(
       step: 'Updates',
       message: 'Checking for updates...',
@@ -158,14 +175,18 @@ class _SplashScreenState extends State<SplashScreen>
 
     final serverConfig = await AppConfigService.checkAppConfig();
 
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     if (serverConfig != null && serverConfig['needs_update'] == true) {
       await _handleUpdateFlow(serverConfig);
       return;
     }
 
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     await _proceedWithAuth();
   }
@@ -179,9 +200,12 @@ class _SplashScreenState extends State<SplashScreen>
       );
 
       await Future.delayed(const Duration(milliseconds: 500));
+
       final hasUnsynced = await _hasUnsyncedData();
 
-      if (!mounted || _hasNavigated) return;
+      if (!mounted || _hasNavigated) {
+        return;
+      }
 
       _updateProgress(
         step: 'Redirecting',
@@ -191,7 +215,12 @@ class _SplashScreenState extends State<SplashScreen>
 
       await Future.delayed(const Duration(milliseconds: 250));
 
+      if (!mounted || _hasNavigated) {
+        return;
+      }
+
       _hasNavigated = true;
+
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (context) =>
@@ -203,6 +232,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (mounted && !_hasNavigated) {
         _hasNavigated = true;
+
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) =>
@@ -214,7 +244,9 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _proceedWithAuth() async {
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     _updateProgress(
       step: 'Authentication',
@@ -226,11 +258,15 @@ class _SplashScreenState extends State<SplashScreen>
 
     final hasTokens = await _hasStoredTokens();
 
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     final payload = widget.initialNotificationPayload;
+
     if (payload != null && payload.isNotEmpty) {
       await _handleNotificationNavigation(payload, hasTokens);
+
       return;
     }
 
@@ -255,7 +291,9 @@ class _SplashScreenState extends State<SplashScreen>
 
     await Future.delayed(const Duration(milliseconds: 300));
 
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     _hasNavigated = true;
 
@@ -265,6 +303,7 @@ class _SplashScreenState extends State<SplashScreen>
           Navigator.of(
             context,
           ).pushNamedAndRemoveUntil(Routes.dashboard, (route) => false);
+
           Navigator.of(context).pushNamed(Routes.modelManager);
         } else {
           Navigator.of(
@@ -316,7 +355,9 @@ class _SplashScreenState extends State<SplashScreen>
 
     await Future.delayed(const Duration(milliseconds: 300));
 
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     _updateProgress(step: 'Sync', message: 'Syncing your data...', value: 0.68);
 
@@ -327,7 +368,9 @@ class _SplashScreenState extends State<SplashScreen>
 
       debugPrint('✅ Boot sync result: $syncResult');
 
-      if (!mounted || _hasNavigated) return;
+      if (!mounted || _hasNavigated) {
+        return;
+      }
 
       _updateProgress(
         step: 'Finishing',
@@ -336,15 +379,18 @@ class _SplashScreenState extends State<SplashScreen>
       );
 
       try {
-        await NotificationService.scheduleWeeklyCheckIn();
-        debugPrint('✅ Weekly check-in scheduled');
+        await NotificationService.ensureGeneralEngagementNotificationsScheduled();
+
+        debugPrint('✅ General engagement notifications checked');
       } catch (e) {
-        debugPrint('Error scheduling weekly check-in: $e');
+        debugPrint('Error checking engagement notifications: $e');
       }
     } catch (e) {
       debugPrint('Boot sync failed: $e');
 
-      if (!mounted || _hasNavigated) return;
+      if (!mounted || _hasNavigated) {
+        return;
+      }
 
       _updateProgress(
         step: 'Offline Mode',
@@ -354,8 +400,10 @@ class _SplashScreenState extends State<SplashScreen>
 
       try {
         await RemindersManager.instance.rescheduleAllCropReminders();
-        await NotificationService.scheduleWeeklyCheckIn();
-        debugPrint('✅ Offline reminders restored after sync failure');
+
+        await NotificationService.ensureGeneralEngagementNotificationsScheduled();
+
+        debugPrint('✅ Offline reminders and engagement notifications restored');
       } catch (restoreError) {
         debugPrint(
           'Error restoring reminders after sync failure: $restoreError',
@@ -363,13 +411,20 @@ class _SplashScreenState extends State<SplashScreen>
       }
     }
 
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     _updateProgress(step: 'Ready', message: 'Opening dashboard...', value: 1.0);
 
     await Future.delayed(const Duration(milliseconds: 350));
 
+    if (!mounted || _hasNavigated) {
+      return;
+    }
+
     _hasNavigated = true;
+
     Routes.navigateToDashboard(context);
   }
 
@@ -382,8 +437,8 @@ class _SplashScreenState extends State<SplashScreen>
       );
 
       await RemindersManager.instance.rescheduleAllCropReminders();
-      await NotificationService.scheduleWeeklyCheckIn();
-      debugPrint('✅ Offline reminders restored');
+
+      debugPrint('✅ Offline crop reminders restored');
     } catch (e) {
       debugPrint('Error restoring reminders offline: $e');
     }
@@ -396,15 +451,19 @@ class _SplashScreenState extends State<SplashScreen>
 
     await Future.delayed(const Duration(milliseconds: 500));
 
-    if (!mounted || _hasNavigated) return;
+    if (!mounted || _hasNavigated) {
+      return;
+    }
 
     _hasNavigated = true;
+
     Routes.navigateToLogin(context);
   }
 
   Future<bool> _hasStoredTokens() async {
     try {
       final accessToken = await storage.read(key: 'access_token');
+
       final refreshToken = await storage.read(key: 'refresh_token');
 
       final hasTokens =
@@ -414,9 +473,11 @@ class _SplashScreenState extends State<SplashScreen>
           refreshToken.isNotEmpty;
 
       debugPrint('Token check: ${hasTokens ? 'Found' : 'Not found'}');
+
       return hasTokens;
     } catch (e) {
       debugPrint('Error checking tokens: $e');
+
       return false;
     }
   }
@@ -425,12 +486,14 @@ class _SplashScreenState extends State<SplashScreen>
   void dispose() {
     _fadeController.dispose();
     _pulseController.dispose();
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
+
     final isSmallScreen = screenHeight < 700;
 
     return Scaffold(

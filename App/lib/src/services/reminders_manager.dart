@@ -263,7 +263,7 @@ class RemindersManager {
         }
       }
 
-      await NotificationService.cancelWeeklyCheckIn();
+      await NotificationService.cancelGeneralEngagementNotifications();
       await NotificationService.cancelAllNotifications();
       await NotificationService.debugPendingNotifications();
 
