@@ -10,11 +10,12 @@ import '../../utils/validators.dart';
 import '../../src/services/language_service.dart';
 import '../../src/services/api_service.dart';
 
+import '../../utils/page_transitions.dart';
+
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
-  static MaterialPageRoute route() =>
-      MaterialPageRoute(builder: (context) => const SignupScreen());
+  static Route<void> route() => smoothPageRoute(const SignupScreen());
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();

@@ -5,6 +5,7 @@ import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
 import '../../../src/services/retail_service.dart';
 import '../../../src/services/language_service.dart';
+import '../../../utils/page_transitions.dart';
 import 'add_edit_product_screen.dart';
 import '../../../utils/constants.dart';
 
@@ -263,8 +264,8 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                         onTap: () async {
                           final result = await Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (context) => AddEditProductScreen(
+                            smoothPageRoute(
+                              AddEditProductScreen(
                                 retailerId: widget.retailerId,
                               ),
                             ),
@@ -399,8 +400,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
               onPressed: () async {
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) =>
+                  smoothPageRoute(
                         AddEditProductScreen(retailerId: widget.retailerId),
                   ),
                 );
@@ -532,8 +532,8 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
           onTap: () async {
             final result = await Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => AddEditProductScreen(
+              smoothPageRoute(
+                AddEditProductScreen(
                   retailerId: widget.retailerId,
                   product: product,
                 ),

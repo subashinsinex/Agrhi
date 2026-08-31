@@ -11,3 +11,11 @@ analyzer:
     library_private_types_in_public_api: ignore
     depend_on_referenced_packages: ignore
     unnecessary_underscores: ignore
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**

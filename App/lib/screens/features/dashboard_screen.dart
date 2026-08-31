@@ -37,6 +37,8 @@ import 'farm_store/setup_screen.dart';
 import 'market_place/market_place_screen.dart';
 import 'subsidy_screen.dart';
 
+import '../../utils/page_transitions.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -365,7 +367,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   void navigateWithOnlineCheck(Widget screen) {
     final connectivityManager = context.read<ConnectivityManager>();
     if (connectivityManager.isOnline) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+      Navigator.push(context, smoothPageRoute(screen));
     } else {
       showOfflineWarning();
     }
@@ -388,12 +390,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (hasShopPlace == 'true') {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const FarmProductsScreen()),
+          smoothPageRoute(const FarmProductsScreen()),
         );
       } else {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const SetupScreen()),
+          smoothPageRoute(const SetupScreen()),
         );
       }
     } catch (e) {
@@ -401,7 +403,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!mounted) return;
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const SetupScreen()),
+        smoothPageRoute(const SetupScreen()),
       );
     }
   }
@@ -419,7 +421,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         icon: Icons.biotech_rounded,
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const DetectDiseaseScreen()),
+          smoothPageRoute(const DetectDiseaseScreen()),
         ),
         backgroundColor: const Color(0xFFF8FAF4),
         iconColor: const Color(0xFF2E6B2E),
@@ -429,7 +431,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         icon: Icons.history_rounded,
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const DiseaseHistoryScreen()),
+          smoothPageRoute(const DiseaseHistoryScreen()),
         ),
         backgroundColor: const Color(0xFFF8FAF4),
         iconColor: const Color(0xFF2D7A22),
@@ -439,7 +441,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         icon: Icons.cloud_download_rounded,
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const ModelManagerScreen()),
+          smoothPageRoute(const ModelManagerScreen()),
         ),
         backgroundColor: const Color(0xFFF4F8FC),
         iconColor: const Color(0xFF236C9E),
@@ -457,7 +459,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           icon: Icons.agriculture_rounded,
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const CropCareScreen()),
+            smoothPageRoute(const CropCareScreen()),
           ),
           backgroundColor: const Color(0xFFF8FAF4),
           iconColor: const Color(0xFF497F2C),
@@ -468,7 +470,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           icon: Icons.menu_book_rounded,
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const CropHistoryScreen()),
+            smoothPageRoute(const CropHistoryScreen()),
           ),
           backgroundColor: const Color(0xFFF9FAF2),
           iconColor: const Color(0xFF7C6A00),
@@ -767,9 +769,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           if (!mounted) return;
 
                           await navigator.pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (_) => const LoginScreen(),
-                            ),
+                            smoothPageRoute(const LoginScreen()),
                             (route) => false,
                           );
                         },
@@ -816,13 +816,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       case 'feedback':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+          smoothPageRoute(const FeedbackScreen()),
         );
         break;
       case 'about':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const AboutScreen()),
+          smoothPageRoute(const AboutScreen()),
         );
         break;
       case 'logout':
@@ -836,6 +836,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     final currentLanguageCode = Provider.of<LanguageService>(
       context,
     ).currentLocale.languageCode;
+
+    final category = userData?['category']?.toString().toLowerCase() ?? '';
+    final isConsumer = category == 'consumer';
 
     final bool showDashboardSkeleton =
         isLoadingProfile || isRefreshingDashboard;
@@ -863,16 +866,19 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const SizedBox(height: 12),
                     WeatherCard(key: weatherCardKey, useDeviceLocation: true),
                     const SizedBox(height: 10),
-                    showDashboardSkeleton
-                        ? buildUpcomingNotificationSkeleton()
-                        : UpcomingNotificationCard(
-                            key: ValueKey(
-                              'upcomingnotifications$notificationRefreshKey',
-                            ),
-                            backgroundColor: const Color(0xFF124D22),
-                            daysAhead: 30,
-                          ),
-                    const SizedBox(height: 10),
+                    if (!isConsumer) ...[
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: showDashboardSkeleton
+                            ? buildUpcomingNotificationSkeleton()
+                            : UpcomingNotificationCard(
+                                key: ValueKey(
+                                  'notificationcard$notificationRefreshKey',
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       child: showDashboardSkeleton
@@ -888,9 +894,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               onTap: () {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const ProfileScreen(),
-                                  ),
+                                  smoothPageRoute(const ProfileScreen()),
                                 ).then((_) => refreshDashboard());
                               },
                             ),

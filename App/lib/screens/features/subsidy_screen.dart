@@ -13,6 +13,8 @@ import '../../src/services/api_service.dart';
 import '../../src/services/language_service.dart';
 import '../../src/database/database_helper.dart';
 
+import '../../utils/page_transitions.dart';
+
 class Subsidy {
   final String id;
   final String title;
@@ -351,7 +353,7 @@ class _SubsidyScreenState extends State<SubsidyScreen> {
   void _openDetails(Subsidy subsidy) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => SubsidyDetailScreen(subsidy: subsidy)),
+      smoothPageRoute(SubsidyDetailScreen(subsidy: subsidy)),
     );
   }
 

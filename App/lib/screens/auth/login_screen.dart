@@ -19,11 +19,12 @@ import '../../src/database/database_helper.dart';
 import '../../src/services/connectivity_manager.dart';
 import 'forgot_password_screen.dart';
 
+import '../../utils/page_transitions.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
-  static MaterialPageRoute route() =>
-      MaterialPageRoute(builder: (context) => const LoginScreen());
+static Route<void> route() => smoothPageRoute(const LoginScreen());
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();

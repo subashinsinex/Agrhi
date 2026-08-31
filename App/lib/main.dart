@@ -14,6 +14,8 @@ import 'src/services/model_manager_provider.dart';
 import 'src/services/connectivity_manager.dart';
 import 'src/database/database_helper.dart';
 
+import 'utils/page_transitions.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -376,8 +378,9 @@ class MyApp extends StatelessWidget {
             routes: Routes.routes,
             onUnknownRoute: (settings) {
               debugPrint('⚠️ Unknown route: ${settings.name}');
-              return MaterialPageRoute(
-                builder: (_) => SplashScreen(
+
+              return smoothPageRoute(
+                SplashScreen(
                   initialNotificationPayload: initialNotificationPayload,
                 ),
               );

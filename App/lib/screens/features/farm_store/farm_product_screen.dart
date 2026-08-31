@@ -7,6 +7,7 @@ import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
 import '../../../src/services/farm_store_service.dart';
 import '../../../src/services/language_service.dart';
+import '../../../utils/page_transitions.dart';
 import 'add_edit_farm_product_screen.dart';
 import '../../../utils/constants.dart';
 
@@ -282,8 +283,7 @@ class _FarmProductsScreenState extends State<FarmProductsScreen> {
                         onTap: () async {
                           final result = await Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (context) => AddEditFarmProductScreen(
+                            smoothPageRoute( AddEditFarmProductScreen(
                                 farmerId: _farmerId!,
                               ),
                             ),
@@ -418,10 +418,7 @@ class _FarmProductsScreenState extends State<FarmProductsScreen> {
               onPressed: () async {
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        AddEditFarmProductScreen(farmerId: _farmerId!),
-                  ),
+                  smoothPageRoute( AddEditFarmProductScreen(farmerId: _farmerId!), ),
                 );
 
                 if (result == true) {
@@ -549,8 +546,8 @@ Widget _buildProductCard(Map<String, dynamic> product) {
         onTap: () async {
           final result = await Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => AddEditFarmProductScreen(
+            smoothPageRoute(
+              AddEditFarmProductScreen(
                 farmerId: _farmerId!,
                 product: product,
               ),

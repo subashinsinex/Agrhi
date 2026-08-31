@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../utils/colors.dart';
 import '../../utils/constants.dart';
+import 'delete_account.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -1108,12 +1109,27 @@ static void showPrivacySheet(BuildContext context) {
             onTap: () => AboutScreen.showTermsSheet(context),
             isFirst: true,
           ),
+
           _buildDivider(),
+
           _buildLegalTile(
             context: context,
             icon: Icons.privacy_tip_outlined,
             title: 'Privacy Policy',
             onTap: () => AboutScreen.showPrivacySheet(context),
+          ),
+
+          _buildDivider(),
+
+          _buildLegalTile(
+            context: context,
+            icon: Icons.delete_outline_rounded,
+            title: 'Delete Account',
+            iconColor: AppColors.errorColor,
+            textColor: AppColors.errorColor,
+            onTap: () {
+              Navigator.of(context).push(DeleteAccountScreen.route());
+            },
             isLast: true,
           ),
         ],
@@ -1128,6 +1144,8 @@ static void showPrivacySheet(BuildContext context) {
     required VoidCallback onTap,
     bool isFirst = false,
     bool isLast = false,
+    Color iconColor = AppColors.primaryGreen,
+    Color textColor = AppColors.textPrimary,
   }) {
     return InkWell(
       onTap: onTap,
@@ -1142,25 +1160,30 @@ static void showPrivacySheet(BuildContext context) {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.primaryGreen.withOpacity(0.1),
+                color: iconColor.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: AppColors.primaryGreen, size: 20),
+              child: Icon(icon, color: iconColor, size: 20),
             ),
+
             const SizedBox(width: 14),
+
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: textColor,
                 ),
               ),
             ),
-            const Icon(
+
+            Icon(
               Icons.chevron_right_rounded,
-              color: AppColors.textSecondary,
+              color: textColor == AppColors.errorColor
+                  ? AppColors.errorColor.withOpacity(0.7)
+                  : AppColors.textSecondary,
               size: 22,
             ),
           ],
@@ -1168,7 +1191,6 @@ static void showPrivacySheet(BuildContext context) {
       ),
     );
   }
-
   // ─── Footer ─────────────────────────────────────────────────────────────────
 
   Widget _buildFooter() {

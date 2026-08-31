@@ -8,13 +8,13 @@ import '../../utils/colors.dart';
 import '../../src/services/api_service.dart';
 import 'login_screen.dart';
 
+import '../../utils/page_transitions.dart';
+
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
-  static MaterialPageRoute route() {
-    return MaterialPageRoute(
-      builder: (context) => const ForgotPasswordScreen(),
-    );
+  static Route<void> route() {
+    return smoothPageRoute(const ForgotPasswordScreen());
   }
 
   @override

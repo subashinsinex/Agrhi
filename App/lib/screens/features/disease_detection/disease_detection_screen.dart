@@ -15,6 +15,7 @@ import '../../../src/models/crop_preprocessors.dart';
 import '../../../src/models/disease_labels.dart';
 import '../../../src/services/language_service.dart';
 import '../../../src/services/model_download_service.dart';
+import '../../../utils/page_transitions.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
 import '../../shared/disclaimer_banner.dart';
@@ -375,8 +376,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
     final imagePath = await Navigator.push<String>(
       context,
-      MaterialPageRoute(
-        builder: (context) =>
+      smoothPageRoute(
             SmartCameraScreen(cropName: _getCropName(selectedCrop!)),
       ),
     );

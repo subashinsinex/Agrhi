@@ -55,7 +55,7 @@ dependencies:
   ffmpeg_kit_flutter_new: ^4.3.2
 
   # ML & AI
-  tflite_flutter: ^0.11.0
+  tflite_flutter: 0.12.1
   google_mlkit_translation: ^0.13.1
 
   # Location & Maps

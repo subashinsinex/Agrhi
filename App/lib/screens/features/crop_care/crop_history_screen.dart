@@ -5,6 +5,7 @@ import '../../../src/database/database_helper.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
 import 'add_edit_crop_screen.dart';
+import '../../../utils/page_transitions.dart';
 
 class CropHistoryScreen extends StatefulWidget {
   const CropHistoryScreen({super.key});
@@ -406,7 +407,7 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
       if (!canActivate) {
         final updated = await Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => AddCropScreen(crop: crop)),
+          smoothPageRoute( AddCropScreen(crop: crop)),
         );
 
         if (updated == true) {

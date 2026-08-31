@@ -113,7 +113,8 @@ export default function DeleteAccount() {
 
       if (!response.ok) {
         throw new Error(
-          data.message || "Unable to submit your account deletion request.",
+          data.message ||
+            "Unable to submit your account deletion request right now. Please try again later.",
         );
       }
 

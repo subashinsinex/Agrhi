@@ -10,6 +10,7 @@ import '../shared/update_screen.dart';
 import '../../../src/services/connectivity_manager.dart';
 import '../../../src/services/reminders_manager.dart';
 import '../../../src/services/notification_service.dart';
+import '../../../utils/page_transitions.dart';
 
 class SplashScreen extends StatefulWidget {
   final String? initialNotificationPayload;
@@ -222,8 +223,7 @@ class _SplashScreenState extends State<SplashScreen>
       _hasNavigated = true;
 
       await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) =>
+        smoothPageRoute(
               UpdateScreen(config: config, hasUnsyncedData: hasUnsynced),
         ),
       );
@@ -234,9 +234,8 @@ class _SplashScreenState extends State<SplashScreen>
         _hasNavigated = true;
 
         await Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) =>
-                UpdateScreen(config: config, hasUnsyncedData: false),
+          smoothPageRoute(
+            UpdateScreen(config: config, hasUnsyncedData: false),
           ),
         );
       }

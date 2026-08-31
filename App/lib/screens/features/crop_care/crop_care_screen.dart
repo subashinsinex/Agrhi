@@ -9,6 +9,8 @@ import '../../shared/custom_app_bar.dart';
 import 'add_edit_farm_screen.dart';
 import 'add_edit_crop_screen.dart';
 
+import '../../../utils/page_transitions.dart';
+
 class CropCareScreen extends StatefulWidget {
   const CropCareScreen({super.key});
 
@@ -121,14 +123,14 @@ class _CropCareScreenState extends State<CropCareScreen>
       // Farms exist, proceed to add crop
       final result = await Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const AddCropScreen()),
+        smoothPageRoute( const AddCropScreen()),
       );
       changed = result == true;
     } else {
       // On Farms tab, directly add farm
       final result = await Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const AddFarmScreen()),
+        smoothPageRoute(const AddFarmScreen()),
       );
       changed = result == true;
     }
@@ -331,7 +333,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
   void _editCrop(Map<String, dynamic> crop) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => AddCropScreen(crop: crop)),
+      smoothPageRoute(AddCropScreen(crop: crop)),
     ).then((updated) {
       if (updated == true) widget.onDataChanged();
     });
@@ -635,9 +637,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                                 onPressed: () async {
                                   final result = await Navigator.push(
                                     context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const AddCropScreen(),
-                                    ),
+                                    smoothPageRoute(const AddCropScreen()),
                                   );
                                   if (result == true) widget.onDataChanged();
                                 },
@@ -1210,7 +1210,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
   void _editFarm(Map<String, dynamic> farm) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => AddFarmScreen(farm: farm)),
+      smoothPageRoute(AddFarmScreen(farm: farm)),
     ).then((updated) {
       if (updated == true) widget.onDataChanged();
     });
@@ -1640,9 +1640,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                           onPressed: () async {
                             final result = await Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (context) => const AddFarmScreen(),
-                              ),
+                              smoothPageRoute(const AddFarmScreen()),
                             );
                             if (result == true) widget.onDataChanged();
                           },

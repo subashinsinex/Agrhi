@@ -4,6 +4,7 @@ import '../../../utils/constants.dart';
 import '../../shared/custom_app_bar.dart';
 import '../../shared/smart_retranslator.dart';
 import '../../../src/services/retail_service.dart';
+import '../../../utils/page_transitions.dart';
 import 'add_edit_shop_screen.dart';
 import 'products_screen.dart';
 import '../feedback_screen.dart';
@@ -190,8 +191,8 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     if (result == 'request' && mounted) {
       final feedbackResult = await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => FeedbackScreen(
+        smoothPageRoute(
+          FeedbackScreen(
             shopReference: {
               'retailer_id': retailerId,
               'shop_name': shopName,
@@ -377,8 +378,8 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     if (result == 'request' && mounted) {
       final feedbackResult = await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => FeedbackScreen(
+        smoothPageRoute(
+          FeedbackScreen(
             shopReference: {
               'retailer_id': retailerId,
               'shop_name': shopName,
@@ -532,9 +533,8 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
     } else {
       final result = await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) =>
-              ManageShopScreen(retailerId: shop['retailer_id']),
+        smoothPageRoute(
+          ManageShopScreen(retailerId: shop['retailer_id']),
         ),
       );
 
@@ -554,8 +554,8 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
 
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => ManageProductsScreen(
+      smoothPageRoute(
+        ManageProductsScreen(
           retailerId: shop['retailer_id'],
           shopName: shop['shop_name'] ?? 'Unknown Shop',
         ),
@@ -598,7 +598,7 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
         onPressed: () async {
           final result = await Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const ManageShopScreen()),
+            smoothPageRoute(const ManageShopScreen()),
           );
 
           if (result == true) {
@@ -665,9 +665,7 @@ class _ShopsListScreenState extends State<ShopsListScreen> {
             onPressed: () async {
               final result = await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const ManageShopScreen(),
-                ),
+                smoothPageRoute(const ManageShopScreen()),
               );
 
               if (result == true) {

@@ -367,11 +367,16 @@ async function getDiseaseAnalysisResults(filters) {
   logger.info("getDiseaseAnalysisResults - Request", { filters });
 
   let sql = `
-    SELECT dar.id,
-           ud.name AS user_name, ud.user_id,
-           p.plant_name, i.image_url,
-           d.name AS disease_name,
-           r.remedy, dar.confidence
+    SELECT
+      dar.id,
+      ud.name AS user_name,
+      ud.user_id,
+      p.plant_name,
+      i.image_url,
+      d.name AS disease_name,
+      r.remedy,
+      dar.confidence,
+      dar.created_at
     FROM disease_analysis_results dar
     JOIN user_details ud ON dar.user_id = ud.user_id
     JOIN plants p ON dar.plant_id = p.plant_id
@@ -389,30 +394,39 @@ async function getDiseaseAnalysisResults(filters) {
     clauses.push(`ud.user_id = $${idx++}`);
     values.push(filters.user_id);
   }
+
   if (filters.plant_id) {
     clauses.push(`p.plant_id = $${idx++}`);
     values.push(filters.plant_id);
   }
+
   if (filters.image_id) {
     clauses.push(`i.image_id = $${idx++}`);
     values.push(filters.image_id);
   }
+
   if (filters.disease_id) {
     clauses.push(`d.disease_id = $${idx++}`);
     values.push(filters.disease_id);
   }
+
   if (filters.remedy_id) {
     clauses.push(`r.remedy_id = $${idx++}`);
     values.push(filters.remedy_id);
   }
 
-  if (clauses.length) sql += ` WHERE ` + clauses.join(" AND ");
-  sql += " ORDER BY dar.created_at DESC";
+  if (clauses.length) {
+    sql += ` WHERE ${clauses.join(" AND ")}`;
+  }
+
+  sql += ` ORDER BY dar.created_at DESC`;
 
   const result = await pool.query(sql, values);
+
   logger.info("getDiseaseAnalysisResults - Success", {
     count: result.rowCount,
   });
+
   return result.rows;
 }
 

@@ -790,7 +790,7 @@ const Report = () => {
                       <Clock size={12} />
                       <span style={{ fontSize: "0.75rem" }}>
                         {new Date(
-                          report.created_at || Date.now(),
+                          report.created_at,
                         ).toLocaleDateString()}
                       </span>
                     </div>

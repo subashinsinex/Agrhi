@@ -12,12 +12,13 @@ import '../../utils/colors.dart';
 import '../../utils/constants.dart';
 import '../shared/custom_app_bar.dart';
 import '../shared/smart_retranslator.dart';
+import '../../utils/page_transitions.dart';
 
 class EmailVerifyScreen extends StatefulWidget {
   const EmailVerifyScreen({super.key});
 
-  static MaterialPageRoute route() =>
-      MaterialPageRoute(builder: (_) => const EmailVerifyScreen());
+  static Route<bool> route() =>
+      smoothPageRoute<bool>(const EmailVerifyScreen());
 
   @override
   State<EmailVerifyScreen> createState() => _EmailVerifyScreenState();

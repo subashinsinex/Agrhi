@@ -6,7 +6,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import '../../../utils/page_transitions.dart';
 import '../../../src/services/market_place_services.dart';
 import '../../../utils/colors.dart';
 import '../../../utils/constants.dart';
@@ -557,14 +557,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                   onTap: () {
                                     Navigator.push(
                                       context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            ProductDetailsScreen(
-                                              productId: product['product_id'],
-                                              productType:
-                                                  product['product_type'] ??
-                                                  'farm',
-                                            ),
+                                      smoothPageRoute(
+                                        ProductDetailsScreen(
+                                          productId: product['product_id'],
+                                          productType:
+                                              product['product_type'] ?? 'farm',
+                                        ),
                                       ),
                                     );
                                   },

@@ -11,6 +11,7 @@ import '../../../src/services/post_upload_manager.dart';
 import 'uploading_post_banner.dart';
 import 'create_post_screen.dart';
 import 'edit_post_screen.dart';
+import '../../../utils/page_transitions.dart';
 
 // ─── Active Video Notifier ────────────────────────────────────────────────────
 final _activeVideoId = ValueNotifier<String?>(null);
@@ -344,7 +345,7 @@ class _CommunityScreenState extends State<CommunityScreen>
                 HapticFeedback.lightImpact();
                 await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const CreatePostScreen()),
+                  smoothPageRoute(const CreatePostScreen()),
                 );
               },
               child: Container(
@@ -637,7 +638,7 @@ class _CommunityScreenState extends State<CommunityScreen>
           Navigator.pop(context);
           final result = await Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => EditPostScreen(post: post)),
+            smoothPageRoute(EditPostScreen(post: post)),
           );
           if (result == true) await _refreshAllPosts();
         },
@@ -692,7 +693,7 @@ class _CommunityScreenState extends State<CommunityScreen>
                 Navigator.pop(context);
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => EditPostScreen(post: post)),
+                  smoothPageRoute(EditPostScreen(post: post)),
                 );
                 if (result == true) await _refreshAllPosts();
               },
