@@ -818,7 +818,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             width: 86,
             height: 86,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.09),
+              color: Colors.grey.withOpacity(0.25),
               shape: BoxShape.circle,
               border: Border.all(
                 color: iconColor.withOpacity(0.20),

@@ -3,6 +3,7 @@ import React, {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -18,52 +19,544 @@ const PHONE_SCREENSHOTS = [
   "8.png",
 ];
 
-const APP_DOWNLOAD_URL =
-  "https://play.google.com/apps/testing/app.agrhi.com";
+const APP_DOWNLOAD_URL = "https://play.google.com/apps/testing/app.agrhi.com";
 
 const USER_MANUAL_URL = "/user_manual.pptx";
 const LOGO_SRC = "/logo.png";
+const LANGUAGE_STORAGE_KEY = "agrhi-website-language";
 
-const features = [
-  {
-    icon: "leaf",
-    title: "AI Disease Detection",
-    text: "Identify crop diseases from plant images with AGRHI's AI-powered Plant Doctor.",
-  },
-  {
-    icon: "tractor",
-    title: "Crop & Farm Management",
-    text: "Organize farms, crops, irrigation, soil and water information in one place.",
-  },
-  {
-    icon: "cloud",
-    title: "Weather Intelligence",
-    text: "Use local weather conditions and forecasts to support better farm decisions.",
-  },
-  {
-    icon: "store",
-    title: "Agricultural Marketplace",
-    text: "Connect farmers, retailers and consumers through nearby product listings.",
-  },
-  {
-    icon: "book",
-    title: "7-Language Support",
-    text: "Use AGRHI in multiple languages with downloadable offline language support.",
-  },
-  {
-    icon: "wifi",
-    title: "Offline-First Experience",
-    text: "Keep working in low-connectivity areas and synchronize important data later.",
-  },
+const LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "ta", label: "தமிழ்" },
+  { code: "hi", label: "हिन्दी" },
+  { code: "te", label: "తెలుగు" },
 ];
 
-const stats = [
-  { icon: "brain", value: "10+", label: "Crop AI Models" },
-  { icon: "globe", value: "7", label: "Supported Languages" },
-  { icon: "wifi", value: "Offline", label: "First Architecture" },
-  { icon: "shield", value: "Secure", label: "Privacy Focused" },
-];
+const FEATURE_ICONS = ["leaf", "tractor", "cloud", "store", "book", "wifi"];
 
+const STAT_ICONS = ["brain", "globe", "wifi", "shield"];
+
+const TRANSLATIONS = {
+  en: {
+    logoTag: "Leading the Future of Agriculture.",
+
+    nav: {
+      home: "Home",
+      about: "About",
+      features: "Features",
+      contact: "Contact",
+    },
+
+    language: "Language",
+    adminPortal: "Admin Portal",
+    toggleNavigation: "Toggle navigation",
+
+    hero: {
+      eyebrow: "Smart agriculture for real farm decisions",
+      title: "Your Smart Farm Assistant",
+      description:
+        "Bring crop care, AI disease detection, local weather, farm management and agricultural marketplace tools together in one multilingual, offline-first mobile experience.",
+      highlights: [
+        "AI-powered Plant Doctor",
+        "7 languages in the mobile app",
+        "Offline-first",
+        "Farmer-focused",
+      ],
+      app: "Get AGRHI App",
+      appNote: "Android application",
+      manual: "User Manual",
+      manualNote: "View documentation",
+      explore: "Explore Features",
+      exploreNote: "See what AGRHI offers",
+    },
+
+    about: {
+      kicker: "About AGRHI",
+      title: "Agriculture, technology and accessibility in one platform",
+      description:
+        "AGRHI helps farmers and agricultural stakeholders make faster, data-informed decisions. It combines practical farm tools, AI-assisted crop disease detection, local weather, multilingual support and an integrated marketplace for low-connectivity rural use.",
+      points: [
+        [
+          "Built around farm workflows",
+          "Crop care, farms, irrigation and plant-health tools are organized around practical agricultural use.",
+        ],
+        [
+          "Designed for accessibility",
+          "Multilingual support and offline-first behavior keep AGRHI useful across regions and connectivity levels.",
+        ],
+        [
+          "Responsible data handling",
+          "AGRHI provides privacy controls, secure authentication and clear account-deletion options.",
+        ],
+      ],
+    },
+
+    featureSection: {
+      kicker: "Core Capabilities",
+      title: "Everything farmers need, in one app",
+      description:
+        "AGRHI connects everyday farm management with intelligent assistance so users can move from information to action quickly.",
+    },
+
+    features: [
+      [
+        "AI Disease Detection",
+        "Identify crop diseases from plant images with AGRHI's AI-powered Plant Doctor.",
+      ],
+      [
+        "Crop & Farm Management",
+        "Organize farms, crops, irrigation, soil and water information in one place.",
+      ],
+      [
+        "Weather Intelligence",
+        "Use local weather conditions and forecasts to support better farm decisions.",
+      ],
+      [
+        "Agricultural Marketplace",
+        "Connect farmers, retailers and consumers through nearby product listings.",
+      ],
+      [
+        "7-Language Mobile App",
+        "Use AGRHI in English, Hindi, Tamil, Telugu, Turkish, Malay or Greek.",
+      ],
+      [
+        "Offline-First Experience",
+        "Keep working in low-connectivity areas and synchronize important data later.",
+      ],
+    ],
+
+    stats: [
+      ["10+", "Crop AI Models"],
+      ["7", "Mobile App Languages"],
+      ["Offline", "First Architecture"],
+      ["Secure", "Privacy Focused"],
+    ],
+
+    contact: {
+      kicker: "Contact & Support",
+      title: "Need help with AGRHI?",
+      heading: "We're here to help",
+      description:
+        "For app support, privacy questions, account requests or general enquiries, contact the AGRHI support team.",
+      location: "Chennai, Tamil Nadu, India",
+    },
+
+    footer: {
+      brand: "AGRHI by Farmlead",
+      privacy: "Privacy Policy",
+      deleteAccount: "Delete Account",
+      support: "Support",
+      adminLogin: "Admin Login",
+      programme: "Erasmus+ AGRHI Programme",
+    },
+
+    preview: {
+      label: "AGRHI mobile app preview",
+      screenshot: "AGRHI app screenshot",
+      assistant: "Smart Farm Assistant",
+      weather: "Today's weather",
+      condition: "Partly cloudy · Chennai",
+      tools: "Smart tools",
+      cards: [
+        ["Plant Doctor", "Disease Detection"],
+        ["Crop Care", "Farm Manager"],
+        ["Marketplace", "Buy & Sell"],
+        ["Weather", "Forecast"],
+      ],
+      offline: "Offline-first for low connectivity areas",
+    },
+  },
+
+  ta: {
+    logoTag: "வேளாண்மையின் எதிர்காலத்தை வழிநடத்துகிறோம்.",
+
+    nav: {
+      home: "முகப்பு",
+      about: "AGRHI பற்றி",
+      features: "அம்சங்கள்",
+      contact: "தொடர்பு",
+    },
+
+    language: "மொழி",
+    adminPortal: "நிர்வாக தளம்",
+    toggleNavigation: "வழிசெலுத்தலை மாற்று",
+
+    hero: {
+      eyebrow: "சிறந்த பண்ணை முடிவுகளுக்கான ஸ்மாரார்ட் வேளாண்மை",
+      title: "உங்கள் ஸ்மார்ட் பண்ணை உதவியாளர்",
+      description:
+        "பயிர் பராமரிப்பு, AI நோய் கண்டறிதல், உள்ளூர் வானிலை, பண்ணை மேலாண்மை மற்றும் வேளாண் சந்தை வசதிகளை பலமொழி, இணையமின்றியும் செயல்படும் ஒரே மொபைல் அனுபவத்தில் பெறுங்கள்.",
+      highlights: [
+        "AI தாவர மருத்துவர்",
+        "மொபைல் செயலியில் 7 மொழிகள்",
+        "இணையமின்றியும் செயல்படும்",
+        "விவசாயி மையப்படுத்தப்பட்டது",
+      ],
+      app: "AGRHI செயலியைப் பெறுங்கள்",
+      appNote: "Android செயலி",
+      manual: "பயனர் கையேடு",
+      manualNote: "ஆவணத்தைப் பார்க்கவும்",
+      explore: "அம்சங்களை ஆராயுங்கள்",
+      exploreNote: "AGRHI வழங்குவதைப் பாருங்கள்",
+    },
+
+    about: {
+      kicker: "AGRHI பற்றி",
+      title: "வேளாண்மை, தொழில்நுட்பம் மற்றும் அணுகல்தன்மை ஒரே தளத்தில்",
+      description:
+        "விவசாயிகள் மற்றும் வேளாண் பங்குதாரர்கள் விரைவான, தரவு சார்ந்த முடிவுகளை எடுக்க AGRHI உதவுகிறது. பண்ணைக் கருவிகள், AI பயிர் நோய் கண்டறிதல், உள்ளூர் வானிலை, பலமொழி ஆதரவு மற்றும் ஒருங்கிணைந்த சந்தை ஆகியவற்றை குறைந்த இணைய இணைப்புள்ள கிராமப்புற பயன்பாட்டிற்காக இணைக்கிறது.",
+      points: [
+        [
+          "பண்ணைப் பணிகளுக்கேற்ப உருவாக்கப்பட்டது",
+          "பயிர் பராமரிப்பு, பண்ணை, நீர்ப்பாசனம் மற்றும் தாவர ஆரோக்கியக் கருவிகள் நடைமுறை வேளாண் பயன்பாட்டிற்கேற்ப அமைக்கப்பட்டுள்ளன.",
+        ],
+        [
+          "அனைவரும் அணுகும் வகையில் வடிவமைப்பு",
+          "பலமொழி ஆதரவும் இணையமின்றி செயல்படும் வசதியும் பல்வேறு பகுதிகளில் AGRHI-ஐ பயனுள்ளதாக வைத்திருக்கின்றன.",
+        ],
+        [
+          "பொறுப்பான தரவு கையாளுதல்",
+          "AGRHI தனியுரிமைக் கட்டுப்பாடுகள், பாதுகாப்பான உள்நுழைவு மற்றும் தெளிவான கணக்கு நீக்க வசதிகளை வழங்குகிறது.",
+        ],
+      ],
+    },
+
+    featureSection: {
+      kicker: "முக்கிய திறன்கள்",
+      title: "விவசாயிகளுக்குத் தேவையான அனைத்தும் ஒரே செயலியில்",
+      description:
+        "தினசரி பண்ணை மேலாண்மையையும் அறிவார்ந்த உதவியையும் இணைத்து தகவலிலிருந்து செயலுக்கு விரைவாக செல்ல AGRHI உதவுகிறது.",
+    },
+
+    features: [
+      [
+        "AI நோய் கண்டறிதல்",
+        "தாவரப் படங்களிலிருந்து AGRHI-யின் AI தாவர மருத்துவர் மூலம் பயிர் நோய்களைக் கண்டறியுங்கள்.",
+      ],
+      [
+        "பயிர் மற்றும் பண்ணை மேலாண்மை",
+        "பண்ணைகள், பயிர்கள், நீர்ப்பாசனம், மண் மற்றும் நீர் தகவல்களை ஒரே இடத்தில் நிர்வகியுங்கள்.",
+      ],
+      [
+        "வானிலை நுண்ணறிவு",
+        "சிறந்த பண்ணை முடிவுகளுக்கு உள்ளூர் வானிலை மற்றும் முன்னறிவிப்புகளைப் பயன்படுத்துங்கள்.",
+      ],
+      [
+        "வேளாண் சந்தை",
+        "அருகிலுள்ள பொருள் பட்டியல்கள் மூலம் விவசாயிகள், விற்பனையாளர்கள் மற்றும் நுகர்வோரை இணைக்கிறது.",
+      ],
+      [
+        "செயலியில் 7 மொழிகள்",
+        "ஆங்கிலம், இந்தி, தமிழ், தெலுங்கு, துருக்கியம், மலாய் அல்லது கிரேக்கம் ஆகிய மொழிகளில் AGRHI-ஐப் பயன்படுத்துங்கள்.",
+      ],
+      [
+        "இணையமின்றியும் செயல்படும் அனுபவம்",
+        "குறைந்த இணைய இணைப்பிலும் தொடர்ந்து பணியாற்றி, முக்கிய தரவை பின்னர் ஒத்திசையுங்கள்.",
+      ],
+    ],
+
+    stats: [
+      ["10+", "பயிர் AI மாதிரிகள்"],
+      ["7", "மொபைல் செயலி மொழிகள்"],
+      ["இணையமின்றி", "முதன்மை கட்டமைப்பு"],
+      ["பாதுகாப்பானது", "தனியுரிமை மையம்"],
+    ],
+
+    contact: {
+      kicker: "தொடர்பு மற்றும் உதவி",
+      title: "AGRHI உதவி தேவையா?",
+      heading: "உங்களுக்கு உதவ நாங்கள் இருக்கிறோம்",
+      description:
+        "செயலி உதவி, தனியுரிமைக் கேள்விகள், கணக்கு கோரிக்கைகள் அல்லது பொதுவான விசாரணைகளுக்கு AGRHI உதவிக் குழுவைத் தொடர்புகொள்ளுங்கள்.",
+      location: "சென்னை, தமிழ்நாடு, இந்தியா",
+    },
+
+    footer: {
+      brand: "Farmlead வழங்கும் AGRHI",
+      privacy: "தனியுரிமைக் கொள்கை",
+      deleteAccount: "கணக்கை நீக்கு",
+      support: "உதவி",
+      adminLogin: "நிர்வாக உள்நுழைவு",
+      programme: "Erasmus+ AGRHI திட்டம்",
+    },
+
+    preview: {
+      label: "AGRHI மொபைல் செயலி முன்னோட்டம்",
+      screenshot: "AGRHI செயலி திரைப்பிடிப்பு",
+      assistant: "ஸ்மார்ட் பண்ணை உதவியாளர்",
+      weather: "இன்றைய வானிலை",
+      condition: "ஓரளவு மேகமூட்டம் · சென்னை",
+      tools: "ஸ்மார்ட் கருவிகள்",
+      cards: [
+        ["தாவர மருத்துவர்", "நோய் கண்டறிதல்"],
+        ["பயிர் பராமரிப்பு", "பண்ணை மேலாளர்"],
+        ["சந்தை", "வாங்கவும் விற்கவும்"],
+        ["வானிலை", "முன்னறிவிப்பு"],
+      ],
+      offline: "குறைந்த இணைய இணைப்புள்ள பகுதிகளிலும் செயல்படும்",
+    },
+  },
+
+  hi: {
+    logoTag: "कृषि के भविष्य का नेतृत्व।",
+
+    nav: {
+      home: "होम",
+      about: "AGRHI के बारे में",
+      features: "विशेषताएँ",
+      contact: "संपर्क",
+    },
+
+    language: "भाषा",
+    adminPortal: "एडमिन पोर्टल",
+    toggleNavigation: "नेविगेशन खोलें या बंद करें",
+
+    hero: {
+      eyebrow: "बेहतर कृषि निर्णयों के लिए स्मार्ट खेती",
+      title: "आपका स्मार्ट कृषि सहायक",
+      description:
+        "फसल देखभाल, AI रोग पहचान, स्थानीय मौसम, कृषि प्रबंधन और कृषि बाज़ार को एक बहुभाषी, ऑफलाइन-फर्स्ट मोबाइल अनुभव में पाएँ।",
+      highlights: [
+        "AI प्लांट डॉक्टर",
+        "मोबाइल ऐप में 7 भाषाएँ",
+        "ऑफलाइन-फर्स्ट",
+        "किसान-केंद्रित",
+      ],
+      app: "AGRHI ऐप प्राप्त करें",
+      appNote: "Android ऐप",
+      manual: "उपयोगकर्ता पुस्तिका",
+      manualNote: "दस्तावेज़ देखें",
+      explore: "विशेषताएँ देखें",
+      exploreNote: "जानें AGRHI क्या प्रदान करता है",
+    },
+
+    about: {
+      kicker: "AGRHI के बारे में",
+      title: "कृषि, तकनीक और सुगम्यता—एक ही मंच पर",
+      description:
+        "AGRHI किसानों और कृषि हितधारकों को तेज़, डेटा-आधारित निर्णय लेने में मदद करता है। यह कम इंटरनेट वाले ग्रामीण क्षेत्रों के लिए कृषि उपकरण, AI फसल रोग पहचान, स्थानीय मौसम, बहुभाषी सहायता और एकीकृत बाज़ार को जोड़ता है।",
+      points: [
+        [
+          "कृषि कार्यप्रवाह के अनुरूप",
+          "फसल देखभाल, खेत, सिंचाई और पौध-स्वास्थ्य उपकरण व्यावहारिक कृषि उपयोग के अनुसार व्यवस्थित हैं।",
+        ],
+        [
+          "सुगम उपयोग के लिए डिज़ाइन",
+          "बहुभाषी सहायता और ऑफलाइन-फर्स्ट व्यवहार AGRHI को अलग-अलग क्षेत्रों में उपयोगी बनाए रखते हैं।",
+        ],
+        [
+          "ज़िम्मेदार डेटा प्रबंधन",
+          "AGRHI गोपनीयता नियंत्रण, सुरक्षित प्रमाणीकरण और स्पष्ट खाता हटाने के विकल्प देता है।",
+        ],
+      ],
+    },
+
+    featureSection: {
+      kicker: "मुख्य क्षमताएँ",
+      title: "किसानों की हर ज़रूरत, एक ही ऐप में",
+      description:
+        "AGRHI रोज़मर्रा के कृषि प्रबंधन को बुद्धिमान सहायता से जोड़ता है, ताकि उपयोगकर्ता जानकारी से कार्रवाई तक तेज़ी से पहुँच सकें।",
+    },
+
+    features: [
+      [
+        "AI रोग पहचान",
+        "AGRHI के AI प्लांट डॉक्टर से पौधों की तस्वीरों द्वारा फसल रोग पहचानें।",
+      ],
+      [
+        "फसल और कृषि प्रबंधन",
+        "खेत, फसल, सिंचाई, मिट्टी और पानी की जानकारी एक ही स्थान पर व्यवस्थित करें।",
+      ],
+      [
+        "मौसम जानकारी",
+        "बेहतर कृषि निर्णयों के लिए स्थानीय मौसम और पूर्वानुमान का उपयोग करें।",
+      ],
+      [
+        "कृषि बाज़ार",
+        "आस-पास की उत्पाद सूचियों से किसानों, विक्रेताओं और उपभोक्ताओं को जोड़ें।",
+      ],
+      [
+        "ऐप में 7 भाषाओं का समर्थन",
+        "AGRHI का उपयोग अंग्रेज़ी, हिंदी, तमिल, तेलुगु, तुर्की, मलय या यूनानी भाषा में करें।",
+      ],
+      [
+        "ऑफलाइन-फर्स्ट अनुभव",
+        "कम इंटरनेट वाले क्षेत्रों में काम जारी रखें और महत्वपूर्ण डेटा बाद में सिंक करें।",
+      ],
+    ],
+
+    stats: [
+      ["10+", "फसल AI मॉडल"],
+      ["7", "मोबाइल ऐप भाषाएँ"],
+      ["ऑफलाइन", "फर्स्ट आर्किटेक्चर"],
+      ["सुरक्षित", "गोपनीयता केंद्रित"],
+    ],
+
+    contact: {
+      kicker: "संपर्क और सहायता",
+      title: "AGRHI में सहायता चाहिए?",
+      heading: "हम आपकी सहायता के लिए हैं",
+      description:
+        "ऐप सहायता, गोपनीयता प्रश्न, खाता अनुरोध या सामान्य पूछताछ के लिए AGRHI सहायता टीम से संपर्क करें।",
+      location: "चेन्नई, तमिलनाडु, भारत",
+    },
+
+    footer: {
+      brand: "Farmlead द्वारा AGRHI",
+      privacy: "गोपनीयता नीति",
+      deleteAccount: "खाता हटाएँ",
+      support: "सहायता",
+      adminLogin: "एडमिन लॉगिन",
+      programme: "Erasmus+ AGRHI कार्यक्रम",
+    },
+
+    preview: {
+      label: "AGRHI मोबाइल ऐप पूर्वावलोकन",
+      screenshot: "AGRHI ऐप स्क्रीनशॉट",
+      assistant: "स्मार्ट कृषि सहायक",
+      weather: "आज का मौसम",
+      condition: "आंशिक बादल · चेन्नई",
+      tools: "स्मार्ट उपकरण",
+      cards: [
+        ["प्लांट डॉक्टर", "रोग पहचान"],
+        ["फसल देखभाल", "कृषि प्रबंधक"],
+        ["बाज़ार", "खरीदें और बेचें"],
+        ["मौसम", "पूर्वानुमान"],
+      ],
+      offline: "कम इंटरनेट वाले क्षेत्रों के लिए ऑफलाइन-फर्स्ट",
+    },
+  },
+
+  te: {
+    logoTag: "వ్యవసాయ భవిష్యత్తుకు నాయకత్వం.",
+
+    nav: {
+      home: "హోమ్",
+      about: "AGRHI గురించి",
+      features: "ఫీచర్లు",
+      contact: "సంప్రదించండి",
+    },
+
+    language: "భాష",
+    adminPortal: "అడ్మిన్ పోర్టల్",
+    toggleNavigation: "నావిగేషన్‌ను మార్చండి",
+
+    hero: {
+      eyebrow: "మెరుగైన వ్యవసాయ నిర్ణయాల కోసం స్మార్ట్ వ్యవసాయం",
+      title: "మీ స్మార్ట్ వ్యవసాయ సహాయకుడు",
+      description:
+        "పంట సంరక్షణ, AI వ్యాధి గుర్తింపు, స్థానిక వాతావరణం, వ్యవసాయ నిర్వహణ మరియు వ్యవసాయ మార్కెట్ సాధనాలను బహుభాషా, ఆఫ్‌లైన్-ఫస్ట్ మొబైల్ అనుభవంలో పొందండి.",
+      highlights: [
+        "AI ప్లాంట్ డాక్టర్",
+        "మొబైల్ యాప్‌లో 7 భాషలు",
+        "ఆఫ్‌లైన్-ఫస్ట్",
+        "రైతు కేంద్రితం",
+      ],
+      app: "AGRHI యాప్ పొందండి",
+      appNote: "Android యాప్",
+      manual: "వినియోగదారు మార్గదర్శిని",
+      manualNote: "డాక్యుమెంట్ చూడండి",
+      explore: "ఫీచర్లను చూడండి",
+      exploreNote: "AGRHI అందించే సేవలను చూడండి",
+    },
+
+    about: {
+      kicker: "AGRHI గురించి",
+      title: "వ్యవసాయం, సాంకేతికత మరియు సులభ ప్రాప్యత—ఒకే వేదికలో",
+      description:
+        "రైతులు మరియు వ్యవసాయ భాగస్వాములు వేగంగా, డేటా ఆధారిత నిర్ణయాలు తీసుకోవడానికి AGRHI సహాయపడుతుంది. తక్కువ ఇంటర్నెట్ ఉన్న గ్రామీణ ప్రాంతాల కోసం వ్యవసాయ సాధనాలు, AI పంట వ్యాధి గుర్తింపు, స్థానిక వాతావరణం, బహుభాషా మద్దతు మరియు సమగ్ర మార్కెట్‌ను కలుపుతుంది.",
+      points: [
+        [
+          "వ్యవసాయ పనులకు అనుగుణంగా రూపొందించబడింది",
+          "పంట సంరక్షణ, పొలాలు, నీటిపారుదల మరియు మొక్కల ఆరోగ్య సాధనాలు ఆచరణాత్మక వ్యవసాయ వినియోగానికి అనుగుణంగా ఏర్పాటు చేయబడ్డాయి.",
+        ],
+        [
+          "సులభ ప్రాప్యత కోసం రూపకల్పన",
+          "బహుభాషా మద్దతు మరియు ఆఫ్‌లైన్-ఫస్ట్ విధానం వివిధ ప్రాంతాల్లో AGRHIని ఉపయోగకరంగా ఉంచుతాయి.",
+        ],
+        [
+          "బాధ్యతాయుతమైన డేటా నిర్వహణ",
+          "AGRHI గోప్యత నియంత్రణలు, సురక్షిత ప్రమాణీకరణ మరియు స్పష్టమైన ఖాతా తొలగింపు ఎంపికలను అందిస్తుంది.",
+        ],
+      ],
+    },
+
+    featureSection: {
+      kicker: "ప్రధాన సామర్థ్యాలు",
+      title: "రైతులకు కావాల్సినవన్నీ ఒకే యాప్‌లో",
+      description:
+        "రోజువారీ వ్యవసాయ నిర్వహణను తెలివైన సహాయంతో అనుసంధానించి, సమాచారం నుంచి చర్యకు వేగంగా వెళ్లేందుకు AGRHI సహాయపడుతుంది.",
+    },
+
+    features: [
+      [
+        "AI వ్యాధి గుర్తింపు",
+        "AGRHI AI ప్లాంట్ డాక్టర్‌తో మొక్కల చిత్రాల ద్వారా పంట వ్యాధులను గుర్తించండి.",
+      ],
+      [
+        "పంట మరియు వ్యవసాయ నిర్వహణ",
+        "పొలాలు, పంటలు, నీటిపారుదల, నేల మరియు నీటి సమాచారాన్ని ఒకే చోట నిర్వహించండి.",
+      ],
+      [
+        "వాతావరణ సమాచారం",
+        "మెరుగైన వ్యవసాయ నిర్ణయాలకు స్థానిక వాతావరణం మరియు సూచనలను ఉపయోగించండి.",
+      ],
+      [
+        "వ్యవసాయ మార్కెట్",
+        "సమీపంలోని ఉత్పత్తి జాబితాల ద్వారా రైతులు, విక్రేతలు మరియు వినియోగదారులను అనుసంధానించండి.",
+      ],
+      [
+        "యాప్‌లో 7 భాషల మద్దతు",
+        "AGRHIని ఇంగ్లీష్, హిందీ, తమిళం, తెలుగు, టర్కిష్, మలయ్ లేదా గ్రీక్ భాషల్లో ఉపయోగించండి.",
+      ],
+      [
+        "ఆఫ్‌లైన్-ఫస్ట్ అనుభవం",
+        "తక్కువ ఇంటర్నెట్ ఉన్న ప్రాంతాల్లో పని కొనసాగించి, ముఖ్యమైన డేటాను తరువాత సమకాలీకరించండి.",
+      ],
+    ],
+
+    stats: [
+      ["10+", "పంట AI మోడళ్లు"],
+      ["7", "మొబైల్ యాప్ భాషలు"],
+      ["ఆఫ్‌లైన్", "ఫస్ట్ ఆర్కిటెక్చర్"],
+      ["సురక్షితం", "గోప్యత కేంద్రితం"],
+    ],
+
+    contact: {
+      kicker: "సంప్రదింపు మరియు సహాయం",
+      title: "AGRHI సహాయం కావాలా?",
+      heading: "మీకు సహాయం చేయడానికి మేమున్నాం",
+      description:
+        "యాప్ సహాయం, గోప్యత ప్రశ్నలు, ఖాతా అభ్యర్థనలు లేదా సాధారణ విచారణల కోసం AGRHI సహాయ బృందాన్ని సంప్రదించండి.",
+      location: "చెన్నై, తమిళనాడు, భారతదేశం",
+    },
+
+    footer: {
+      brand: "Farmlead అందించే AGRHI",
+      privacy: "గోప్యతా విధానం",
+      deleteAccount: "ఖాతాను తొలగించండి",
+      support: "సహాయం",
+      adminLogin: "అడ్మిన్ లాగిన్",
+      programme: "Erasmus+ AGRHI కార్యక్రమం",
+    },
+
+    preview: {
+      label: "AGRHI మొబైల్ యాప్ ప్రివ్యూ",
+      screenshot: "AGRHI యాప్ స్క్రీన్‌షాట్",
+      assistant: "స్మార్ట్ వ్యవసాయ సహాయకుడు",
+      weather: "నేటి వాతావరణం",
+      condition: "పాక్షిక మేఘావృతం · చెన్నై",
+      tools: "స్మార్ట్ సాధనాలు",
+      cards: [
+        ["ప్లాంట్ డాక్టర్", "వ్యాధి గుర్తింపు"],
+        ["పంట సంరక్షణ", "వ్యవసాయ నిర్వాహకుడు"],
+        ["మార్కెట్", "కొనండి మరియు అమ్మండి"],
+        ["వాతావరణం", "సూచన"],
+      ],
+      offline: "తక్కువ ఇంటర్నెట్ ప్రాంతాల కోసం ఆఫ్‌లైన్-ఫస్ట్",
+    },
+  },
+};
 function Icon({ name, size = 28 }) {
   const props = {
     width: size,
@@ -186,13 +679,13 @@ function Icon({ name, size = 28 }) {
   return <svg {...props}>{icons[name]}</svg>;
 }
 
-function Logo({ onNavClick }) {
+function Logo({ onNavClick, tagLine }) {
   return (
     <a
       href="#home"
       className="logo"
       aria-label="AGRHI home"
-      onClick={(e) => onNavClick(e, "home")}
+      onClick={(event) => onNavClick(event, "home")}
     >
       <div className="logo-mark">
         <img src={LOGO_SRC} alt="AGRHI logo" className="logo-img" />
@@ -200,7 +693,7 @@ function Logo({ onNavClick }) {
 
       <div className="logo-copy">
         <span className="logo-name">Farmlead</span>
-        <span className="logo-tag">Leading the Future of Agriculture.</span>
+        <span className="logo-tag">{tagLine}</span>
       </div>
     </a>
   );
@@ -220,11 +713,26 @@ function screenshotCandidates(src) {
   }
 
   const fileName = clean.replace(/^\.?\//, "");
-  return [`/screenshots/${fileName}`, `/${fileName}`, fileName];
+
+  return [
+    `/screenshots/${fileName}`,
+    `/${fileName}`,
+    fileName,
+  ];
 }
 
-function PhoneImage({ src, active, index, onBroken }) {
-  const candidates = useMemo(() => screenshotCandidates(src), [src]);
+function PhoneImage({
+  src,
+  active,
+  index,
+  onBroken,
+  screenshotLabel,
+}) {
+  const candidates = useMemo(
+    () => screenshotCandidates(src),
+    [src],
+  );
+
   const [candidateIndex, setCandidateIndex] = useState(0);
 
   useEffect(() => {
@@ -239,7 +747,7 @@ function PhoneImage({ src, active, index, onBroken }) {
   return (
     <img
       src={currentSrc}
-      alt={`AGRHI app screenshot ${index + 1}`}
+      alt={`${screenshotLabel} ${index + 1}`}
       className={active ? "phone-shot active" : "phone-shot"}
       onError={() => {
         if (candidateIndex < candidates.length - 1) {
@@ -252,74 +760,93 @@ function PhoneImage({ src, active, index, onBroken }) {
   );
 }
 
-function PhoneFallback() {
+function PhoneFallback({ copy }) {
   return (
     <div className="phone-fallback">
       <div className="fallback-logo">
         <img src={LOGO_SRC} alt="" />
+
         <div>
           <strong>AGRHI</strong>
-          <span>Smart Farm Assistant</span>
+          <span>{copy.assistant}</span>
         </div>
       </div>
 
       <div className="weather-card">
         <div>
-          <span>Today's weather</span>
+          <span>{copy.weather}</span>
           <strong>28°C</strong>
-          <small>Partly cloudy · Chennai</small>
+          <small>{copy.condition}</small>
         </div>
+
         <Icon name="cloud" size={34} />
       </div>
 
-      <div className="fallback-section-title">Smart tools</div>
+      <div className="fallback-section-title">
+        {copy.tools}
+      </div>
 
       <div className="mini-grid">
         <div>
           <Icon name="leaf" size={22} />
-          <strong>Plant Doctor</strong>
-          <span>Disease Detection</span>
+          <strong>{copy.cards[0][0]}</strong>
+          <span>{copy.cards[0][1]}</span>
         </div>
+
         <div>
           <Icon name="tractor" size={22} />
-          <strong>Crop Care</strong>
-          <span>Farm Manager</span>
+          <strong>{copy.cards[1][0]}</strong>
+          <span>{copy.cards[1][1]}</span>
         </div>
+
         <div>
           <Icon name="store" size={22} />
-          <strong>Marketplace</strong>
-          <span>Buy & Sell</span>
+          <strong>{copy.cards[2][0]}</strong>
+          <span>{copy.cards[2][1]}</span>
         </div>
+
         <div>
           <Icon name="cloud" size={22} />
-          <strong>Weather</strong>
-          <span>Forecast</span>
+          <strong>{copy.cards[3][0]}</strong>
+          <span>{copy.cards[3][1]}</span>
         </div>
       </div>
 
       <div className="fallback-note">
         <Icon name="wifi" size={18} />
-        <span>Offline-first for low connectivity areas</span>
+        <span>{copy.offline}</span>
       </div>
     </div>
   );
 }
 
-function PhoneMockup({ screenshots }) {
+function PhoneMockup({ screenshots, copy }) {
   const [active, setActive] = useState(0);
   const [broken, setBroken] = useState({});
+  const [paused, setPaused] = useState(false);
 
-  const visibleScreenshots = screenshots.filter((src) => src && !broken[src]);
+  const visibleScreenshots = useMemo(
+    () => screenshots.filter((src) => src && !broken[src]),
+    [screenshots, broken],
+  );
 
   useEffect(() => {
-    if (!visibleScreenshots.length) return undefined;
+    if (visibleScreenshots.length < 2 || paused) return undefined;
 
     const timer = window.setInterval(() => {
-      setActive((index) => (index + 1) % visibleScreenshots.length);
+      setActive(
+        (index) => (index + 1) % visibleScreenshots.length,
+      );
     }, 3000);
 
     return () => window.clearInterval(timer);
-  }, [visibleScreenshots.length]);
+  }, [visibleScreenshots.length, paused]);
+
+  useEffect(() => {
+    const handleVisibility = () => setPaused(document.hidden);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
 
   useEffect(() => {
     if (active >= visibleScreenshots.length) {
@@ -328,8 +855,14 @@ function PhoneMockup({ screenshots }) {
   }, [active, visibleScreenshots.length]);
 
   return (
-    <div className="phone-stage" aria-label="AGRHI mobile app preview">
+    <div
+      className="phone-stage"
+      aria-label={copy.label}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
       <div className="phone-glow" />
+
       <div className="phone">
         <div className="speaker" />
         <div className="camera" />
@@ -342,6 +875,7 @@ function PhoneMockup({ screenshots }) {
                 src={src}
                 index={index}
                 active={index === active}
+                screenshotLabel={copy.screenshot}
                 onBroken={(brokenSrc) =>
                   setBroken((current) => ({
                     ...current,
@@ -351,7 +885,7 @@ function PhoneMockup({ screenshots }) {
               />
             ))
           ) : (
-            <PhoneFallback />
+            <PhoneFallback copy={copy} />
           )}
         </div>
       </div>
@@ -359,7 +893,10 @@ function PhoneMockup({ screenshots }) {
       {!!visibleScreenshots.length && (
         <div className="phone-dots" aria-hidden="true">
           {visibleScreenshots.map((src, index) => (
-            <span key={src} className={index === active ? "active" : ""} />
+            <span
+              key={src}
+              className={index === active ? "active" : ""}
+            />
           ))}
         </div>
       )}
@@ -367,38 +904,111 @@ function PhoneMockup({ screenshots }) {
   );
 }
 
+function getInitialLanguage() {
+  try {
+    const savedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+
+    return TRANSLATIONS[savedLanguage]
+      ? savedLanguage
+      : "en";
+  } catch {
+    return "en";
+  }
+}
+
 export default function Home() {
   const navigate = useNavigate();
+
   const [activeSection, setActiveSection] = useState("home");
+
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const [language, setLanguage] = useState(getInitialLanguage);
+
+  const t = TRANSLATIONS[language];
 
   const phoneScreenshots = useMemo(
     () => PHONE_SCREENSHOTS.map((src) => String(src).trim()).filter(Boolean),
     [],
   );
 
-  const handleNavClick = useCallback((e, id) => {
-    e.preventDefault();
+  useEffect(() => {
+    document.documentElement.lang = language;
 
-    const el = document.getElementById(id);
-    if (!el) return;
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    } catch {
+      // Continue without browser storage.
+    }
+  }, [language]);
 
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  useEffect(() => {
+    const syncLanguageFromStorage = () => {
+      const storedLanguage = getInitialLanguage();
+      setLanguage((currentLanguage) =>
+        currentLanguage === storedLanguage ? currentLanguage : storedLanguage,
+      );
+    };
+
+    window.addEventListener("pageshow", syncLanguageFromStorage);
+    window.addEventListener("popstate", syncLanguageFromStorage);
+    window.addEventListener("storage", syncLanguageFromStorage);
+
+    return () => {
+      window.removeEventListener("pageshow", syncLanguageFromStorage);
+      window.removeEventListener("popstate", syncLanguageFromStorage);
+      window.removeEventListener("storage", syncLanguageFromStorage);
+    };
+  }, []);
+
+  const handleLanguageChange = useCallback((nextLanguage) => {
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    } catch {
+      // Continue without browser storage.
+    }
+
+    setLanguage(nextLanguage);
+  }, []);
+
+  const handleNavClick = useCallback((event, id) => {
+    event.preventDefault();
+
+    const element = document.getElementById(id);
+
+    if (!element) return;
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+
     setActiveSection(id);
     setMobileNavOpen(false);
   }, []);
 
   useLayoutEffect(() => {
-    const el = document.getElementById("home");
-    if (!el) return;
+    const element = document.getElementById("home");
 
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    el.scrollIntoView({ behavior: "auto", block: "start" });
+    if (!element) return;
+
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+
+    element.scrollIntoView({
+      behavior: "auto",
+      block: "start",
+    });
+
     setActiveSection("home");
   }, []);
 
   useEffect(() => {
     const sectionIds = ["home", "about", "features", "contact"];
+
     const sections = sectionIds
       .map((id) => document.getElementById(id))
       .filter(Boolean);
@@ -419,22 +1029,22 @@ export default function Home() {
       },
     );
 
-    sections.forEach((el) => observer.observe(el));
+    sections.forEach((element) => observer.observe(element));
 
     return () => observer.disconnect();
   }, []);
 
   const navItems = [
-    ["home", "Home"],
-    ["about", "About"],
-    ["features", "Features"],
-    ["contact", "Contact"],
+    ["home", t.nav.home],
+    ["about", t.nav.about],
+    ["features", t.nav.features],
+    ["contact", t.nav.contact],
   ];
 
   return (
     <>
       <style>{`
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700;800;900&family=Noto+Sans+Tamil:wght@400;500;600;700;800;900&family=Noto+Sans+Telugu:wght@400;500;600;700;800;900&display=swap");
 
         :root {
           --green-950: #053d18;
@@ -452,7 +1062,7 @@ export default function Home() {
           --white: #ffffff;
           --page-pad: clamp(20px, 4.2vw, 68px);
           --radius: 22px;
-          --shadow-soft: 0 18px 50px rgba(25, 68, 29, 0.10);
+          --shadow-soft: 0 18px 50px rgba(25, 68, 29, 0.1);
           --shadow-card: 0 10px 28px rgba(20, 61, 24, 0.08);
           --shadow-green: 0 16px 32px rgba(4, 99, 34, 0.22);
         }
@@ -471,7 +1081,13 @@ export default function Home() {
         body {
           margin: 0;
           overflow-x: hidden;
-          font-family: "Inter", Arial, sans-serif;
+          font-family:
+            "Inter",
+            "Noto Sans Tamil",
+            "Noto Sans Devanagari",
+            "Noto Sans Telugu",
+            Arial,
+            sans-serif;
           color: var(--text);
           background: #f7faf5;
         }
@@ -492,8 +1108,6 @@ export default function Home() {
           background: #ffffff;
         }
 
-        /* NAV */
-
         .nav {
           height: 82px;
           position: sticky;
@@ -506,7 +1120,10 @@ export default function Home() {
         }
 
         .nav-inner {
-          width: min(1440px, calc(100% - (var(--page-pad) * 2)));
+          width: min(
+            1440px,
+            calc(100% - (var(--page-pad) * 2))
+          );
           height: 100%;
           margin: 0 auto;
           display: flex;
@@ -603,13 +1220,92 @@ export default function Home() {
           width: 38px;
         }
 
+        .language-dropdown { position: relative; }
+
+        .language-trigger {
+          min-height: 42px;
+          padding: 0 12px;
+          border: 1px solid #d6e2d2;
+          border-radius: 999px;
+          color: var(--green-900);
+          background: rgba(255, 255, 255, 0.9);
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+        }
+
+        .language-trigger:hover,
+        .language-dropdown.open .language-trigger {
+          border-color: #9fc294;
+          background: white;
+          box-shadow: 0 8px 22px rgba(24, 73, 32, 0.1);
+        }
+
+        .language-trigger:focus-visible,
+        .language-option:focus-visible {
+          outline: 2px solid var(--green-600);
+          outline-offset: 2px;
+        }
+
+        .language-menu {
+          position: absolute;
+          z-index: 50;
+          top: calc(100% + 10px);
+          right: 0;
+          width: 190px;
+          padding: 7px;
+          border: 1px solid #dbe7d7;
+          border-radius: 15px;
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 18px 45px rgba(20, 62, 27, 0.16);
+          animation: language-menu-in 160ms ease-out;
+        }
+
+        @keyframes language-menu-in {
+          from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .language-option {
+          width: 100%;
+          min-height: 42px;
+          padding: 0 10px;
+          border: 0;
+          border-radius: 10px;
+          color: #314a34;
+          background: transparent;
+          display: grid;
+          grid-template-columns: 32px 1fr 16px;
+          align-items: center;
+          gap: 8px;
+          text-align: left;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .language-option:hover,
+        .language-option.selected { color: var(--green-900); background: #eef7e9; }
+        .language-option svg { justify-self: end; }
+        .language-code { color: #7b8e7d; font-size: 9px; letter-spacing: 0.08em; }
+
         .admin-button {
           min-height: 44px;
           padding: 0 20px;
           border: 0;
           border-radius: 999px;
           color: white;
-          background: linear-gradient(135deg, #0a7130, #07511f);
+          background: linear-gradient(
+            135deg,
+            #0a7130,
+            #07511f
+          );
           box-shadow: var(--shadow-green);
           display: inline-flex;
           align-items: center;
@@ -666,16 +1362,27 @@ export default function Home() {
           top: 6px;
         }
 
-        /* HERO */
-
         .hero {
           position: relative;
           overflow: hidden;
           scroll-margin-top: 82px;
           background:
-            radial-gradient(circle at 83% 18%, rgba(141, 198, 88, 0.24), transparent 23%),
-            radial-gradient(circle at 64% 90%, rgba(76, 150, 46, 0.11), transparent 28%),
-            linear-gradient(135deg, #fbfdf9 0%, #f3f9ee 44%, #e8f4dd 100%);
+            radial-gradient(
+              circle at 83% 18%,
+              rgba(141, 198, 88, 0.24),
+              transparent 23%
+            ),
+            radial-gradient(
+              circle at 64% 90%,
+              rgba(76, 150, 46, 0.11),
+              transparent 28%
+            ),
+            linear-gradient(
+              135deg,
+              #fbfdf9 0%,
+              #f3f9ee 44%,
+              #e8f4dd 100%
+            );
         }
 
         .hero::before {
@@ -701,12 +1408,17 @@ export default function Home() {
         }
 
         .hero-inner {
-          width: min(1440px, calc(100% - (var(--page-pad) * 2)));
+          width: min(
+            1440px,
+            calc(100% - (var(--page-pad) * 2))
+          );
           min-height: 620px;
           margin: 0 auto;
           padding: 64px 0;
           display: grid;
-          grid-template-columns: minmax(0, 1.15fr) minmax(290px, 0.6fr);
+          grid-template-columns:
+            minmax(0, 1.15fr)
+            minmax(290px, 0.6fr);
           gap: clamp(54px, 6vw, 105px);
           align-items: center;
           position: relative;
@@ -820,7 +1532,11 @@ export default function Home() {
         .action-card.primary {
           border-color: transparent;
           color: white;
-          background: linear-gradient(135deg, #08752e, #07531f);
+          background: linear-gradient(
+            135deg,
+            #08752e,
+            #07531f
+          );
           box-shadow: var(--shadow-green);
         }
 
@@ -860,8 +1576,6 @@ export default function Home() {
           font-weight: 600;
         }
 
-        /* PHONE */
-
         .phone-stage {
           min-height: 520px;
           display: flex;
@@ -875,7 +1589,11 @@ export default function Home() {
           width: 340px;
           height: 340px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(113, 181, 72, 0.32), rgba(113, 181, 72, 0));
+          background: radial-gradient(
+            circle,
+            rgba(113, 181, 72, 0.32),
+            rgba(113, 181, 72, 0)
+          );
           filter: blur(3px);
         }
 
@@ -884,13 +1602,17 @@ export default function Home() {
           height: 518px;
           padding: 9px;
           border-radius: 38px;
-          background: linear-gradient(145deg, #181818, #020202);
+          background: linear-gradient(
+            145deg,
+            #181818,
+            #020202
+          );
           position: relative;
           z-index: 2;
           box-shadow:
             inset 0 0 0 1px #3a3a3a,
             0 32px 65px rgba(20, 53, 18, 0.23),
-            0 8px 20px rgba(0, 0, 0, 0.20);
+            0 8px 20px rgba(0, 0, 0, 0.2);
           transform: rotate(1.4deg);
         }
 
@@ -984,8 +1706,11 @@ export default function Home() {
           height: 100%;
           padding: 48px 15px 24px;
           color: #172019;
-          background:
-            linear-gradient(180deg, #f5faf2, #ffffff);
+          background: linear-gradient(
+            180deg,
+            #f5faf2,
+            #ffffff
+          );
         }
 
         .fallback-logo {
@@ -1023,7 +1748,11 @@ export default function Home() {
           padding: 13px;
           border-radius: 14px;
           color: white;
-          background: linear-gradient(135deg, #55aadd, #2274b5);
+          background: linear-gradient(
+            135deg,
+            #55aadd,
+            #2274b5
+          );
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -1067,7 +1796,7 @@ export default function Home() {
           align-items: center;
           justify-content: center;
           text-align: center;
-          box-shadow: 0 5px 12px rgba(27, 71, 27, 0.05);
+              box-shadow: 0 5px 12px rgba(27, 71, 27, 0.05);
         }
 
         .mini-grid strong {
@@ -1094,8 +1823,6 @@ export default function Home() {
           font-size: 7px;
           font-weight: 700;
         }
-
-        /* ABOUT */
 
         .about {
           padding: 88px var(--page-pad) 72px;
@@ -1179,19 +1906,23 @@ export default function Home() {
           line-height: 1.55;
         }
 
-        /* FEATURES */
-
         .why {
           padding: 78px var(--page-pad) 88px;
-          background:
-            linear-gradient(180deg, #f8fbf6 0%, #f3f8ef 100%);
+          background: linear-gradient(
+            180deg,
+            #f8fbf6 0%,
+            #f3f8ef 100%
+          );
           scroll-margin-top: 82px;
         }
 
         .feature-grid {
           margin-top: 38px;
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(
+            3,
+            minmax(0, 1fr)
+          );
           gap: 20px;
         }
 
@@ -1219,7 +1950,11 @@ export default function Home() {
           height: 52px;
           border-radius: 15px;
           color: var(--green-700);
-          background: linear-gradient(145deg, #e9f5e3, #f7fbf4);
+          background: linear-gradient(
+            145deg,
+            #e9f5e3,
+            #f7fbf4
+          );
           display: grid;
           place-items: center;
           margin-bottom: 22px;
@@ -1240,11 +1975,13 @@ export default function Home() {
           line-height: 1.7;
         }
 
-        /* STATS */
-
         .stats {
           padding: 30px var(--page-pad);
-          background: linear-gradient(135deg, #086226, #034519);
+          background: linear-gradient(
+            135deg,
+            #086226,
+            #034519
+          );
           color: white;
         }
 
@@ -1258,7 +1995,8 @@ export default function Home() {
         .stat {
           min-height: 92px;
           padding: 10px 22px;
-          border-right: 1px solid rgba(255, 255, 255, 0.18);
+          border-right: 1px solid
+            rgba(255, 255, 255, 0.18);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1294,8 +2032,6 @@ export default function Home() {
           font-size: 11px;
         }
 
-        /* CONTACT */
-
         .contact {
           padding: 88px var(--page-pad);
           background: white;
@@ -1309,7 +2045,11 @@ export default function Home() {
           border: 1px solid #dce7d9;
           border-radius: 24px;
           background:
-            radial-gradient(circle at 100% 0, rgba(125, 190, 80, 0.18), transparent 26%),
+            radial-gradient(
+              circle at 100% 0,
+              rgba(125, 190, 80, 0.18),
+              transparent 26%
+            ),
             linear-gradient(145deg, #fbfdf9, #f3f9ef);
           display: grid;
           grid-template-columns: minmax(0, 1fr) auto;
@@ -1356,8 +2096,6 @@ export default function Home() {
         .contact-action svg {
           color: var(--green-700);
         }
-
-        /* FOOTER */
 
         .footer {
           padding: 34px var(--page-pad) 28px;
@@ -1423,11 +2161,11 @@ export default function Home() {
           font-size: 10px;
         }
 
-        /* RESPONSIVE */
-
         @media (max-width: 1120px) {
           .hero-inner {
-            grid-template-columns: minmax(0, 1fr) 300px;
+            grid-template-columns:
+              minmax(0, 1fr)
+              300px;
             gap: 38px;
           }
 
@@ -1441,7 +2179,10 @@ export default function Home() {
           }
 
           .feature-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(
+              2,
+              minmax(0, 1fr)
+            );
           }
         }
 
@@ -1471,6 +2212,8 @@ export default function Home() {
           .nav-right {
             gap: 10px;
           }
+
+          .language-trigger { min-height: 40px; }
 
           .nav-links {
             position: absolute;
@@ -1571,7 +2314,8 @@ export default function Home() {
           }
 
           .stat:nth-child(-n + 2) {
-            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+            border-bottom: 1px solid
+              rgba(255, 255, 255, 0.14);
           }
 
           .contact-wrap {
@@ -1591,6 +2335,10 @@ export default function Home() {
           .hero-inner {
             width: calc(100% - 32px);
           }
+
+          .language-trigger { padding: 0 10px; font-size: 12px; }
+          .language-trigger > svg { display: none; }
+          .language-menu { right: -42px; width: 180px; }
 
           .hero-eyebrow {
             font-size: 10px;
@@ -1652,7 +2400,8 @@ export default function Home() {
 
           .stat {
             border-right: 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+            border-bottom: 1px solid
+              rgba(255, 255, 255, 0.14);
             justify-content: flex-start;
           }
 
@@ -1673,12 +2422,21 @@ export default function Home() {
             justify-content: flex-start;
           }
         }
-      `}</style>
 
+        @media (prefers-reduced-motion: reduce) {
+          html { scroll-behavior: auto; }
+          *, *::before, *::after {
+            scroll-behavior: auto !important;
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+      `}</style>
       <main className="page">
         <nav className="nav">
           <div className="nav-inner">
-            <Logo onNavClick={handleNavClick} />
+            <Logo onNavClick={handleNavClick} tagLine={t.logoTag} />
 
             <div className="nav-right">
               <div className={`nav-links ${mobileNavOpen ? "open" : ""}`}>
@@ -1687,12 +2445,18 @@ export default function Home() {
                     key={id}
                     className={activeSection === id ? "active" : ""}
                     href={`#${id}`}
-                    onClick={(e) => handleNavClick(e, id)}
+                    onClick={(event) => handleNavClick(event, id)}
                   >
                     {label}
                   </a>
                 ))}
               </div>
+
+              <LanguageDropdown
+                language={language}
+                label={t.language}
+                onChange={handleLanguageChange}
+              />
 
               <button
                 type="button"
@@ -1700,13 +2464,13 @@ export default function Home() {
                 onClick={() => navigate("/login")}
               >
                 <Icon name="user" size={17} />
-                <span>Admin Portal</span>
+                <span>{t.adminPortal}</span>
               </button>
 
               <button
                 type="button"
                 className="mobile-toggle"
-                aria-label="Toggle navigation"
+                aria-label={t.toggleNavigation}
                 aria-expanded={mobileNavOpen}
                 onClick={() => setMobileNavOpen((value) => !value)}
               >
@@ -1721,31 +2485,23 @@ export default function Home() {
             <div className="hero-copy">
               <div className="hero-eyebrow">
                 <Icon name="leaf" size={15} />
-                Smart agriculture for real farm decisions
+                {t.hero.eyebrow}
               </div>
 
               <h1 className="hero-title">
                 AGRHI
-                <span>Your Smart Farm Assistant</span>
+                <span>{t.hero.title}</span>
               </h1>
 
-              <p>
-                Bring crop care, AI disease detection, local weather, farm
-                management and agricultural marketplace tools together in one
-                multilingual, offline-first mobile experience.
-              </p>
+              <p>{t.hero.description}</p>
 
               <div className="hero-highlights">
-                {[
-                  "AI-powered Plant Doctor",
-                  "7 languages",
-                  "Offline-first",
-                  "Farmer-focused",
-                ].map((item) => (
+                {t.hero.highlights.map((item) => (
                   <div className="highlight" key={item}>
                     <span className="highlight-icon">
                       <Icon name="check" size={12} />
                     </span>
+
                     {item}
                   </div>
                 ))}
@@ -1759,10 +2515,12 @@ export default function Home() {
                   rel="noopener noreferrer"
                 >
                   <Icon name="android" size={22} />
+
                   <span className="action-label">
-                    <strong>Get AGRHI App</strong>
-                    <small>Android application</small>
+                    <strong>{t.hero.app}</strong>
+                    <small>{t.hero.appNote}</small>
                   </span>
+
                   <Icon name="arrow" size={16} />
                 </a>
 
@@ -1773,109 +2531,74 @@ export default function Home() {
                   rel="noopener noreferrer"
                 >
                   <Icon name="file" size={21} />
+
                   <span className="action-label">
-                    <strong>User Manual</strong>
-                    <small>View documentation</small>
+                    <strong>{t.hero.manual}</strong>
+                    <small>{t.hero.manualNote}</small>
                   </span>
                 </a>
 
                 <button
                   type="button"
                   className="action-card ghost"
-                  onClick={(e) => handleNavClick(e, "features")}
+                  onClick={(event) => handleNavClick(event, "features")}
                 >
                   <Icon name="leaf" size={20} />
+
                   <span className="action-label">
-                    <strong>Explore Features</strong>
-                    <small>See what AGRHI offers</small>
+                    <strong>{t.hero.explore}</strong>
+                    <small>{t.hero.exploreNote}</small>
                   </span>
                 </button>
               </div>
             </div>
 
-            <PhoneMockup screenshots={phoneScreenshots} />
+            <PhoneMockup screenshots={phoneScreenshots} copy={t.preview} />
           </div>
         </section>
 
         <section className="about" id="about">
           <div className="section-shell">
-            <div className="section-kicker">About AGRHI</div>
-            <h2 className="section-title">
-              Agriculture, technology and accessibility in one platform
-            </h2>
+            <div className="section-kicker">{t.about.kicker}</div>
 
-            <p className="section-copy">
-              AGRHI is designed to help farmers and agricultural stakeholders
-              make faster, data-informed decisions. It combines practical farm
-              tools with AI-assisted crop disease detection, local weather,
-              multilingual support and an integrated marketplace—while keeping
-              low-connectivity rural use in mind.
-            </p>
+            <h2 className="section-title">{t.about.title}</h2>
+
+            <p className="section-copy">{t.about.description}</p>
 
             <div className="about-points">
-              <div className="about-point">
-                <div className="about-point-icon">
-                  <Icon name="leaf" size={21} />
-                </div>
-                <div>
-                  <strong>Built around farm workflows</strong>
-                  <span>
-                    Crop care, farms, irrigation and plant-health tools are
-                    organized around practical agricultural use.
-                  </span>
-                </div>
-              </div>
+              {t.about.points.map(([title, text], index) => (
+                <div className="about-point" key={title}>
+                  <div className="about-point-icon">
+                    <Icon name={["leaf", "globe", "shield"][index]} size={21} />
+                  </div>
 
-              <div className="about-point">
-                <div className="about-point-icon">
-                  <Icon name="globe" size={21} />
+                  <div>
+                    <strong>{title}</strong>
+                    <span>{text}</span>
+                  </div>
                 </div>
-                <div>
-                  <strong>Designed for accessibility</strong>
-                  <span>
-                    Multilingual support and offline-first behavior help AGRHI
-                    remain useful across different regions and connectivity
-                    levels.
-                  </span>
-                </div>
-              </div>
-
-              <div className="about-point">
-                <div className="about-point-icon">
-                  <Icon name="shield" size={21} />
-                </div>
-                <div>
-                  <strong>Responsible data handling</strong>
-                  <span>
-                    AGRHI provides privacy controls, secure authentication and
-                    clear account-deletion options for users.
-                  </span>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </section>
 
         <section className="why" id="features">
           <div className="section-shell">
-            <div className="section-kicker">Core Capabilities</div>
-            <h2 className="section-title">
-              Everything farmers need, in one app
-            </h2>
+            <div className="section-kicker">{t.featureSection.kicker}</div>
 
-            <p className="section-copy">
-              AGRHI connects everyday farm management with intelligent
-              assistance so users can move from information to action quickly.
-            </p>
+            <h2 className="section-title">{t.featureSection.title}</h2>
+
+            <p className="section-copy">{t.featureSection.description}</p>
 
             <div className="feature-grid">
-              {features.map((feature) => (
-                <article className="feature-card" key={feature.title}>
+              {t.features.map(([title, text], index) => (
+                <article className="feature-card" key={title}>
                   <div className="feature-icon">
-                    <Icon name={feature.icon} size={27} />
+                    <Icon name={FEATURE_ICONS[index]} size={27} />
                   </div>
-                  <h3>{feature.title}</h3>
-                  <p>{feature.text}</p>
+
+                  <h3>{title}</h3>
+                  <p>{text}</p>
                 </article>
               ))}
             </div>
@@ -1884,14 +2607,15 @@ export default function Home() {
 
         <section className="stats">
           <div className="stats-inner">
-            {stats.map((stat) => (
-              <div className="stat" key={stat.label}>
+            {t.stats.map(([value, label], index) => (
+              <div className="stat" key={label}>
                 <div className="stat-icon">
-                  <Icon name={stat.icon} size={23} />
+                  <Icon name={STAT_ICONS[index]} size={23} />
                 </div>
+
                 <div>
-                  <b>{stat.value}</b>
-                  <span>{stat.label}</span>
+                  <b>{value}</b>
+                  <span>{label}</span>
                 </div>
               </div>
             ))}
@@ -1900,16 +2624,14 @@ export default function Home() {
 
         <section className="contact" id="contact">
           <div className="section-shell">
-            <div className="section-kicker">Contact & Support</div>
-            <h2 className="section-title">Need help with AGRHI?</h2>
+            <div className="section-kicker">{t.contact.kicker}</div>
+
+            <h2 className="section-title">{t.contact.title}</h2>
 
             <div className="contact-wrap">
               <div className="contact-copy">
-                <h3>We're here to help</h3>
-                <p>
-                  For app support, privacy questions, account requests or
-                  general enquiries, contact the AGRHI support team.
-                </p>
+                <h3>{t.contact.heading}</h3>
+                <p>{t.contact.description}</p>
               </div>
 
               <div className="contact-actions">
@@ -1920,7 +2642,7 @@ export default function Home() {
 
                 <div className="contact-action">
                   <Icon name="pin" size={19} />
-                  Chennai, Tamil Nadu, India
+                  {t.contact.location}
                 </div>
               </div>
             </div>
@@ -1931,16 +2653,20 @@ export default function Home() {
           <div className="footer-inner">
             <div className="footer-brand">
               <img src={LOGO_SRC} alt="AGRHI logo" />
+
               <div>
-                <strong>AGRHI by Farmlead</strong>
-                <span>Leading the Future of Agriculture.</span>
+                <strong>{t.footer.brand}</strong>
+                <span>{t.logoTag}</span>
               </div>
             </div>
 
             <div className="footer-links">
-              <a href="/privacy">Privacy Policy</a>
-              <a href="/delete-account">Delete Account</a>
-              <a href="mailto:support@farmlead.in">Support</a>
+              <a href="/privacy">{t.footer.privacy}</a>
+
+              <a href="/delete-account">{t.footer.deleteAccount}</a>
+
+              <a href="mailto:support@farmlead.in">{t.footer.support}</a>
+
               <button
                 type="button"
                 onClick={() => navigate("/login")}
@@ -1953,16 +2679,102 @@ export default function Home() {
                   fontWeight: 700,
                 }}
               >
-                Admin Login
+                {t.footer.adminLogin}
               </button>
             </div>
           </div>
 
           <div className="footer-bottom">
-            © {new Date().getFullYear()} AGRHI • Erasmus+ AGRHI Programme
+            © {new Date().getFullYear()} AGRHI • {t.footer.programme}
           </div>
         </footer>
       </main>
     </>
+  );
+}
+
+function LanguageDropdown({ language, label, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const optionRefs = useRef([]);
+  const selected = LANGUAGES.find((item) => item.code === language) ?? LANGUAGES[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        rootRef.current?.querySelector("button")?.focus();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const moveFocus = (direction) => {
+    const current = optionRefs.current.indexOf(document.activeElement);
+    const next = (current + direction + LANGUAGES.length) % LANGUAGES.length;
+    optionRefs.current[next]?.focus();
+  };
+
+  return (
+    <div className={`language-dropdown ${open ? "open" : ""}`} ref={rootRef}>
+      <button
+        type="button"
+        className="language-trigger"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+            event.preventDefault();
+            setOpen(true);
+            requestAnimationFrame(() => optionRefs.current[language === "en" ? 0 : LANGUAGES.findIndex((item) => item.code === language)]?.focus());
+          }
+        }}
+      >
+        <Icon name="globe" size={17} />
+        <span>{selected.label}</span>
+      </button>
+
+      {open && (
+        <div className="language-menu" role="listbox" aria-label={label}>
+          {LANGUAGES.map((item, index) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={item.code === language}
+              className={`language-option ${item.code === language ? "selected" : ""}`}
+              key={item.code}
+              ref={(node) => { optionRefs.current[index] = node; }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  moveFocus(event.key === "ArrowDown" ? 1 : -1);
+                }
+              }}
+              onClick={() => {
+                onChange(item.code);
+                setOpen(false);
+              }}
+            >
+              <span className="language-code">{item.code.toUpperCase()}</span>
+              <span>{item.label}</span>
+              {item.code === language && <Icon name="check" size={15} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

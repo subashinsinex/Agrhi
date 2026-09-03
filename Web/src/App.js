@@ -200,63 +200,57 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/delete-account"
-              element={
-                  <DeleteAccount />
-              }
-            />
+            <Route path="/delete-account" element={<DeleteAccount />} />
             <Route path="/privacy" element={<Privacy />} />
           </Routes>
         </main>
       </div>
 
       <style>{`
-        html, body, #root {
-          height: 100vh;
+        html,
+        body,
+        #root {
+          min-height: 100%;
           margin: 0;
           padding: 0;
-          font-family: 'Inter', sans-serif;
+          font-family: "Inter", sans-serif;
           overflow-x: hidden;
         }
 
         .admin-layout {
           min-height: 100vh;
           display: flex;
-          background-color: transparent;
+          background: transparent;
         }
 
         .admin-content {
           flex: 1;
           box-sizing: border-box;
-          padding: 10px 10px 20px ${COLLAPSED_WIDTH} !important;
-          background-color: transparent;
-          margin-left: 0 !important;
-          width: 100vw !important;
-          transition: none !important;
-          height: 100vh;
-          overflow-y: compatible;
+          min-width: 0;
+          background: transparent;
         }
 
-        .admin-content > *:first-child {
-          margin-top: 0;
-        }
-        .admin-content > *:last-child {
-          margin-bottom: 0;
-        }
-
-        @media (min-width: ${DESKTOP_BREAKPOINT}px) {
+        .admin-content--with-sidebar {
+          width: calc(100% - ${COLLAPSED_WIDTH});
+          padding: 10px 10px 20px;
+          margin-left: ${COLLAPSED_WIDTH};
         }
 
         .admin-content--full {
+          width: 100%;
           margin-left: 0;
-          width: 100vw;
           padding: 0;
         }
 
         @media (max-width: ${DESKTOP_BREAKPOINT - 1}px) {
-          .admin-content {
-            padding: 20px !important; 
+          .admin-content--with-sidebar {
+            width: 100%;
+            margin-left: 0;
+            padding: 20px;
+          }
+
+          .admin-content--full {
+            padding: 0;
           }
         }
       `}</style>
