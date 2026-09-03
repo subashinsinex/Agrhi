@@ -1,28 +1,28 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
-import Sidebar from "./components/sidebar";
-import LoginForm from "./components/LoginForm";
-import Dashboard from "./components/dashboard";
-import UserManage from "./components/userManage";
-import Subsidies from "./components/subsidies";
-import FarmCrop from "./components/farmCrop";
-import Master from "./components/master";
-import Disease from "./components/disease";
-import Report from "./components/report";
-import Feedback from "./components/feedback";
-import RetailManager from "./components/retailManager";
-import MarketPlaceManagement from "./components/marketPlaceManagement";
-import Account from "./components/account";
 import { Header } from "./components/header";
 import { DESKTOP_BREAKPOINT } from "./constant";
 import ProtectedRoute from "./components/protectedRoute";
-import ResetPassword from "./components/resetPassword";
-import DeleteAccount from "./components/deleteAccount";
-import Privacy from "./components/privacy";
-import Home from "./components/home";
 
-// Import the 3D Background component
-import AgrhiBackground from "./parts/background";
+const Sidebar = lazy(() => import("./components/sidebar"));
+const LoginForm = lazy(() => import("./components/LoginForm"));
+const Dashboard = lazy(() => import("./components/dashboard"));
+const UserManage = lazy(() => import("./components/userManage"));
+const Subsidies = lazy(() => import("./components/subsidies"));
+const FarmCrop = lazy(() => import("./components/farmCrop"));
+const Master = lazy(() => import("./components/master"));
+const Disease = lazy(() => import("./components/disease"));
+const Report = lazy(() => import("./components/report"));
+const Feedback = lazy(() => import("./components/feedback"));
+const RetailManager = lazy(() => import("./components/retailManager"));
+const MarketPlaceManagement = lazy(() => import("./components/marketPlaceManagement"));
+const Account = lazy(() => import("./components/account"));
+const ResetPassword = lazy(() => import("./components/resetPassword"));
+const DeleteAccount = lazy(() => import("./components/deleteAccount"));
+const Privacy = lazy(() => import("./components/privacy"));
+const Home = lazy(() => import("./components/home"));
+const AgrhiBackground = lazy(() => import("./parts/background"));
+const NotFound = lazy(() => import("./components/public/NotFound"));
 
 const COLLAPSED_WIDTH = "80px";
 
@@ -30,12 +30,10 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isLoginPage =
-    location.pathname === "/" || location.pathname === "/login";
   const isResetPasswordPage = location.pathname.startsWith("/reset-password");
-  const isDeleteAccountPage = location.pathname === "/delete-account";
-  const isPrivacyPage = location.pathname === "/privacy";
-  const useStandardLayout = !isLoginPage && !isResetPasswordPage && !isDeleteAccountPage && !isPrivacyPage;
+  const adminPaths = ["/dashboard", "/userManage", "/farmcrop", "/subsidies", "/master", "/diseases", "/reports", "/feedback", "/retail-manager", "/marketplace-management", "/account"];
+  const useStandardLayout = adminPaths.includes(location.pathname);
+  const showBackground = useStandardLayout || location.pathname === "/login" || isResetPasswordPage;
 
   useEffect(() => {
     if (!useStandardLayout) return;
@@ -93,10 +91,10 @@ function App() {
 
   return (
     <>
-      <AgrhiBackground />
+      {showBackground && <Suspense fallback={null}><AgrhiBackground /></Suspense>}
 
       <div className="admin-layout">
-        {useStandardLayout && <Sidebar />}
+        {useStandardLayout && <Suspense fallback={null}><Sidebar /></Suspense>}
 
         <main
           className={
@@ -107,6 +105,7 @@ function App() {
         >
           {useStandardLayout && <Header />}
 
+          <Suspense fallback={<div className="route-loading" role="status"><span />Loading AGRHI…</div>}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<LoginForm />} />
@@ -202,7 +201,9 @@ function App() {
             />
             <Route path="/delete-account" element={<DeleteAccount />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </main>
       </div>
 
@@ -222,6 +223,29 @@ function App() {
           display: flex;
           background: transparent;
         }
+
+        .route-loading {
+          min-height: 55vh;
+          display: grid;
+          place-content: center;
+          gap: 12px;
+          color: #07551f;
+          font-size: 13px;
+          font-weight: 700;
+          text-align: center;
+        }
+
+        .route-loading span {
+          width: 34px;
+          height: 34px;
+          margin: auto;
+          border: 3px solid #dce6da;
+          border-top-color: #2f7d1f;
+          border-radius: 50%;
+          animation: route-spin 0.8s linear infinite;
+        }
+
+        @keyframes route-spin { to { transform: rotate(360deg); } }
 
         .admin-content {
           flex: 1;

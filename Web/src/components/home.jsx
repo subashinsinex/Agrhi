@@ -7,6 +7,8 @@ import React, {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import IntegratedAgrhiStory from "./agrhi/IntegratedAgrhiStory";
+import usePageMetadata from "../hooks/usePageMetadata";
 
 const PHONE_SCREENSHOTS = [
   "1.png",
@@ -748,6 +750,8 @@ function PhoneImage({
     <img
       src={currentSrc}
       alt={`${screenshotLabel} ${index + 1}`}
+      loading={index === 0 ? "eager" : "lazy"}
+      decoding="async"
       className={active ? "phone-shot active" : "phone-shot"}
       onError={() => {
         if (candidateIndex < candidates.length - 1) {
@@ -918,6 +922,11 @@ function getInitialLanguage() {
 
 export default function Home() {
   const navigate = useNavigate();
+  usePageMetadata({
+    title: "AGRHI Farm Management — Smart Agriculture & Erasmus+ Innovation",
+    description: "Explore the AGRHI Farm Management Application, smart agriculture, agricultural education, innovation hubs and Erasmus+ collaboration.",
+    path: "/",
+  });
 
   const [activeSection, setActiveSection] = useState("home");
 
@@ -1007,7 +1016,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const sectionIds = ["home", "about", "features", "contact"];
+    const sectionIds = ["home", "about", "features", "agrhi-project", "contact"];
 
     const sections = sectionIds
       .map((id) => document.getElementById(id))
@@ -1038,6 +1047,7 @@ export default function Home() {
     ["home", t.nav.home],
     ["about", t.nav.about],
     ["features", t.nav.features],
+    ["agrhi-project", "AGRHI Project"],
     ["contact", t.nav.contact],
   ];
 
@@ -1110,13 +1120,19 @@ export default function Home() {
 
         .nav {
           height: 82px;
-          position: sticky;
+          position: fixed;
           top: 0;
+          left: 0;
+          right: 0;
           z-index: 100;
           background: rgba(249, 251, 248, 0.92);
           border-bottom: 1px solid rgba(207, 221, 204, 0.82);
           backdrop-filter: blur(18px);
           -webkit-backdrop-filter: blur(18px);
+        }
+
+        .page {
+          padding-top: 82px;
         }
 
         .nav-inner {
@@ -2622,6 +2638,8 @@ export default function Home() {
           </div>
         </section>
 
+        <IntegratedAgrhiStory />
+
         <section className="contact" id="contact">
           <div className="section-shell">
             <div className="section-kicker">{t.contact.kicker}</div>
@@ -2661,6 +2679,14 @@ export default function Home() {
             </div>
 
             <div className="footer-links">
+              <a href="#agrhi-project">Project</a>
+
+              <a href="#smart-agriculture">Smart Agriculture</a>
+
+              <a href="#innovation">Innovation</a>
+
+              <a href="#erasmus">Erasmus+</a>
+
               <a href="/privacy">{t.footer.privacy}</a>
 
               <a href="/delete-account">{t.footer.deleteAccount}</a>

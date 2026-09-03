@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AnimatedContent from "./reactbits/AnimatedContent";
+import usePageMetadata from "../hooks/usePageMetadata";
 
 const LOGO_SRC = "/logo.png";
 
@@ -73,6 +75,11 @@ function Icon({ name, size = 24 }) {
 }
 
 export default function DeleteAccount() {
+  usePageMetadata({
+    title: "Delete AGRHI Account — Account and Data Request",
+    description: "Request deletion of your AGRHI account and associated personal information through the Farmlead account portal.",
+    path: "/delete-account",
+  });
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -191,6 +198,7 @@ export default function DeleteAccount() {
           min-height: 100vh;
           margin-left: calc(50% - 50vw);
           margin-right: calc(50% - 50vw);
+          padding-top: 82px;
           background:
             radial-gradient(
               circle at 88% 17%,
@@ -212,8 +220,10 @@ export default function DeleteAccount() {
           background: rgba(243, 242, 242, 0.96);
           border-bottom: 1px solid #dfe5dd;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-          position: sticky;
+          position: fixed;
           top: 0;
+          left: 0;
+          right: 0;
           z-index: 50;
           backdrop-filter: blur(12px);
         }
@@ -934,7 +944,7 @@ export default function DeleteAccount() {
 
         {/* HERO */}
         <section className="delete-hero">
-          <div className="delete-hero-inner">
+          <AnimatedContent className="delete-hero-inner">
             <div>
               <div className="delete-badge">
                 <Icon name="leaf" size={16} />
@@ -967,12 +977,12 @@ export default function DeleteAccount() {
                 owner.
               </p>
             </div>
-          </div>
+          </AnimatedContent>
         </section>
 
         {/* CONTENT */}
         <section className="delete-content">
-          <div className="delete-main-grid">
+          <AnimatedContent className="delete-main-grid">
             {/* FORM */}
             <div className="request-card">
               <div className="card-heading">
@@ -1119,7 +1129,7 @@ export default function DeleteAccount() {
                 </p>
               </div>
             </aside>
-          </div>
+          </AnimatedContent>
 
           {/* SUPPORT */}
           <div className="support-card">

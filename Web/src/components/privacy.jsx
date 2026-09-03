@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AnimatedContent from "./reactbits/AnimatedContent";
+import usePageMetadata from "../hooks/usePageMetadata";
 
 const LOGO_SRC = "/logo.png";
 const LANGUAGE_STORAGE_KEY = "agrhi-website-language";
@@ -896,8 +898,15 @@ function LocalizedPolicyContent({ content, language }) {
 }
 
 export default function Privacy() {
+  usePageMetadata({
+    title: "Privacy Policy — AGRHI Farm Management",
+    description: "Learn how the AGRHI Farm Management Application collects, uses, protects and manages personal and device data.",
+    path: "/privacy",
+  });
   const navigate = useNavigate();
   const [language, setLanguage] = useState(getInitialLanguage);
+  const [activePolicy, setActivePolicy] = useState(policySections[0].id);
+  const [readingProgress, setReadingProgress] = useState(0);
   const t = PRIVACY_TRANSLATIONS[language];
 
   useEffect(() => {
@@ -938,6 +947,32 @@ export default function Privacy() {
 
     setLanguage(nextLanguage);
   };
+
+  useEffect(() => {
+    const updateProgress = () => {
+      const content = document.querySelector(".privacy-content");
+      if (!content) return;
+      const start = content.offsetTop - 100;
+      const distance = Math.max(content.offsetHeight - window.innerHeight, 1);
+      setReadingProgress(Math.min(100, Math.max(0, ((window.scrollY - start) / distance) * 100)));
+    };
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible) setActivePolicy(visible.target.id);
+    }, { rootMargin: "-18% 0px -62% 0px", threshold: [0, 0.15, 0.4] });
+    policySections.forEach(section => {
+      const node = document.getElementById(section.id);
+      if (node) observer.observe(node);
+    });
+    updateProgress();
+    window.addEventListener("scroll", updateProgress, { passive: true });
+    window.addEventListener("resize", updateProgress);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", updateProgress);
+      window.removeEventListener("resize", updateProgress);
+    };
+  }, []);
 
   return (
     <>
@@ -989,6 +1024,7 @@ export default function Privacy() {
           min-height: 100vh;
           margin-left: calc(50% - 50vw);
           margin-right: calc(50% - 50vw);
+          padding-top: 82px;
           background:
             radial-gradient(
               circle at 88% 17%,
@@ -1010,8 +1046,10 @@ export default function Privacy() {
           background: rgba(243, 242, 242, 0.96);
           border-bottom: 1px solid #dfe5dd;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-          position: sticky;
+          position: fixed;
           top: 0;
+          left: 0;
+          right: 0;
           z-index: 50;
           backdrop-filter: blur(12px);
         }
@@ -1435,8 +1473,22 @@ export default function Privacy() {
           flex-direction: column;
           gap: 18px;
           position: sticky;
-          top: 100px;
+          top: 98px;
+          max-height: calc(100vh - 114px);
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          padding-right: 5px;
+          scrollbar-width: thin;
+          scrollbar-color: #b8cdb2 transparent;
         }
+
+        .side-column::-webkit-scrollbar { width: 5px; }
+        .side-column::-webkit-scrollbar-thumb {
+          border-radius: 999px;
+          background: #b8cdb2;
+        }
+
+        .quick-links-card { order: -1; }
 
         .side-card {
           border-radius: 18px;
@@ -1638,6 +1690,9 @@ export default function Privacy() {
 
           .side-column {
             position: static;
+            max-height: none;
+            overflow: visible;
+            padding-right: 0;
           }
 
           .quick-links-card {
@@ -1731,7 +1786,64 @@ export default function Privacy() {
         }
       `}</style>
 
-      <main className="privacy-page">
+      <style>{`
+        .privacy-v2 { background: #f4f7f2; }
+        .privacy-v2 .privacy-nav { background: rgba(249,251,248,.96); border-bottom-color: #dce6da; box-shadow: none; backdrop-filter: blur(18px); }
+        .privacy-progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; overflow: hidden; }
+        .privacy-progress span { display: block; height: 100%; background: linear-gradient(90deg,#74b94a,#0d6b2b); transition: width 100ms linear; }
+        .privacy-v2 .privacy-hero { min-height: 520px; padding: clamp(72px,9vw,122px) 0 118px; color: white; background: radial-gradient(circle at 78% 28%,rgba(150,202,91,.28),transparent 26%),linear-gradient(135deg,#063f1a,#08702b); }
+        .privacy-v2 .privacy-hero-inner { grid-template-columns: minmax(0,1.2fr) minmax(310px,.65fr); gap: clamp(50px,8vw,110px); }
+        .privacy-v2 .privacy-badge { color: #d8efc1; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.1); }
+        .privacy-v2 .privacy-title { max-width: 760px; color: white; font-size: clamp(46px,6.4vw,82px); line-height: .98; letter-spacing: -3px; }
+        .privacy-v2 .privacy-title span { color: #b9dd91; }
+        .privacy-v2 .privacy-description { color: rgba(255,255,255,.78); font-size: 17px; }
+        .privacy-v2 .effective-date { color: white; border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.1); }
+        .privacy-v2 .hero-security-card { padding: 34px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.1); box-shadow: none; backdrop-filter: blur(14px); }
+        .privacy-v2 .privacy-content { max-width: 1500px; margin: 0 auto; padding-top: clamp(65px,8vw,105px); }
+        .privacy-v2 .privacy-main-grid { grid-template-columns: 260px minmax(0,1fr) 300px; gap: clamp(22px,3vw,44px); }
+        .privacy-v2 .policy-column { gap: 22px; min-width: 0; }
+        .privacy-v2 .policy-card { padding: clamp(25px,4vw,42px); border-color: #dbe5d8; border-radius: 20px; background: white; box-shadow: 0 8px 28px rgba(24,63,27,.055); }
+        .privacy-v2 .policy-heading { padding-bottom: 20px; margin-bottom: 24px; border-bottom: 1px solid #e5ece3; align-items: center; }
+        .privacy-v2 .policy-icon { width: 48px; height: 48px; flex-basis: 48px; border-radius: 14px; }
+        .privacy-v2 .policy-heading h2 { font-size: clamp(19px,2vw,24px); }
+        .privacy-v2 .policy-body { max-width: 760px; font-size: 15px; line-height: 1.85; }
+        .privacy-v2 .policy-toc { align-self: stretch; position: relative; min-width: 0; }
+        .privacy-v2 .policy-toc .quick-links-card { position: sticky; top: 102px; overflow: visible; }
+        .privacy-v2 .side-column { position: sticky; top: 102px; align-self: start; max-height: none; overflow: visible; padding-right: 0; gap: 14px; }
+        .privacy-v2 .side-card { padding: 22px; border-radius: 18px; box-shadow: 0 8px 25px rgba(24,63,27,.06); }
+        .privacy-v2 .quick-links-card { overflow: visible; }
+        .privacy-v2 .quick-links a { position: relative; padding: 10px 12px 10px 34px; line-height: 1.35; }
+        .privacy-v2 .quick-links a::before { content: ''; position: absolute; left: 13px; top: 16px; width: 7px; height: 7px; border: 1px solid #9eb698; border-radius: 50%; }
+        .privacy-v2 .quick-links a.active { color: #07551f; background: #edf6e9; }
+        .privacy-v2 .quick-links a.active::before { border-color: #2f7d1f; background: #2f7d1f; box-shadow: 0 0 0 4px #deedd8; }
+        .privacy-v2 .support-card { margin-top: 42px; padding: 34px 38px; border-radius: 20px; }
+        .privacy-v2 .privacy-footer { background: #eef2ec; }
+        @media (max-width: 1180px) {
+          .privacy-v2 .privacy-main-grid { grid-template-columns: 245px minmax(0,1fr); }
+          .privacy-v2 .policy-toc { grid-column: 1; grid-row: 1; }
+          .privacy-v2 .policy-column { grid-column: 2; grid-row: 1; }
+          .privacy-v2 .side-column { position: static; grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 760px) {
+          .privacy-v2 .privacy-hero { min-height: auto; padding-bottom: 80px; }
+          .privacy-v2 .privacy-main-grid { grid-template-columns: 1fr; }
+          .privacy-v2 .policy-toc { grid-column: 1; grid-row: 1; }
+          .privacy-v2 .policy-toc .quick-links-card { display: block; position: static; max-height: none; overflow: visible; }
+          .privacy-v2 .policy-column { grid-column: 1; grid-row: 2; }
+          .privacy-v2 .side-column { grid-column: 1; grid-row: 3; display: grid; grid-template-columns: 1fr; }
+          .privacy-v2 .quick-links { display: grid; grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 640px) {
+          .privacy-v2 { padding-top: 74px; }
+          .privacy-v2 .privacy-title { font-size: 43px; letter-spacing: -1.8px; }
+          .privacy-v2 .privacy-hero { padding-top: 55px; }
+          .privacy-v2 .privacy-content { padding-top: 34px; }
+          .privacy-v2 .quick-links { grid-template-columns: 1fr; max-height: 260px; overflow-y: auto; }
+          .privacy-v2 .policy-card { padding: 24px 19px; }
+        }
+      `}</style>
+
+      <main className="privacy-page privacy-v2">
         <nav className="privacy-nav">
           <div className="privacy-nav-inner">
             <button
@@ -1767,6 +1879,7 @@ export default function Privacy() {
               </button>
             </div>
           </div>
+          <div className="privacy-progress" aria-hidden="true"><span style={{ width: `${readingProgress}%` }} /></div>
         </nav>
 
         <section className="privacy-hero">
@@ -1801,13 +1914,26 @@ export default function Privacy() {
 
         <section className="privacy-content">
           <div className="privacy-main-grid">
+            <aside className="policy-toc" aria-label={t.policySections}>
+              <div className="side-card quick-links-card">
+                <div className="side-title">
+                  <div className="side-title-icon"><Icon name="database" size={20} /></div>
+                  <h3>{t.policySections}</h3>
+                </div>
+                <div className="quick-links">
+                  {policySections.map((section, index) => (
+                    <a className={activePolicy === section.id ? "active" : ""} aria-current={activePolicy === section.id ? "location" : undefined} key={section.id} href={`#${section.id}`}>
+                      {t.sectionTitles[index]}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </aside>
+
             <div className="policy-column">
               {policySections.map((section, index) => (
-                <article
-                  className="policy-card"
-                  id={section.id}
-                  key={section.id}
-                >
+                <AnimatedContent key={section.id} delay={Math.min(index, 3) * 0.035}>
+                <article className="policy-card" id={section.id}>
                   <div className="policy-heading">
                     <div className="policy-icon">
                       <Icon name={section.icon} size={23} />
@@ -1827,6 +1953,7 @@ export default function Privacy() {
                     )}
                   </div>
                 </article>
+                </AnimatedContent>
               ))}
             </div>
 
@@ -1849,23 +1976,6 @@ export default function Privacy() {
                     </li>
                   ))}
                 </ul>
-              </div>
-
-              <div className="side-card quick-links-card">
-                <div className="side-title">
-                  <div className="side-title-icon">
-                    <Icon name="database" size={20} />
-                  </div>
-                  <h3>{t.policySections}</h3>
-                </div>
-
-                <div className="quick-links">
-                  {policySections.map((section, index) => (
-                    <a key={section.id} href={`#${section.id}`}>
-                      {t.sectionTitles[index]}
-                    </a>
-                  ))}
-                </div>
               </div>
 
               <div className="side-card deletion-card">
