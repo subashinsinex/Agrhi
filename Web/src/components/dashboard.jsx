@@ -268,7 +268,6 @@ const Dashboard = () => {
   // Function to navigate (using a simple console log for a React app without routing setup)
   const handleCardClick = (path) => {
     navigate(path);
-    console.log(`Navigating to: ${path}`);
     // In a real application, you would use a router like:
     // navigate(path);
   };

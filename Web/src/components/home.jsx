@@ -873,21 +873,19 @@ function PhoneMockup({ screenshots, copy }) {
 
         <div className="phone-screen">
           {visibleScreenshots.length ? (
-            visibleScreenshots.map((src, index) => (
-              <PhoneImage
-                key={`${src}-${index}`}
-                src={src}
-                index={index}
-                active={index === active}
-                screenshotLabel={copy.screenshot}
-                onBroken={(brokenSrc) =>
-                  setBroken((current) => ({
-                    ...current,
-                    [brokenSrc]: true,
-                  }))
-                }
-              />
-            ))
+            <PhoneImage
+              key={visibleScreenshots[active]}
+              src={visibleScreenshots[active]}
+              index={active}
+              active
+              screenshotLabel={copy.screenshot}
+              onBroken={(brokenSrc) =>
+                setBroken((current) => ({
+                  ...current,
+                  [brokenSrc]: true,
+                }))
+              }
+            />
           ) : (
             <PhoneFallback copy={copy} />
           )}
@@ -952,6 +950,32 @@ export default function Home() {
   }, [language]);
 
   useEffect(() => {
+    if (language === "en") return undefined;
+
+    const callbackName = "agrhiGoogleTranslateReady";
+    window[callbackName] = () => {
+      if (!window.google?.translate?.TranslateElement) return;
+      new window.google.translate.TranslateElement(
+        { pageLanguage: "en", includedLanguages: "ta,hi,te", autoDisplay: false },
+        "agrhi-google-translate",
+      );
+    };
+
+    if (window.google?.translate?.TranslateElement) {
+      window[callbackName]();
+      return undefined;
+    }
+
+    const script = document.createElement("script");
+    script.src = `https://translate.google.com/translate_a/element.js?cb=${callbackName}`;
+    script.async = true;
+    script.id = "agrhi-google-translate-script";
+    document.head.appendChild(script);
+
+    return () => { delete window[callbackName]; };
+  }, [language]);
+
+  useEffect(() => {
     const syncLanguageFromStorage = () => {
       const storedLanguage = getInitialLanguage();
       setLanguage((currentLanguage) =>
@@ -977,7 +1001,13 @@ export default function Home() {
       // Continue without browser storage.
     }
 
+    const cookieValue = nextLanguage === "en" ? "/en/en" : `/en/${nextLanguage}`;
+    document.cookie = `googtrans=${cookieValue}; path=/; SameSite=Lax`;
     setLanguage(nextLanguage);
+
+    // Google translates the project story after the DOM is rendered. Reloading
+    // also restores the original English DOM cleanly when switching languages.
+    window.location.reload();
   }, []);
 
   const handleNavClick = useCallback((event, id) => {
@@ -2439,6 +2469,42 @@ export default function Home() {
           }
         }
 
+        .mobile-admin-link { display: none; }
+        #agrhi-google-translate, .goog-te-banner-frame, .goog-te-gadget { display: none !important; }
+        body { top: 0 !important; }
+        .skiptranslate iframe { visibility: hidden !important; }
+        @media (max-width: 880px) {
+          .page, .nav, .hero, .hero-inner, .hero-copy { min-width: 0; max-width: 100%; }
+          .nav-inner { gap: 10px; }
+          .nav-right { min-width: 0; flex: 0 0 auto; }
+          .hero-copy { overflow-wrap: anywhere; }
+          .phone-stage { order: 0; }
+          .section-title { width: min(760px, 100%); margin-inline: auto; }
+          .mobile-admin-link { width: 100%; min-height: 46px; padding: 0 13px; border: 0; border-radius: 10px; display: flex; align-items: center; gap: 9px; color: white; background: linear-gradient(135deg,#0a7130,#07511f); font-weight: 800; cursor: pointer; }
+        }
+        @media (max-width: 620px) {
+          .nav-inner { width: calc(100% - 24px); }
+          .logo { gap: 8px; min-width: 0; }
+          .logo-mark { width: 44px; height: 44px; flex-basis: 44px; }
+          .logo-name { font-size: 22px; }
+          .admin-button { display: none; }
+          .mobile-toggle { flex: 0 0 42px; width: 42px; height: 42px; }
+          .language-trigger { max-width: 104px; }
+          .language-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .hero-inner { width: calc(100% - 32px); padding: 44px 0 54px; gap: 34px; }
+          .hero-title { max-width: 100%; font-size: clamp(40px, 13vw, 50px); letter-spacing: -1.8px; }
+          .hero-title span { font-size: clamp(27px, 8.4vw, 34px); letter-spacing: -1px; overflow-wrap: normal; word-break: normal; }
+          .hero-copy > p { overflow-wrap: normal; word-break: normal; }
+          .hero-highlights { margin: 21px 0 24px; }
+          .actions { gap: 9px; }
+          .action-card { min-height: 54px; }
+          .action-card.secondary, .action-card.ghost { min-height: 46px; background: transparent; box-shadow: none; }
+          .phone-stage { min-height: 390px; }
+          .phone { width: 196px; height: 394px; }
+          .phone-glow { width: 270px; height: 270px; }
+          .section-title { font-size: clamp(28px, 8vw, 34px); letter-spacing: -.8px; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           html { scroll-behavior: auto; }
           *, *::before, *::after {
@@ -2450,7 +2516,8 @@ export default function Home() {
         }
       `}</style>
       <main className="page">
-        <nav className="nav">
+        <div id="agrhi-google-translate" aria-hidden="true" />
+        <nav className="nav notranslate" translate="no">
           <div className="nav-inner">
             <Logo onNavClick={handleNavClick} tagLine={t.logoTag} />
 
@@ -2466,6 +2533,10 @@ export default function Home() {
                     {label}
                   </a>
                 ))}
+                <button type="button" className="mobile-admin-link" onClick={() => navigate("/login")}>
+                  <Icon name="user" size={17} />
+                  {t.adminPortal}
+                </button>
               </div>
 
               <LanguageDropdown
@@ -2496,7 +2567,7 @@ export default function Home() {
           </div>
         </nav>
 
-        <section className="hero" id="home">
+        <section className="hero notranslate" id="home" translate="no">
           <div className="hero-inner">
             <div className="hero-copy">
               <div className="hero-eyebrow">
@@ -2573,7 +2644,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="about" id="about">
+        <section className="about notranslate" id="about" translate="no">
           <div className="section-shell">
             <div className="section-kicker">{t.about.kicker}</div>
 
@@ -2598,7 +2669,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="why" id="features">
+        <section className="why notranslate" id="features" translate="no">
           <div className="section-shell">
             <div className="section-kicker">{t.featureSection.kicker}</div>
 
@@ -2621,7 +2692,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="stats">
+        <section className="stats notranslate" translate="no">
           <div className="stats-inner">
             {t.stats.map(([value, label], index) => (
               <div className="stat" key={label}>
@@ -2640,7 +2711,7 @@ export default function Home() {
 
         <IntegratedAgrhiStory />
 
-        <section className="contact" id="contact">
+        <section className="contact notranslate" id="contact" translate="no">
           <div className="section-shell">
             <div className="section-kicker">{t.contact.kicker}</div>
 
@@ -2667,7 +2738,7 @@ export default function Home() {
           </div>
         </section>
 
-        <footer className="footer">
+        <footer className="footer notranslate" translate="no">
           <div className="footer-inner">
             <div className="footer-brand">
               <img src={LOGO_SRC} alt="AGRHI logo" />

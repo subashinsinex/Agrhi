@@ -1,3 +1,4 @@
-const SERVER_ADDR = "http://10.21.79.141:5000";
+const SERVER_ADDR = "https://www.farmlead.in/v1/";
+
 const DESKTOP_BREAKPOINT = 1024;
 export { SERVER_ADDR, DESKTOP_BREAKPOINT };

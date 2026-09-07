@@ -110,7 +110,6 @@ const Report = () => {
         remedy: r.remedies.join(", "), // what you show on the card & modal
       }));
 
-      console.log("Fetched Reports:", res.data.length, res.data);
       // Ensure data is an array
       setReports(Array.isArray(res.data) ? res.data : []);
       setReports(normalizedReports);

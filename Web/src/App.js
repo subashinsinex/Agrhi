@@ -256,7 +256,7 @@ function App() {
 
         .admin-content--with-sidebar {
           width: calc(100% - ${COLLAPSED_WIDTH});
-          padding: 10px 10px 20px;
+          padding: 88px 10px 20px;
           margin-left: ${COLLAPSED_WIDTH};
         }
 
@@ -270,7 +270,7 @@ function App() {
           .admin-content--with-sidebar {
             width: 100%;
             margin-left: 0;
-            padding: 20px;
+            padding: 88px 20px 20px;
           }
 
           .admin-content--full {

@@ -1,5 +1,5 @@
-import React from "react";
-import { ArrowRight, Check, ExternalLink, Leaf, ShieldCheck } from "lucide-react";
+import React, { useState } from "react";
+import { ArrowRight, CalendarDays, Check, ExternalLink, Leaf, MapPin, ShieldCheck } from "lucide-react";
 import { appComponents, events, officialLinks, partners, pillars, projectFacts, technologies } from "../../data/projectData";
 import { pageContent } from "../../data/pageContent";
 import "./integratedAgrhiStory.css";
@@ -12,10 +12,28 @@ function Heading({ label, title, intro }) {
   return <AnimatedContent className="ias-heading"><span>{label}</span><h2>{title}</h2>{intro && <p>{intro}</p>}</AnimatedContent>;
 }
 
+function PointCards({ items }) {
+  const [activeItem, setActiveItem] = useState(null);
+  const moveSpotlight = event => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty("--point-x", `${event.clientX - bounds.left}px`);
+    event.currentTarget.style.setProperty("--point-y", `${event.clientY - bounds.top}px`);
+  };
+
+  return <div className="ias-points">{items.map((item, i) => {
+    const isActive = activeItem === item;
+    return <button key={item} type="button" className={isActive ? "is-active" : ""} aria-pressed={isActive} onClick={() => setActiveItem(isActive ? null : item)} onPointerMove={moveSpotlight}>
+      <b>{String(i + 1).padStart(2, "0")}</b>
+      <span>{item}</span>
+      <span className="ias-point-status" aria-hidden="true"><Check size={15}/></span>
+    </button>;
+  })}</div>;
+}
+
 function Narrative({ section, reverse = false }) {
   return <AnimatedContent className={reverse ? "ias-narrative reverse" : "ias-narrative"}>
     <div><span className="ias-label">{section.label}</span><h3>{section.title}</h3>{section.paragraphs.map(p => <p key={p}>{p}</p>)}</div>
-    <div className="ias-points">{section.cards.map((item, i) => <article key={item}><b>{String(i + 1).padStart(2, "0")}</b><span>{item}</span><Check size={16}/></article>)}</div>
+    <PointCards items={section.cards}/>
   </AnimatedContent>;
 }
 
@@ -47,7 +65,7 @@ export default function IntegratedAgrhiStory() {
 
     <section className="ias-chapter ias-chapter--erasmus" id="erasmus"><div className="ias-shell"><Heading label={pageContent.erasmus.eyebrow} title={pageContent.erasmus.title} intro={pageContent.erasmus.intro}/><Narrative section={pageContent.erasmus.sections[0]}/><Narrative section={pageContent.erasmus.sections[1]} reverse/><div className="ias-partners"><Heading label="AGRHI consortium" title="Eleven partners across six countries"/><div>{partners.map(group => <article key={group.country}><h3>{group.country}</h3><ul>{group.institutions.map(name => <li key={name}>{name}</li>)}</ul></article>)}</div></div><Narrative section={pageContent.erasmus.sections[2]}/></div></section>
 
-    <section className="ias-events"><div className="ias-shell"><Heading label="Knowledge exchange" title="A connected programme of training, workshops and conferences"/><div className="ias-timeline">{events.map(event => <article key={event.title}><time>{event.year}</time><div><small>{event.type} · {event.place}</small><h3>{event.title}</h3><p>{event.text}</p></div></article>)}</div></div></section>
+    <section className="ias-events"><div className="ias-shell"><Heading label="Knowledge exchange" title="A connected programme of training, workshops and conferences" intro="A verified chronology of AGRHI events, with dates and venues drawn from the official project record."/><div className="ias-timeline">{events.map((event, index) => <AnimatedContent key={`${event.title}-${event.date}`} delay={Math.min(index, 3) * .05} className="ias-event"><article><div className="ias-event-date"><time>{event.year}</time><span><CalendarDays size={14}/>{event.date}</span></div><div className="ias-event-card"><div className="ias-event-topline"><span>{event.type}</span><span><MapPin size={13}/>{event.place}</span></div><h3>{event.title}</h3><p>{event.text}</p>{event.url && <a href={event.url} target="_blank" rel="noreferrer">View official event record <ExternalLink size={14}/></a>}</div></article></AnimatedContent>)}</div></div></section>
 
     <section className="ias-close"><div className="ias-shell"><span>From knowledge to fields</span><h2>Agricultural progress is built through people, skills and useful technology.</h2><p>AGRHI provides a foundation for continuing education, research collaboration, farmer-oriented innovation and responsible digital agriculture.</p><div className="ias-actions"><a href="https://play.google.com/apps/testing/app.agrhi.com" target="_blank" rel="noreferrer">Get AGRHI App <ArrowRight size={16}/></a><a className="light" href="#contact">Contact support</a></div></div></section>
   </div>;

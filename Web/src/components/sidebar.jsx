@@ -71,7 +71,6 @@ export default function Sidebar() {
                     position: fixed;
                     top: 0;
                     left: 0;
-                    position: absolute !important;
                     z-index: 100;
                     transition: width 0.3s ease-out;
                     overflow-x: hidden;
@@ -217,6 +216,12 @@ export default function Sidebar() {
                     margin-top: 4px;
                 }
                 .sb-logout{
+                    width: calc(100% - 12px);
+                    padding: 8px 0;
+                    border: 0;
+                    background: transparent;
+                    font-family: inherit;
+                    text-align: left;
                     font-size:.96rem;
                     color:transparent; /* Start with text hidden */
                     cursor:pointer;
@@ -273,9 +278,9 @@ export default function Sidebar() {
         ))}
       </ul>
       <div className="sb-bottom">
-        <div className="sb-logout" onClick={logout}>
+        <button type="button" className="sb-logout" onClick={logout} aria-label="Log out of AGRHI Admin Portal">
           <LogOut /> Logout
-        </div>
+        </button>
       </div>
     </aside>
   );

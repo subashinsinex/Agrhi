@@ -32,10 +32,12 @@ const Header = () => {
       <header className="admin-header">
         <style>{`
           .admin-header-wrap {
-            position: sticky;
+            position: fixed;
             top: 12px;
+            left: 80px;
+            right: 0;
             z-index: 40;
-            padding: 0 16px;
+            padding: 0 26px;
             background: transparent;
           }
 
@@ -73,6 +75,8 @@ const Header = () => {
           @media (max-width: ${DESKTOP_BREAKPOINT - 1}px) {
             .admin-header-wrap {
               top: 10px;
+              left: 0;
+              right: 0;
               padding: 0 12px;
             }
 
