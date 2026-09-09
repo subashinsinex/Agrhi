@@ -5,6 +5,9 @@ import '../../screens/features/ai_chat/chat_models.dart';
 
 // Sliding window rate limiter — respects 30 req/min & 14000 req/day free tier
 class ChatRateLimiter {
+  ChatRateLimiter({DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now;
+  final DateTime Function() _clock;
   static const int _maxPerMinute = 28; // 2 buffer below 30
   static const int _maxPerDay = 13500; // 500 buffer below 14000
 
@@ -15,7 +18,7 @@ class ChatRateLimiter {
   // Load persisted daily count from storage
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final today = _clock().toIso8601String().substring(0, 10);
     _dailyDate = prefs.getString('chat_daily_date') ?? '';
     _dailyCount = _dailyDate == today
         ? (prefs.getInt('chat_daily_count') ?? 0)
@@ -34,7 +37,8 @@ class ChatRateLimiter {
 
   // Returns null if safe to send, or Duration to wait
   Duration? checkLimit() {
-    final now = DateTime.now();
+    final now = _clock();
+    _rollOverDay(now);
     _minuteWindow.removeWhere((t) => now.difference(t).inSeconds >= 60);
 
     if (_dailyCount >= _maxPerDay) return const Duration(hours: 24);
@@ -50,14 +54,35 @@ class ChatRateLimiter {
 
   // Call this after every successful API request
   Future<void> record() async {
-    _minuteWindow.add(DateTime.now());
+    final now = _clock();
+    _rollOverDay(now);
+    _minuteWindow.add(now);
     _dailyCount++;
     await _persist();
   }
 
-  bool get isDailyLimitHit => _dailyCount >= _maxPerDay;
-  int get dailyRemaining => _maxPerDay - _dailyCount;
-  int get minuteRemaining => _maxPerMinute - _minuteWindow.length;
+  void _rollOverDay(DateTime now) {
+    final today = now.toIso8601String().substring(0, 10);
+    if (_dailyDate != today) {
+      _dailyDate = today;
+      _dailyCount = 0;
+    }
+  }
+
+  bool get isDailyLimitHit {
+    checkLimit();
+    return _dailyCount >= _maxPerDay;
+  }
+
+  int get dailyRemaining {
+    checkLimit();
+    return _maxPerDay - _dailyCount;
+  }
+
+  int get minuteRemaining {
+    checkLimit();
+    return _maxPerMinute - _minuteWindow.length;
+  }
 }
 
 // Singleton service — handles all chatbot API calls

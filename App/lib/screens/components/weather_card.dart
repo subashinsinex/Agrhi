@@ -48,7 +48,9 @@ class WeatherCardState extends State<WeatherCard>
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       await _loadCachedWeather();
+      if (!mounted) return;
       unawaited(_refreshIfNeededInBackground());
     });
   }
@@ -60,6 +62,7 @@ class WeatherCardState extends State<WeatherCard>
   }
 
   Future<void> _refreshIfNeededInBackground() async {
+    if (!mounted || !widget.useDeviceLocation) return;
     final cached = await _getCachedWeather();
     if (cached == null) {
       await refreshWeather(forceRefresh: true, showLoaderOnlyIfEmpty: true);
@@ -72,7 +75,7 @@ class WeatherCardState extends State<WeatherCard>
     }
   }
 
-Future<void> refreshWeather({
+  Future<void> refreshWeather({
     bool forceRefresh = false,
     bool showLoaderOnlyIfEmpty = true,
   }) async {
@@ -163,15 +166,14 @@ Future<void> refreshWeather({
         });
       }
     } finally {
-      if (!mounted) return;
-
-      _rotateController.stop();
-      _rotateController.reset();
-
-      setState(() => isRefreshing = false);
+      if (mounted) {
+        _rotateController.stop();
+        _rotateController.reset();
+        setState(() => isRefreshing = false);
+      }
     }
   }
-  
+
   Future<void> _loadCachedWeather() async {
     try {
       final cached = await _getCachedWeather();

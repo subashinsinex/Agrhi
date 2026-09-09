@@ -1,3 +1,5 @@
+import 'package:agrhi/src/services/pending_work_service.dart';
+import 'package:agrhi/src/services/session_coordinator.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -24,7 +26,7 @@ import '../../utils/page_transitions.dart';
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
-static Route<void> route() => smoothPageRoute(const LoginScreen());
+  static Route<void> route() => smoothPageRoute(const LoginScreen());
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -187,6 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+    if (!mounted || _isLoading) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() => _isLoading = true);
@@ -211,6 +214,28 @@ class _LoginScreenState extends State<LoginScreen> {
         final accessToken = responseData['access_token'] as String;
         final refreshToken = responseData['refresh_token'] as String;
 
+        final newUser = JwtDecoder.decode(accessToken)['user_id']?.toString();
+        if (newUser == null || newUser.isEmpty) {
+          throw StateError('Login response has no user ID');
+        }
+        final previousUser =
+            await _storage.read(key: 'local_data_user_id') ??
+            await _storage.read(key: 'user_id');
+        await SessionCoordinator.instance.beginClose();
+        try {
+          if (previousUser != null && previousUser != newUser) {
+            if (await PendingWorkService.hasPendingWork()) {
+              throw StateError(
+                'Sign in to your previous account and sync your pending changes before switching accounts.',
+              );
+            }
+            await DatabaseHelper.instance.resetDatabase();
+            await _storage.deleteAll();
+          }
+          await _storage.write(key: 'local_data_user_id', value: newUser);
+        } finally {
+          SessionCoordinator.instance.reopen();
+        }
         await _storage.write(key: 'access_token', value: accessToken);
         await _storage.write(key: 'refresh_token', value: refreshToken);
 

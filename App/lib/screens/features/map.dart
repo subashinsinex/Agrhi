@@ -11,7 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../shared/custom_app_bar.dart';
-import '../../../utils/colors.dart';
+import 'package:agrhi/utils/colors.dart';
 import '../../src/services/api_service.dart';
 
 class CachedTileProvider extends TileProvider {

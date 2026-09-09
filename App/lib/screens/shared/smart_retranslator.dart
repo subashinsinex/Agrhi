@@ -28,8 +28,8 @@ class _SmartReTranslatorState extends State<SmartReTranslator> {
   String _displayedText = '';
   String _lastLanguage = '';
   String _lastSourceText = '';
-  bool _isLoading = false;
-  int _retryCount = 0;
+  int _requestGeneration = 0;
+
   static const int _maxRetries = 3;
 
   @override
@@ -43,7 +43,6 @@ class _SmartReTranslatorState extends State<SmartReTranslator> {
     if (_lastLanguage != currentLanguage || _lastSourceText != widget.text) {
       _lastLanguage = currentLanguage;
       _lastSourceText = widget.text;
-      _retryCount = 0; // Reset retry count on language change
       _loadTranslation();
     }
   }
@@ -54,68 +53,48 @@ class _SmartReTranslatorState extends State<SmartReTranslator> {
 
     if (oldWidget.text != widget.text && _lastSourceText != widget.text) {
       _lastSourceText = widget.text;
-      _retryCount = 0;
       _loadTranslation();
     }
   }
 
   Future<void> _loadTranslation() async {
-    if (!mounted || _isLoading) return;
-
-    _isLoading = true;
-
+    if (!mounted) return;
+    final generation = ++_requestGeneration;
+    final service = context.read<LanguageService>();
+    final source = widget.text;
+    final locale = service.currentLocale.languageCode;
+    setState(() => _displayedText = source);
+    if (locale == 'en') return;
     try {
-      final languageService = Provider.of<LanguageService>(
-        context,
-        listen: false,
+      final translated = await _translateWithValidation(
+        service,
+        source,
+        generation,
       );
-
-      // Fast path for English - always show immediately
-      if (languageService.currentLocale.languageCode == 'en') {
-        if (mounted && _displayedText != widget.text) {
-          setState(() => _displayedText = widget.text);
-        }
-        _isLoading = false;
+      if (!mounted ||
+          generation != _requestGeneration ||
+          service.currentLocale.languageCode != locale) {
         return;
       }
-
-      // ✅ CRITICAL: Validate translation with retry logic
-      final translation = await _translateWithValidation(
-        languageService,
-        widget.text,
+      setState(
+        () => _displayedText = _isValidTranslation(translated, source)
+            ? translated
+            : source,
       );
-
-      if (mounted) {
-        // Only update if translation is valid and different
-        if (_isValidTranslation(translation, widget.text)) {
-          if (_displayedText != translation) {
-            setState(() => _displayedText = translation);
-          }
-        } else {
-          // Keep showing original text if translation fails
-          if (_displayedText != widget.text) {
-            setState(() => _displayedText = widget.text);
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ Translation error for "${widget.text}": $e');
-
-      // Fallback to original text
-      if (mounted && _displayedText != widget.text) {
-        setState(() => _displayedText = widget.text);
-      }
-    } finally {
-      _isLoading = false;
+    } catch (_) {
+      // The current source remains visible on failure.
     }
   }
 
-  // ✅ NEW: Validate and retry translation
   Future<String> _translateWithValidation(
     LanguageService languageService,
     String text,
+    int generation,
   ) async {
-    while (_retryCount < _maxRetries) {
+    int retryCount = 0;
+    while (retryCount < _maxRetries &&
+        mounted &&
+        generation == _requestGeneration) {
       try {
         final translation = await languageService
             .translateWithValidation(text)
@@ -127,21 +106,21 @@ class _SmartReTranslatorState extends State<SmartReTranslator> {
           return translation;
         }
 
-        _retryCount++;
+        retryCount++;
         debugPrint(
-          '⚠️ Invalid translation (attempt $_retryCount): $text → $translation',
+          '⚠️ Invalid translation (attempt $retryCount): $text → $translation',
         );
 
-        if (_retryCount < _maxRetries) {
+        if (retryCount < _maxRetries) {
           // Exponential backoff
-          await Future.delayed(Duration(milliseconds: 300 * _retryCount));
+          await Future.delayed(Duration(milliseconds: 300 * retryCount));
         }
       } catch (e) {
-        _retryCount++;
-        debugPrint('❌ Translation attempt $_retryCount failed: $e');
+        retryCount++;
+        debugPrint('❌ Translation attempt $retryCount failed: $e');
 
-        if (_retryCount < _maxRetries) {
-          await Future.delayed(Duration(milliseconds: 300 * _retryCount));
+        if (retryCount < _maxRetries) {
+          await Future.delayed(Duration(milliseconds: 300 * retryCount));
         }
       }
     }

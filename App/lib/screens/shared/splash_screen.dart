@@ -1,16 +1,15 @@
+import 'package:agrhi/src/services/auth_service.dart';
+import 'package:agrhi/src/services/boot_sync_service.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import '../../../utils/routes.dart';
-import '../../../src/services/app_config_service.dart';
-import '../../../src/database/database_helper.dart';
+import 'package:agrhi/utils/routes.dart';
+import 'package:agrhi/src/services/app_config_service.dart';
+import 'package:agrhi/src/database/database_helper.dart';
 import '../shared/update_screen.dart';
-import '../../../src/services/connectivity_manager.dart';
-import '../../../src/services/reminders_manager.dart';
-import '../../../src/services/notification_service.dart';
-import '../../../utils/page_transitions.dart';
+import 'package:agrhi/src/services/reminders_manager.dart';
+import 'package:agrhi/utils/page_transitions.dart';
 
 class SplashScreen extends StatefulWidget {
   final String? initialNotificationPayload;
@@ -38,14 +37,6 @@ class _SplashScreenState extends State<SplashScreen>
 
   bool _configChecked = false;
   bool _hasNavigated = false;
-
-  static const storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock,
-      synchronizable: false,
-    ),
-  );
 
   @override
   void initState() {
@@ -155,8 +146,6 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    await Future.delayed(const Duration(seconds: 2));
-
     if (!mounted || _hasNavigated) {
       return;
     }
@@ -200,8 +189,6 @@ class _SplashScreenState extends State<SplashScreen>
         value: 0.32,
       );
 
-      await Future.delayed(const Duration(milliseconds: 500));
-
       final hasUnsynced = await _hasUnsyncedData();
 
       if (!mounted || _hasNavigated) {
@@ -214,8 +201,6 @@ class _SplashScreenState extends State<SplashScreen>
         value: 1.0,
       );
 
-      await Future.delayed(const Duration(milliseconds: 250));
-
       if (!mounted || _hasNavigated) {
         return;
       }
@@ -224,7 +209,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       await Navigator.of(context).pushReplacement(
         smoothPageRoute(
-              UpdateScreen(config: config, hasUnsyncedData: hasUnsynced),
+          UpdateScreen(config: config, hasUnsyncedData: hasUnsynced),
         ),
       );
     } catch (e) {
@@ -234,9 +219,7 @@ class _SplashScreenState extends State<SplashScreen>
         _hasNavigated = true;
 
         await Navigator.of(context).pushReplacement(
-          smoothPageRoute(
-            UpdateScreen(config: config, hasUnsyncedData: false),
-          ),
+          smoothPageRoute(UpdateScreen(config: config, hasUnsyncedData: false)),
         );
       }
     }
@@ -252,8 +235,6 @@ class _SplashScreenState extends State<SplashScreen>
       message: 'Loading secure session...',
       value: 0.40,
     );
-
-    await Future.delayed(const Duration(milliseconds: 500));
 
     final hasTokens = await _hasStoredTokens();
 
@@ -288,14 +269,13 @@ class _SplashScreenState extends State<SplashScreen>
       value: 0.55,
     );
 
-    await Future.delayed(const Duration(milliseconds: 300));
-
     if (!mounted || _hasNavigated) {
       return;
     }
 
     _hasNavigated = true;
 
+    if (hasTokens) unawaited(BootSyncService.run());
     switch (payload) {
       case Routes.modelManager:
         if (hasTokens) {
@@ -350,81 +330,10 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _handleAuthenticatedBoot() async {
-    _updateProgress(step: 'Welcome', message: 'Welcome back!', value: 0.52);
-
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    if (!mounted || _hasNavigated) {
-      return;
-    }
-
-    _updateProgress(step: 'Sync', message: 'Syncing your data...', value: 0.68);
-
-    try {
-      final syncResult = await ConnectivityManager.instance.performManualSync(
-        isBootSync: true,
-      );
-
-      debugPrint('✅ Boot sync result: $syncResult');
-
-      if (!mounted || _hasNavigated) {
-        return;
-      }
-
-      _updateProgress(
-        step: 'Finishing',
-        message: 'Finalizing setup...',
-        value: 0.88,
-      );
-
-      try {
-        await NotificationService.ensureGeneralEngagementNotificationsScheduled();
-
-        debugPrint('✅ General engagement notifications checked');
-      } catch (e) {
-        debugPrint('Error checking engagement notifications: $e');
-      }
-    } catch (e) {
-      debugPrint('Boot sync failed: $e');
-
-      if (!mounted || _hasNavigated) {
-        return;
-      }
-
-      _updateProgress(
-        step: 'Offline Mode',
-        message: 'Continuing offline...',
-        value: 0.82,
-      );
-
-      try {
-        await RemindersManager.instance.rescheduleAllCropReminders();
-
-        await NotificationService.ensureGeneralEngagementNotificationsScheduled();
-
-        debugPrint('✅ Offline reminders and engagement notifications restored');
-      } catch (restoreError) {
-        debugPrint(
-          'Error restoring reminders after sync failure: $restoreError',
-        );
-      }
-    }
-
-    if (!mounted || _hasNavigated) {
-      return;
-    }
-
-    _updateProgress(step: 'Ready', message: 'Opening dashboard...', value: 1.0);
-
-    await Future.delayed(const Duration(milliseconds: 350));
-
-    if (!mounted || _hasNavigated) {
-      return;
-    }
-
+    if (!mounted || _hasNavigated) return;
     _hasNavigated = true;
-
     Routes.navigateToDashboard(context);
+    unawaited(BootSyncService.run());
   }
 
   Future<void> _handleUnauthenticatedBoot() async {
@@ -448,8 +357,6 @@ class _SplashScreenState extends State<SplashScreen>
       value: 0.96,
     );
 
-    await Future.delayed(const Duration(milliseconds: 500));
-
     if (!mounted || _hasNavigated) {
       return;
     }
@@ -459,27 +366,8 @@ class _SplashScreenState extends State<SplashScreen>
     Routes.navigateToLogin(context);
   }
 
-  Future<bool> _hasStoredTokens() async {
-    try {
-      final accessToken = await storage.read(key: 'access_token');
-
-      final refreshToken = await storage.read(key: 'refresh_token');
-
-      final hasTokens =
-          accessToken != null &&
-          accessToken.isNotEmpty &&
-          refreshToken != null &&
-          refreshToken.isNotEmpty;
-
-      debugPrint('Token check: ${hasTokens ? 'Found' : 'Not found'}');
-
-      return hasTokens;
-    } catch (e) {
-      debugPrint('Error checking tokens: $e');
-
-      return false;
-    }
-  }
+  Future<bool> _hasStoredTokens() async =>
+      await AuthService().cachedStatus() != AuthStatus.unauthenticated;
 
   @override
   void dispose() {

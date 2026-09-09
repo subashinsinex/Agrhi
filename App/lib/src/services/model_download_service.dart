@@ -1,16 +1,28 @@
 import 'dart:io';
+import '../models/model_file_validator.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../utils/constants.dart';
 
 class ModelDownloadService {
   static final ModelDownloadService instance = ModelDownloadService._();
-  ModelDownloadService._();
+  ModelDownloadService._()
+    : _dio = Dio(),
+      _pathResolver = null,
+      _validator = validateModelFile;
+  ModelDownloadService({
+    required this._dio,
+    required this._pathResolver,
+    required this._validator,
+  });
 
   // Remove '/api' from base URL to get server root
   static final String serverUrl = AppConstants.baseUrl.replaceAll('/api', '');
 
-  final _dio = Dio();
+  final Dio _dio;
+  final Future<String> Function(String)? _pathResolver;
+  final Future<bool> Function(String) _validator;
+  final Map<String, Future<void>> _downloads = {};
 
   // Define your model information with actual file sizes from your server
   static final Map<String, ModelInfo> modelInfo = {
@@ -68,6 +80,7 @@ class ModelDownloadService {
 
   // Make this public so provider can access it
   Future<String> getModelFilePath(String cropName) async {
+    if (_pathResolver != null) return _pathResolver(cropName);
     final dir = await getApplicationDocumentsDirectory();
     final modelDir = Directory('${dir.path}/models');
     if (!await modelDir.exists()) {
@@ -82,7 +95,16 @@ class ModelDownloadService {
     try {
       final filePath = await getModelFilePath(cropName);
       final file = File(filePath);
-      return await file.exists();
+      if (!await file.exists()) return false;
+      final stat = await file.stat();
+      final signature = '${stat.size}:${stat.modified.microsecondsSinceEpoch}';
+      final marker = File('$filePath.verified');
+      if (await marker.exists() && await marker.readAsString() == signature) {
+        return true;
+      }
+      if (!await _validator(filePath)) return false;
+      await marker.writeAsString(signature, flush: true);
+      return true;
     } catch (e) {
       return false;
     }
@@ -92,6 +114,28 @@ class ModelDownloadService {
     String cropName, {
     required CancelToken cancelToken,
     required void Function(int received, int total) onProgress,
+  }) {
+    final active = _downloads[cropName];
+    if (active != null) return active;
+    final future = _downloadModel(
+      cropName,
+      cancelToken: cancelToken,
+      onProgress: onProgress,
+    );
+    _downloads[cropName] = future;
+    return future.whenComplete(() => _downloads.remove(cropName));
+  }
+
+  Future<void> waitForDownload(String cropName) async {
+    try {
+      await _downloads[cropName];
+    } catch (_) {}
+  }
+
+  Future<void> _downloadModel(
+    String cropName, {
+    required CancelToken cancelToken,
+    required void Function(int, int) onProgress,
   }) async {
     final info = modelInfo[cropName];
     if (info == null) throw Exception('Model not found: $cropName');
@@ -101,7 +145,7 @@ class ModelDownloadService {
     try {
       await _dio.download(
         info.url,
-        filePath,
+        '$filePath.part',
         cancelToken: cancelToken,
         deleteOnError: true,
         onReceiveProgress: onProgress,
@@ -111,9 +155,18 @@ class ModelDownloadService {
           sendTimeout: const Duration(minutes: 5),
         ),
       );
+      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
+      if (!await _validator('$filePath.part')) {
+        throw const FormatException(
+          'Downloaded model is incomplete or invalid',
+        );
+      }
+      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
+      await File('$filePath.part').rename(filePath);
     } catch (e) {
       // If download fails, ensure partial file is deleted
-      await deleteModel(cropName);
+      final partial = File('$filePath.part');
+      if (await partial.exists()) await partial.delete();
       rethrow;
     }
   }
@@ -125,6 +178,8 @@ class ModelDownloadService {
       if (await file.exists()) {
         await file.delete();
       }
+      final marker = File('$filePath.verified');
+      if (await marker.exists()) await marker.delete();
     } catch (e) {
       throw Exception('Failed to delete model: $e');
     }

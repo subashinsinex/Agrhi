@@ -25,6 +25,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   List<Map<String, dynamic>> _products = [];
   bool _isLoading = false;
   bool _isSyncing = false;
+  int _productsRequest = 0;
 
   String _searchQuery = '';
   String _selectedProductType = 'all';
@@ -233,9 +234,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   }
 
   Future<void> _loadMarketplaceProducts({bool silent = false}) async {
-    if (_currentPosition == null) return;
+    if (!mounted || _currentPosition == null) return;
+    final request = ++_productsRequest;
 
-    if (mounted) {
+    if (mounted && request == _productsRequest) {
       setState(() {
         if (silent) {
           _isSyncing = true;
@@ -254,12 +256,13 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         productType: _selectedProductType,
       );
 
+      if (!mounted || request != _productsRequest) return;
       if (result['success'] == true) {
         final newProducts = List<Map<String, dynamic>>.from(
           result['products'] ?? [],
         );
 
-        if (mounted) {
+        if (mounted && request == _productsRequest) {
           setState(() {
             _products = newProducts;
           });
@@ -271,11 +274,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       }
     } catch (e) {
       debugPrint('❌ Error loading marketplace: $e');
-      if (mounted && !silent) {
+      if (mounted && request == _productsRequest && !silent) {
         _showSnackBar('Error loading products: $e', isError: true);
       }
     } finally {
-      if (mounted) {
+      if (mounted && request == _productsRequest) {
         setState(() {
           _isLoading = false;
           _isSyncing = false;

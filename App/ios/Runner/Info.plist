@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 	<dict>
+		<key>NSCameraUsageDescription</key>
+		<string>Take plant photos for disease detection and photos or videos for your posts and products.</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>Record audio when you create a video post.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Select photos and videos for plant detection, your profile, posts, and products.</string>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Show local weather, nearby products, and your location on the map.</string>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>

@@ -46,12 +46,14 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
   }
 
   Future<void> _loadProducts() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
       final products = await RetailService.getProductsByRetailer(
         widget.retailerId,
       );
+      if (!mounted) return;
 
       setState(() {
         _products = products;
@@ -70,7 +72,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -401,7 +403,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                 final result = await Navigator.push(
                   context,
                   smoothPageRoute(
-                        AddEditProductScreen(retailerId: widget.retailerId),
+                    AddEditProductScreen(retailerId: widget.retailerId),
                   ),
                 );
 
@@ -497,7 +499,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
     );
   }
 
-    Widget _buildProductCard(Map<String, dynamic> product) {
+  Widget _buildProductCard(Map<String, dynamic> product) {
     // Safely parse stock_qty as a number
     final stockQtyRaw = product['stock_qty'];
     final stockQty = stockQtyRaw is String
@@ -693,5 +695,4 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
       ),
     );
   }
-
 }

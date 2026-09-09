@@ -1,3 +1,4 @@
+import 'session_coordinator.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -37,10 +38,17 @@ class PostUploadManager extends ChangeNotifier {
   PostUploadManager._();
   static final PostUploadManager instance = PostUploadManager._();
 
+  static Future<void> _videoQueue = Future.value();
   final List<PostUploadTask> _tasks = [];
   List<PostUploadTask> get activeTasks => List.unmodifiable(_tasks);
 
   void _notify() => notifyListeners();
+  void clearFinishedTasks() {
+    _tasks.removeWhere(
+      (task) => task.isFailed || task.phase == UploadPhase.done,
+    );
+    _notify();
+  }
 
   // ── Determine media type from file extension ──────────────────────────────
   static String? _detectMediaType(File? file) {
@@ -64,21 +72,30 @@ class PostUploadManager extends ChangeNotifier {
     try {
       if (mediaType == 'video') {
         // ── Video compression via video_compress ────────────────────────────
-        final subscription = VideoCompress.compressProgress$.subscribe((p) {
-          task.compressProgress = (p / 100).clamp(0.0, 0.95);
-          notify();
+        final result = _videoQueue.then((_) async {
+          final subscription = VideoCompress.compressProgress$.subscribe((p) {
+            task.compressProgress = (p / 100).clamp(0.0, 0.95);
+            notify();
+          });
+
+          try {
+            final info = await VideoCompress.compressVideo(
+              original.path,
+              quality: VideoQuality.MediumQuality,
+              deleteOrigin: false,
+              includeAudio: true,
+            );
+            if (info?.file != null) return info!.file!;
+          } finally {
+            subscription.unsubscribe();
+          }
+          return original;
         });
-
-        final info = await VideoCompress.compressVideo(
-          original.path,
-          quality: VideoQuality.MediumQuality,
-          deleteOrigin: false,
-          includeAudio: true,
+        _videoQueue = result.then<void>(
+          (_) {},
+          onError: (Object _, StackTrace __) {},
         );
-
-        subscription.unsubscribe();
-
-        if (info?.file != null) return info!.file!;
+        return await result;
       } else if (mediaType == 'image') {
         // ── Image compression via flutter_image_compress ────────────────────
         task.compressProgress = 0.2;
@@ -122,63 +139,65 @@ class PostUploadManager extends ChangeNotifier {
     required void Function(Map<String, dynamic> post) onSuccess,
     required void Function(Object error) onError,
   }) async {
-    final task = PostUploadTask(
-      tempId: DateTime.now().millisecondsSinceEpoch.toString(),
-      content: content,
-      category: category,
-      mediaFile: mediaFile,
-      mediaType: mediaType ?? _detectMediaType(mediaFile),
-    );
-    _tasks.add(task);
-    _notify();
-
-    try {
-      // ── Compression phase ────────────────────────────────────────────────
-      File? fileToUpload = mediaFile;
-      if (mediaFile != null) {
-        task.phase = UploadPhase.compressing;
-        task.compressProgress = 0.0;
-        _notify();
-
-        fileToUpload = await _compress(task, mediaFile, _notify);
-
-        task.compressProgress = 1.0;
-        _notify();
-      }
-
-      // ── Upload phase ─────────────────────────────────────────────────────
-      task.phase = UploadPhase.uploading;
-      task.uploadProgress = 0.0;
-      _notify();
-
-      final created = await CommunityService.createPost(
+    return SessionCoordinator.instance.run(() async {
+      final task = PostUploadTask(
+        tempId: DateTime.now().millisecondsSinceEpoch.toString(),
         content: content,
         category: category,
-        mediaFile: fileToUpload,
-        onSendProgress: (sent, total) {
-          if (total > 0) {
-            task.uploadProgress = sent / total;
-            _notify();
-          }
-        },
+        mediaFile: mediaFile,
+        mediaType: mediaType ?? _detectMediaType(mediaFile),
       );
-
-      task.phase = UploadPhase.done;
-      task.uploadProgress = 1.0;
+      _tasks.add(task);
       _notify();
 
-      onSuccess(created);
+      try {
+        // ── Compression phase ────────────────────────────────────────────────
+        File? fileToUpload = mediaFile;
+        if (mediaFile != null) {
+          task.phase = UploadPhase.compressing;
+          task.compressProgress = 0.0;
+          _notify();
 
-      // Keep task visible briefly so listeners see the done state
-      await Future.delayed(const Duration(seconds: 1));
-      _tasks.removeWhere((t) => t.tempId == task.tempId);
-      _notify();
-    } catch (e) {
-      task.phase = UploadPhase.failed;
-      task.errorMessage = e.toString();
-      _notify();
-      onError(e);
-    }
+          fileToUpload = await _compress(task, mediaFile, _notify);
+
+          task.compressProgress = 1.0;
+          _notify();
+        }
+
+        // ── Upload phase ─────────────────────────────────────────────────────
+        task.phase = UploadPhase.uploading;
+        task.uploadProgress = 0.0;
+        _notify();
+
+        final created = await CommunityService.createPost(
+          content: content,
+          category: category,
+          mediaFile: fileToUpload,
+          onSendProgress: (sent, total) {
+            if (total > 0) {
+              task.uploadProgress = sent / total;
+              _notify();
+            }
+          },
+        );
+
+        task.phase = UploadPhase.done;
+        task.uploadProgress = 1.0;
+        _notify();
+
+        onSuccess(created);
+
+        // Keep task visible briefly so listeners see the done state
+        await Future.delayed(const Duration(seconds: 1));
+        _tasks.removeWhere((t) => t.tempId == task.tempId);
+        _notify();
+      } catch (e) {
+        task.phase = UploadPhase.failed;
+        task.errorMessage = e.toString();
+        _notify();
+        onError(e);
+      }
+    });
   }
 
   // ── Retry a failed task ───────────────────────────────────────────────────

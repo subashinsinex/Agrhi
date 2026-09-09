@@ -102,44 +102,45 @@ class _CropCareScreenState extends State<CropCareScreen>
       appBar: CustomAppBar(title: 'Crop Care Manager', showOnlineStatus: true),
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton(
-  onPressed: () async {
-    bool changed = false;
-    
-    // ✅ If on Crops tab, check if farms exist first
-    if (_tabController.index == 0) {
-      // Check if farms exist
-      final db = DatabaseHelper.instance;
-      final farms = await db.getAllFarmsWithRelations();
-      
-      if (farms.isEmpty) {
-        // Show message and switch to Farms tab
-        if (mounted) {
-          // Switch to Farms tab
-          _tabController.animateTo(1);
-        }
-        return;
-      }
-      
-      // Farms exist, proceed to add crop
-      final result = await Navigator.push(
-        context,
-        smoothPageRoute( const AddCropScreen()),
-      );
-      changed = result == true;
-    } else {
-      // On Farms tab, directly add farm
-      final result = await Navigator.push(
-        context,
-        smoothPageRoute(const AddFarmScreen()),
-      );
-      changed = result == true;
-    }
-    
-    if (changed) _refreshBothTabs();
-  },
-  backgroundColor: AppColors.primaryGreen,
-  child: const Icon(Icons.add, color: Colors.white),
-),
+        onPressed: () async {
+          bool changed = false;
+
+          // ✅ If on Crops tab, check if farms exist first
+          if (_tabController.index == 0) {
+            // Check if farms exist
+            final db = DatabaseHelper.instance;
+            final farms = await db.getAllFarmsWithRelations();
+
+            if (farms.isEmpty) {
+              // Show message and switch to Farms tab
+              if (mounted) {
+                // Switch to Farms tab
+                _tabController.animateTo(1);
+              }
+              return;
+            }
+
+            // Farms exist, proceed to add crop
+            if (!context.mounted) return;
+            final result = await Navigator.push(
+              context,
+              smoothPageRoute(const AddCropScreen()),
+            );
+            changed = result == true;
+          } else {
+            // On Farms tab, directly add farm
+            final result = await Navigator.push(
+              context,
+              smoothPageRoute(const AddFarmScreen()),
+            );
+            changed = result == true;
+          }
+
+          if (changed) _refreshBothTabs();
+        },
+        backgroundColor: AppColors.primaryGreen,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
       body: Column(
         children: [
           // ✅ TabBar BELOW AppBar
@@ -331,10 +332,9 @@ class _CropsManagerTabState extends State<CropsManagerTab>
   }
 
   void _editCrop(Map<String, dynamic> crop) {
-    Navigator.push(
-      context,
-      smoothPageRoute(AddCropScreen(crop: crop)),
-    ).then((updated) {
+    Navigator.push(context, smoothPageRoute(AddCropScreen(crop: crop))).then((
+      updated,
+    ) {
       if (updated == true) widget.onDataChanged();
     });
   }
@@ -550,10 +550,7 @@ class _CropsManagerTabState extends State<CropsManagerTab>
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFF082E1B),
-                    const Color(0xFF005A2B),
-                  ],
+                  colors: [const Color(0xFF082E1B), const Color(0xFF005A2B)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -595,15 +592,20 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                 child: FutureBuilder<List<Map<String, dynamic>>>(
                   future: DatabaseHelper.instance.getAllFarmsWithRelations(),
                   builder: (context, snapshot) {
-                    final hasFarms = snapshot.hasData && snapshot.data!.isNotEmpty;
-                    
+                    final hasFarms =
+                        snapshot.hasData && snapshot.data!.isNotEmpty;
+
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 32),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.eco, size: 100, color: Colors.grey.shade300),
+                            Icon(
+                              Icons.eco,
+                              size: 100,
+                              color: Colors.grey.shade300,
+                            ),
                             const SizedBox(height: 24),
                             const SmartReTranslator(
                               text: 'No Active Crops',
@@ -641,7 +643,10 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                                   );
                                   if (result == true) widget.onDataChanged();
                                 },
-                                icon: const Icon(Icons.add, color: Colors.white),
+                                icon: const Icon(
+                                  Icons.add,
+                                  color: Colors.white,
+                                ),
                                 label: const SmartReTranslator(
                                   text: 'Add Crop',
                                   style: TextStyle(
@@ -670,7 +675,10 @@ class _CropsManagerTabState extends State<CropsManagerTab>
                                   // ✅ SWITCH TO FARMS TAB
                                   widget.parentTabController?.animateTo(1);
                                 },
-                                icon: const Icon(Icons.agriculture, color: Colors.white),
+                                icon: const Icon(
+                                  Icons.agriculture,
+                                  color: Colors.white,
+                                ),
                                 label: const SmartReTranslator(
                                   text: 'Go to Farms',
                                   style: TextStyle(
@@ -1208,10 +1216,9 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
   }
 
   void _editFarm(Map<String, dynamic> farm) {
-    Navigator.push(
-      context,
-      smoothPageRoute(AddFarmScreen(farm: farm)),
-    ).then((updated) {
+    Navigator.push(context, smoothPageRoute(AddFarmScreen(farm: farm))).then((
+      updated,
+    ) {
       if (updated == true) widget.onDataChanged();
     });
   }
@@ -1491,7 +1498,7 @@ class _FarmsManagerTabState extends State<FarmsManagerTab>
                     gradient: LinearGradient(
                       colors: [
                         const Color(0xFF082E1B),
-            const Color(0xFF005A2B),
+                        const Color(0xFF005A2B),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,

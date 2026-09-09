@@ -87,10 +87,6 @@ const dashboardModules = [
   },
 ];
 
-// NOTE: We assume the Dashboard component does NOT receive isSidebarOpen and toggleSidebar props
-// as it is the primary content page. If a layout component provides them, they should be ignored
-// or removed for simplicity on this page.
-
 const Dashboard = () => {
   const navigate = useNavigate();
   // Inline styles using modern CSS for a beautiful, responsive grid design

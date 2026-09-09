@@ -403,11 +403,12 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
       final db = DatabaseHelper.instance;
 
       var canActivate = await db.canActivateCrop(cropId);
+      if (!mounted) return;
 
       if (!canActivate) {
         final updated = await Navigator.push(
           context,
-          smoothPageRoute( AddCropScreen(crop: crop)),
+          smoothPageRoute(AddCropScreen(crop: crop)),
         );
 
         if (updated == true) {
@@ -470,14 +471,11 @@ class _CropHistoryScreenState extends State<CropHistoryScreen> {
       }
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(
-        title: 'Crop History',
-        showOnlineStatus: true,
-      ),
+      appBar: CustomAppBar(title: 'Crop History', showOnlineStatus: true),
       backgroundColor: Colors.transparent,
       body: _isLoading
           ? Center(

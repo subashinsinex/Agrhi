@@ -175,6 +175,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
   }
 
   Future<void> _submitFeedback() async {
+    if (!mounted || _isSubmitting) return;
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -185,6 +186,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
     try {
       final userId = await _storage.getUserId();
+      if (!mounted) return;
 
       if (userId == null) {
         throw Exception('Authentication required');
@@ -223,6 +225,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         requiresAuth: true,
       );
 
+      if (!mounted) return;
       if (response.isSuccess) {
         String successMessage = 'Feedback submitted successfully!';
         if (_currentShopReference != null) {
@@ -249,8 +252,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
           Navigator.pop(context, true);
         }
       } else if (response.statusCode == 401) {
-        await _authService.refreshAccessToken();
-        await _submitFeedback();
+        throw Exception('Session expired. Please log in again.');
       } else if (response.isOffline) {
         throw Exception('No internet connection. Please check your network.');
       } else {
@@ -259,6 +261,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isSubmitting = false;
       });
@@ -288,6 +291,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
         requiresAuth: true,
       );
 
+      if (!mounted) return [];
       if (response.isSuccess) {
         setState(() {
           _hasHistoryError = false;
@@ -340,6 +344,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
   }
 
   void _setHistoryError() {
+    if (!mounted) return;
     setState(() {
       _hasHistoryError = true;
     });
@@ -359,6 +364,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
     try {
       await _authService.refreshAccessToken();
+      if (!mounted) return;
 
       setState(() {
         _hasHistoryError = false;
@@ -368,6 +374,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
 
       _fetchFeedbackHistory();
     } catch (e) {
+      if (!mounted) return;
       final errorMsg = e.toString();
       if (errorMsg.contains('expired') || errorMsg.contains('invalid')) {
         setState(() {
@@ -836,7 +843,7 @@ class _FeedbackScreenState extends State<FeedbackScreen>
     );
   }
 
-Widget _buildTypeOption({
+  Widget _buildTypeOption({
     required bool isSelected,
     required IconData icon,
     required String title,
@@ -852,9 +859,7 @@ Widget _buildTypeOption({
         height: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.white
-              : Colors.grey.shade200,
+          color: isSelected ? Colors.white : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? activeColor : Colors.grey.shade200,

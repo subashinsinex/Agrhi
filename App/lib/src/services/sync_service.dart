@@ -1,3 +1,4 @@
+import 'session_coordinator.dart';
 // lib/src/services/sync_service.dart
 
 import 'dart:convert';
@@ -35,118 +36,127 @@ class SyncService {
 
   /// Perform full sync: catalogs + analyses + images + profile
   Future<Map<String, dynamic>> performFullSync(String accessToken) async {
-    // ✅ Check if already syncing
-    if (_isSyncing) {
-      debugPrint('⏭️ Disease sync already in progress - skipping');
-      return {
-        'success': false,
-        'error': 'Sync already in progress',
-        'skipped': true,
-      };
-    }
-
-    _isSyncing = true; // ✅ Lock sync
-
-    try {
-      debugPrint('🔄 Starting full sync...');
-
-      // Step 1: Sync catalogs (diseases, remedies, plants, etc.)
-      final catalogResult = await _db.smartSyncCatalogs(accessToken);
-
-      // Step 2: Two-way sync for analyses and images
-      final twoWayResult = await performTwoWaySync(accessToken);
-
-      // Step 3: Sync profile based on updated_at
-      await _syncProfileIfNeeded();
-
-      // Step 4: Sync pending profile updates (data + picture)
-      final profileSyncResult = await syncAllProfileUpdates(accessToken);
-
-      final success = catalogResult['success'] && twoWayResult['success'];
-
-      if (success) {
-        debugPrint('✅ Full sync completed');
+    return SessionCoordinator.instance.run(() async {
+      // ✅ Check if already syncing
+      if (_isSyncing) {
+        debugPrint('⏭️ Disease sync already in progress - skipping');
+        return {
+          'success': false,
+          'error': 'Sync already in progress',
+          'skipped': true,
+        };
       }
 
-      return {
-        'success': success,
-        'catalogs': catalogResult,
-        'two_way_sync': twoWayResult,
-        'profile_sync': profileSyncResult,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-    } catch (e) {
-      debugPrint('❌ Full sync error: $e');
-      return {'success': false, 'error': e.toString()};
-    } finally {
-      _isSyncing = false; // ✅ Unlock sync
-    }
+      _isSyncing = true; // ✅ Lock sync
+
+      try {
+        debugPrint('🔄 Starting full sync...');
+
+        // Step 1: Sync catalogs (diseases, remedies, plants, etc.)
+        final catalogResult = await _db.smartSyncCatalogs(accessToken);
+
+        // Step 2: Two-way sync for analyses and images
+        final twoWayResult = await performTwoWaySync(accessToken);
+
+        // Step 3: Sync profile based on updated_at
+        await _syncProfileIfNeeded();
+
+        // Step 4: Sync pending profile updates (data + picture)
+        final profileSyncResult = await syncAllProfileUpdates(accessToken);
+
+        final success =
+            catalogResult['success'] == true &&
+            twoWayResult['success'] == true &&
+            profileSyncResult['success'] == true;
+
+        if (success) {
+          debugPrint('✅ Full sync completed');
+        }
+
+        return {
+          'success': success,
+          'catalogs': catalogResult,
+          'two_way_sync': twoWayResult,
+          'profile_sync': profileSyncResult,
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+      } catch (e) {
+        debugPrint('❌ Full sync error: $e');
+        return {'success': false, 'error': e.toString()};
+      } finally {
+        _isSyncing = false; // ✅ Unlock sync
+      }
+    });
   }
 
   // ================= PROFILE SYNC =================
 
   /// Get count of pending profile updates (for UI display)
   Future<int> getPendingProfileUpdatesCount() async {
-    try {
-      int count = 0;
+    return SessionCoordinator.instance.run(() async {
+      try {
+        int count = 0;
 
-      // Check for pending profile data updates
-      final hasProfileDataPending = await _storage.read(
-        key: 'profile_data_pending',
-      );
-      if (hasProfileDataPending == 'true') {
-        count++;
+        // Check for pending profile data updates
+        final hasProfileDataPending = await _storage.read(
+          key: 'profile_data_pending',
+        );
+        if (hasProfileDataPending == 'true') {
+          count++;
+        }
+
+        // Check for pending profile picture upload
+        final hasPicturePending = await _storage.read(
+          key: 'profile_picture_pending_upload',
+        );
+        if (hasPicturePending == 'true') {
+          count++;
+        }
+
+        return count;
+      } catch (e) {
+        debugPrint('❌ Error getting pending profile updates count: $e');
+        return 0;
       }
-
-      // Check for pending profile picture upload
-      final hasPicturePending = await _storage.read(
-        key: 'profile_picture_pending_upload',
-      );
-      if (hasPicturePending == 'true') {
-        count++;
-      }
-
-      return count;
-    } catch (e) {
-      debugPrint('❌ Error getting pending profile updates count: $e');
-      return 0;
-    }
+    });
   }
 
   /// Sync all profile updates (data + picture)
   Future<Map<String, dynamic>> syncAllProfileUpdates(String accessToken) async {
-    try {
-      debugPrint('🔄 Starting profile sync...');
+    return SessionCoordinator.instance.run(() async {
+      try {
+        debugPrint('🔄 Starting profile sync...');
 
-      int processed = 0;
-      final errors = <String>[];
+        int processed = 0;
+        final errors = <String>[];
 
-      // 1️⃣ Sync profile data updates
-      final dataResult = await _syncProfileData(accessToken);
-      if (dataResult['success']) {
-        processed++;
-      } else if (dataResult['skipped'] != true) {
-        errors.add('profile_data: ${dataResult['error']}');
+        // 1️⃣ Sync profile data updates
+        final dataResult = await _syncProfileData(accessToken);
+        if (dataResult['success']) {
+          processed++;
+        } else if (dataResult['skipped'] != true) {
+          errors.add('profile_data: ${dataResult['error']}');
+        }
+
+        // 2️⃣ Sync profile picture upload
+        final pictureResult = await _syncProfilePicture(accessToken);
+        if (pictureResult['success']) {
+          processed++;
+        } else if (pictureResult['skipped'] != true) {
+          errors.add('profile_picture: ${pictureResult['error']}');
+        }
+
+        return {
+          'success': errors.isEmpty,
+          'processed': processed,
+          'errors': errors,
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+      } catch (e) {
+        debugPrint('❌ Profile sync error: $e');
+        return {'success': false, 'processed': 0, 'error': e.toString()};
       }
-
-      // 2️⃣ Sync profile picture upload
-      final pictureResult = await _syncProfilePicture(accessToken);
-      if (pictureResult['success']) {
-        processed++;
-      } else if (pictureResult['skipped'] != true) {
-        errors.add('profile_picture: ${pictureResult['error']}');
-      }
-
-      return {
-        'success': errors.isEmpty,
-        'processed': processed,
-        'errors': errors,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-    } catch (e) {
-      debugPrint('❌ Profile sync error: $e');
-      return {'success': false, 'processed': 0, 'error': e.toString()};
-    }
+    });
   }
 
   /// Sync profile data (name, email, address, etc.)
@@ -290,6 +300,7 @@ class SyncService {
   /// Sync profile if server updated_at is newer than local
   Future<void> _syncProfileIfNeeded() async {
     try {
+      if (await _storage.read(key: 'profile_data_pending') == 'true') return;
       // 1. Read local profile and updated_at
       final profileJson = await _storage.read(key: 'user_profile');
       String? localUpdatedAt;
@@ -347,108 +358,112 @@ class SyncService {
 
   /// Complete two-way sync: upload pending analyses/images and download analysis metadata changes
   Future<Map<String, dynamic>> performTwoWaySync(String accessToken) async {
-    try {
-      debugPrint('🔄 Starting two-way sync...');
+    return SessionCoordinator.instance.run(() async {
+      try {
+        debugPrint('🔄 Starting two-way sync...');
 
-      // Step 1: Push local changes to server (upload pending analyses)
-      final uploadResult = await uploadPendingAnalyses(accessToken);
+        // Step 1: Push local changes to server (upload pending analyses)
+        final uploadResult = await uploadPendingAnalyses(accessToken);
 
-      // Step 2: Pull server updates (download new/changed analyses)
-      final downloadResult = await downloadServerAnalyses(accessToken);
+        // Step 2: Pull server updates (download new/changed analyses)
+        final downloadResult = await downloadServerAnalyses(accessToken);
 
-      // Step 3: Upload local images that haven't been uploaded
-      final imageUploadResult = await syncImages(accessToken);
+        // Step 3: Upload local images that haven't been uploaded
+        final imageUploadResult = await syncImages(accessToken);
 
-      final allSuccess =
-          uploadResult['success'] &&
-          downloadResult['success'] &&
-          imageUploadResult['success'];
+        final allSuccess =
+            uploadResult['success'] &&
+            downloadResult['success'] &&
+            imageUploadResult['success'];
 
-      return {
-        'success': allSuccess,
-        'upload': uploadResult,
-        'download': downloadResult,
-        'image_upload': imageUploadResult,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-    } catch (e) {
-      debugPrint('❌ Two-way sync error: $e');
-      return {'success': false, 'error': e.toString()};
-    }
+        return {
+          'success': allSuccess,
+          'upload': uploadResult,
+          'download': downloadResult,
+          'image_upload': imageUploadResult,
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+      } catch (e) {
+        debugPrint('❌ Two-way sync error: $e');
+        return {'success': false, 'error': e.toString()};
+      }
+    });
   }
 
   // ================= UPLOAD (PUSH LOCAL TO SERVER) =================
 
   /// Upload pending disease analyses to server as JSON batch
   Future<Map<String, dynamic>> uploadPendingAnalyses(String accessToken) async {
-    try {
-      final pending = await _db.getPendingAnalyses();
-      debugPrint('📤 Uploading ${pending.length} pending analyses...');
+    return SessionCoordinator.instance.run(() async {
+      try {
+        final pending = await _db.getPendingAnalyses();
+        debugPrint('📤 Uploading ${pending.length} pending analyses...');
 
-      if (pending.isEmpty) {
-        return {
-          'success': true,
-          'message': 'No pending analyses',
-          'uploaded': 0,
-        };
-      }
-
-      final analysesToUpload = <Map<String, dynamic>>[];
-
-      for (final analysis in pending) {
-        analysesToUpload.add({
-          'id': analysis['id'],
-          'user_id': analysis['user_id'],
-          'plant_id': analysis['plant_id'],
-          'image_id': analysis['image_id'],
-          'disease_id': analysis['disease_id'],
-          'confidence': analysis['confidence'],
-          'created_at': analysis['created_at'],
-        });
-      }
-
-      // ✅ USE ApiService
-      final response = await ApiService.instance.post(
-        '/sync/batch-upload',
-        body: {'analyses': analysesToUpload},
-        requiresAuth: true,
-      );
-
-      debugPrint('📡 Upload response: ${response.statusCode}');
-
-      if (response.isSuccess) {
-        final responseData = response.data;
-        final uploadedIds =
-            (responseData['uploaded_ids'] as List?)
-                ?.map((id) => id.toString())
-                .toList() ??
-            [];
-
-        // Mark uploaded analyses as synced
-        for (final id in uploadedIds) {
-          await _db.markAsUploaded(id, null);
+        if (pending.isEmpty) {
+          return {
+            'success': true,
+            'message': 'No pending analyses',
+            'uploaded': 0,
+          };
         }
 
-        debugPrint('✅ Uploaded ${uploadedIds.length} analyses');
+        final analysesToUpload = <Map<String, dynamic>>[];
 
+        for (final analysis in pending) {
+          analysesToUpload.add({
+            'id': analysis['id'],
+            'user_id': analysis['user_id'],
+            'plant_id': analysis['plant_id'],
+            'image_id': analysis['image_id'],
+            'disease_id': analysis['disease_id'],
+            'confidence': analysis['confidence'],
+            'created_at': analysis['created_at'],
+          });
+        }
+
+        // ✅ USE ApiService
+        final response = await ApiService.instance.post(
+          '/sync/batch-upload',
+          body: {'analyses': analysesToUpload},
+          requiresAuth: true,
+        );
+
+        debugPrint('📡 Upload response: ${response.statusCode}');
+
+        if (response.isSuccess) {
+          final responseData = response.data;
+          final uploadedIds =
+              (responseData['uploaded_ids'] as List?)
+                  ?.map((id) => id.toString())
+                  .toList() ??
+              [];
+
+          // Mark uploaded analyses as synced
+          for (final id in uploadedIds) {
+            await _db.markAsUploaded(id, null);
+          }
+
+          debugPrint('✅ Uploaded ${uploadedIds.length} analyses');
+
+          return {
+            'success': true,
+            'uploaded': uploadedIds.length,
+            'uploaded_ids': uploadedIds,
+          };
+        }
+
+        debugPrint('❌ Upload failed: ${response.statusCode}');
+        debugPrint('Response error: ${response.error}');
         return {
-          'success': true,
-          'uploaded': uploadedIds.length,
-          'uploaded_ids': uploadedIds,
+          'success': false,
+          'message': 'Upload failed: ${response.error}',
+          'uploaded': 0,
         };
+      } catch (e) {
+        debugPrint('❌ Upload error: $e');
+        return {'success': false, 'error': e.toString(), 'uploaded': 0};
       }
-
-      debugPrint('❌ Upload failed: ${response.statusCode}');
-      debugPrint('Response error: ${response.error}');
-      return {
-        'success': false,
-        'message': 'Upload failed: ${response.error}',
-        'uploaded': 0,
-      };
-    } catch (e) {
-      debugPrint('❌ Upload error: $e');
-      return {'success': false, 'error': e.toString(), 'uploaded': 0};
-    }
+    });
   }
 
   // ================= DOWNLOAD (PULL FROM SERVER) =================
@@ -458,64 +473,66 @@ class SyncService {
     String accessToken, {
     String? since,
   }) async {
-    try {
-      final lastSync = since ?? await _getLastSyncTimestamp();
+    return SessionCoordinator.instance.run(() async {
+      try {
+        final lastSync = since ?? await _getLastSyncTimestamp();
 
-      debugPrint('📥 Downloading analyses since: ${lastSync ?? "beginning"}');
+        debugPrint('📥 Downloading analyses since: ${lastSync ?? "beginning"}');
 
-      // ✅ USE ApiService
-      final response = await ApiService.instance.get(
-        '/sync/changes',
-        queryParams: lastSync != null ? {'since': lastSync} : null,
-        requiresAuth: true,
-      );
-
-      debugPrint('📡 Download response: ${response.statusCode}');
-
-      if (response.isSuccess) {
-        final data = response.data;
-        final analyses =
-            (data['analyses'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-        final deletedIds =
-            (data['deleted_ids'] as List?)
-                ?.map((id) => id.toString())
-                .toList() ??
-            [];
-
-        debugPrint(
-          '📦 Received ${analyses.length} analyses, ${deletedIds.length} deletions',
+        // ✅ USE ApiService
+        final response = await ApiService.instance.get(
+          '/sync/changes',
+          queryParams: lastSync != null ? {'since': lastSync} : null,
+          requiresAuth: true,
         );
 
-        // Apply server changes locally
-        await _applyServerChanges(analyses, deletedIds);
+        debugPrint('📡 Download response: ${response.statusCode}');
 
-        // Update sync timestamp in secure storage
-        await _updateLastSyncTimestamp(data['server_timestamp']);
+        if (response.isSuccess) {
+          final data = response.data;
+          final analyses =
+              (data['analyses'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+          final deletedIds =
+              (data['deleted_ids'] as List?)
+                  ?.map((id) => id.toString())
+                  .toList() ??
+              [];
 
+          debugPrint(
+            '📦 Received ${analyses.length} analyses, ${deletedIds.length} deletions',
+          );
+
+          // Apply server changes locally
+          await _applyServerChanges(analyses, deletedIds);
+
+          // Update sync timestamp in secure storage
+          await _updateLastSyncTimestamp(data['server_timestamp']);
+
+          return {
+            'success': true,
+            'downloaded': analyses.length,
+            'deleted': deletedIds.length,
+          };
+        }
+
+        debugPrint('❌ Download failed: ${response.statusCode}');
+        debugPrint('Response error: ${response.error}');
         return {
-          'success': true,
-          'downloaded': analyses.length,
-          'deleted': deletedIds.length,
+          'success': false,
+          'message': 'Download failed: ${response.error}',
+          'downloaded': 0,
+          'deleted': 0,
+        };
+      } catch (e) {
+        debugPrint('❌ Download error: $e');
+        return {
+          'success': false,
+          'error': e.toString(),
+          'downloaded': 0,
+          'deleted': 0,
         };
       }
-
-      debugPrint('❌ Download failed: ${response.statusCode}');
-      debugPrint('Response error: ${response.error}');
-      return {
-        'success': false,
-        'message': 'Download failed: ${response.error}',
-        'downloaded': 0,
-        'deleted': 0,
-      };
-    } catch (e) {
-      debugPrint('❌ Download error: $e');
-      return {
-        'success': false,
-        'error': e.toString(),
-        'downloaded': 0,
-        'deleted': 0,
-      };
-    }
+    });
   }
 
   /// Apply server changes to local database
@@ -635,13 +652,14 @@ class SyncService {
 
   /// Sync images: upload local images to server
   Future<Map<String, dynamic>> syncImages(String accessToken) async {
-    try {
-      final db = await _db.database;
+    return SessionCoordinator.instance.run(() async {
+      try {
+        final db = await _db.database;
 
-      // Find all images that need uploading
-      final pendingImages = await db.query(
-        'images',
-        where: """
+        // Find all images that need uploading
+        final pendingImages = await db.query(
+          'images',
+          where: """
           local_path IS NOT NULL 
           AND local_path != '' 
           AND (
@@ -650,39 +668,42 @@ class SyncService {
             OR server_image_url = '/uploads/images/pending'
           )
         """,
-      );
+        );
 
-      debugPrint('📤 Syncing ${pendingImages.length} images...');
+        debugPrint('📤 Syncing ${pendingImages.length} images...');
 
-      int uploaded = 0;
+        int uploaded = 0;
 
-      for (final image in pendingImages) {
-        final localPath = image['local_path'] as String;
-        final imageId = image['image_id'] as String;
+        for (final image in pendingImages) {
+          final localPath = image['local_path'] as String;
+          final imageId = image['image_id'] as String;
 
-        if (File(localPath).existsSync()) {
-          debugPrint('📤 Uploading image: $imageId from $localPath');
-          final result = await _uploadImage(imageId, localPath, accessToken);
-          if (result['success']) {
-            uploaded++;
-            debugPrint('✅ Image uploaded: $imageId');
+          if (File(localPath).existsSync()) {
+            debugPrint('📤 Uploading image: $imageId from $localPath');
+            final result = await _uploadImage(imageId, localPath, accessToken);
+            if (result['success']) {
+              uploaded++;
+              debugPrint('✅ Image uploaded: $imageId');
+            } else {
+              debugPrint(
+                '❌ Failed to upload image $imageId: ${result['error']}',
+              );
+            }
           } else {
-            debugPrint('❌ Failed to upload image $imageId: ${result['error']}');
+            debugPrint('⚠️ Image file not found: $localPath');
           }
-        } else {
-          debugPrint('⚠️ Image file not found: $localPath');
         }
-      }
 
-      return {
-        'success': true,
-        'uploaded': uploaded,
-        'total': pendingImages.length,
-      };
-    } catch (e) {
-      debugPrint('❌ Image sync error: $e');
-      return {'success': false, 'error': e.toString(), 'uploaded': 0};
-    }
+        return {
+          'success': true,
+          'uploaded': uploaded,
+          'total': pendingImages.length,
+        };
+      } catch (e) {
+        debugPrint('❌ Image sync error: $e');
+        return {'success': false, 'error': e.toString(), 'uploaded': 0};
+      }
+    });
   }
 
   /// Upload single image file to server
@@ -704,7 +725,9 @@ class SyncService {
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 30),
       );
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await http.Response.fromStream(
+        streamedResponse,
+      ).timeout(const Duration(seconds: 30));
 
       debugPrint('📡 Image upload response: ${response.statusCode}');
 
@@ -740,57 +763,59 @@ class SyncService {
 
   /// Download images from server that don't exist locally
   Future<Map<String, dynamic>> downloadServerImages(String accessToken) async {
-    try {
-      final db = await _db.database;
+    return SessionCoordinator.instance.run(() async {
+      try {
+        final db = await _db.database;
 
-      // Find images that have server URLs but no local copy
-      final imagesToDownload = await db.query(
-        'images',
-        where: """
+        // Find images that have server URLs but no local copy
+        final imagesToDownload = await db.query(
+          'images',
+          where: """
           server_image_url IS NOT NULL 
           AND server_image_url != '' 
           AND server_image_url != '/uploads/images/pending'
           AND (local_path IS NULL OR local_path = '')
         """,
-      );
+        );
 
-      debugPrint(
-        '📥 Downloading ${imagesToDownload.length} images from server...',
-      );
+        debugPrint(
+          '📥 Downloading ${imagesToDownload.length} images from server...',
+        );
 
-      int downloaded = 0;
-      final errors = <String>[];
+        int downloaded = 0;
+        final errors = <String>[];
 
-      for (final image in imagesToDownload) {
-        final imageId = image['image_id'] as String;
-        final serverUrl = image['server_image_url'] as String;
+        for (final image in imagesToDownload) {
+          final imageId = image['image_id'] as String;
+          final serverUrl = image['server_image_url'] as String;
 
-        try {
-          final localPath = await _downloadImage(
-            imageId,
-            serverUrl,
-            accessToken,
-          );
-          if (localPath != null) {
-            downloaded++;
-            debugPrint('✅ Image downloaded: $imageId -> $localPath');
+          try {
+            final localPath = await _downloadImage(
+              imageId,
+              serverUrl,
+              accessToken,
+            );
+            if (localPath != null) {
+              downloaded++;
+              debugPrint('✅ Image downloaded: $imageId -> $localPath');
+            }
+          } catch (e) {
+            debugPrint('❌ Failed to download image $imageId: $e');
+            errors.add(imageId);
           }
-        } catch (e) {
-          debugPrint('❌ Failed to download image $imageId: $e');
-          errors.add(imageId);
         }
-      }
 
-      return {
-        'success': errors.isEmpty,
-        'downloaded': downloaded,
-        'total': imagesToDownload.length,
-        'errors': errors,
-      };
-    } catch (e) {
-      debugPrint('❌ Image download error: $e');
-      return {'success': false, 'error': e.toString(), 'downloaded': 0};
-    }
+        return {
+          'success': errors.isEmpty,
+          'downloaded': downloaded,
+          'total': imagesToDownload.length,
+          'errors': errors,
+        };
+      } catch (e) {
+        debugPrint('❌ Image download error: $e');
+        return {'success': false, 'error': e.toString(), 'downloaded': 0};
+      }
+    });
   }
 
   /// Public helper for downloading a single image on demand
@@ -799,22 +824,24 @@ class SyncService {
     String serverUrl,
     String accessToken,
   ) async {
-    if (serverUrl.isEmpty || serverUrl == '/uploads/images/pending') {
-      return null;
-    }
+    return SessionCoordinator.instance.run(() async {
+      if (serverUrl.isEmpty || serverUrl == '/uploads/images/pending') {
+        return null;
+      }
 
-    if (_imagesDownloading.contains(imageId)) {
-      debugPrint('⏭️ Image already downloading: $imageId');
-      return null;
-    }
+      if (_imagesDownloading.contains(imageId)) {
+        debugPrint('⏭️ Image already downloading: $imageId');
+        return null;
+      }
 
-    _imagesDownloading.add(imageId);
+      _imagesDownloading.add(imageId);
 
-    try {
-      return await _downloadImage(imageId, serverUrl, accessToken);
-    } finally {
-      _imagesDownloading.remove(imageId);
-    }
+      try {
+        return await _downloadImage(imageId, serverUrl, accessToken);
+      } finally {
+        _imagesDownloading.remove(imageId);
+      }
+    });
   }
 
   /// Download single image from server and save locally
@@ -912,6 +939,8 @@ class SyncService {
 
   /// Get sync status
   Future<Map<String, dynamic>> getSyncStatus() async {
-    return await _db.getSyncStatus();
+    return SessionCoordinator.instance.run(() async {
+      return await _db.getSyncStatus();
+    });
   }
 }

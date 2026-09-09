@@ -174,7 +174,9 @@ class ApiService {
         },
       );
 
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await http.Response.fromStream(
+        streamedResponse,
+      ).timeout(const Duration(seconds: 30));
 
       // Handle response
       return _handleResponse(response);
@@ -233,7 +235,7 @@ class ApiService {
       debugPrint('📡 API $method: $uri');
 
       // ✅ STEP 4: Execute request
-      final response = await _executeRequest(
+      var response = await _executeRequest(
         method: method,
         uri: uri,
         headers: requestHeaders,
@@ -241,6 +243,16 @@ class ApiService {
         timeout: timeout ?? defaultTimeout,
       );
 
+      if (requiresAuth && response.statusCode == 401) {
+        await _authService.refreshAccessToken();
+        response = await _executeRequest(
+          method: method,
+          uri: uri,
+          headers: await _buildHeaders(headers, true),
+          body: body,
+          timeout: timeout ?? defaultTimeout,
+        );
+      }
       // ✅ STEP 5: Handle response
       return _handleResponse(response);
     } on SocketException catch (e) {

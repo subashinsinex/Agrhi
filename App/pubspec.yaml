@@ -4,7 +4,8 @@ publish_to: "none"
 version: 1.1.0+8
 
 environment:
-  sdk: ^3.9.2
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
 
 dependencies:
   flutter:
@@ -40,7 +41,7 @@ dependencies:
   jwt_decoder: ^2.0.1
 
   # Camera & Media Picker
-  camera: ^0.11.4
+  camera: ^0.12.1
   image_picker: ^1.2.1
   crop_image: ^1.0.13
 
@@ -50,7 +51,6 @@ dependencies:
 
   # Video
   video_player: ^2.10.1
-  video_thumbnail: ^0.5.0
   video_compress: ^3.1.2
   ffmpeg_kit_flutter_new: ^4.3.2
 
@@ -61,10 +61,7 @@ dependencies:
   # Location & Maps
   geolocator: ^12.0.0
   geocoding: ^4.0.0
-  permission_handler: ^12.0.1
-  open_meteo: ^3.0.0
   flutter_map: ^8.2.1
-  flutter_map_cache: ^2.0.0+1
   latlong2: ^0.9.0
 
   # Image Caching
@@ -73,15 +70,13 @@ dependencies:
   flutter_staggered_grid_view: ^0.7.0
 
   # Internationalisation
+  timezone: ^0.9.4
   intl: ^0.20.2
 
-  # Notifications & Background Tasks
-  workmanager: ^0.9.0+3
+  # Notifications
   flutter_local_notifications: ^17.2.3
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 

@@ -48,8 +48,7 @@ App/.firebase/
 App/**/build/ 
 App/**/.generated/ 
 
-# Package manager locks (optional keep one)
-App/pubspec.lock 
+# Keep the Flutter application lockfile for reproducible builds.
 
 # ---------------------------
 # Node.js backend (Server/)

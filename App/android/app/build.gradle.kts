@@ -3,7 +3,6 @@ import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -13,6 +12,8 @@ val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
+val hasReleaseSigning = listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
+    .all { !keystoreProperties.getProperty(it).isNullOrBlank() }
 
 android {
     namespace = "app.agrhi.com"
@@ -34,17 +35,19 @@ android {
     }
 
     signingConfigs {
+      if (hasReleaseSigning) {
         create("release") {
             keyAlias = keystoreProperties["keyAlias"] as String
             keyPassword = keystoreProperties["keyPassword"] as String
             storeFile = file(keystoreProperties["storeFile"] as String)
             storePassword = keystoreProperties["storePassword"] as String
         }
+      }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
 }
@@ -61,4 +64,13 @@ dependencies {
 
 flutter {
     source = "../.."
+}
+
+// Debug builds work on clean checkouts; release artifacts require real signing.
+gradle.taskGraph.whenReady {
+    if (!hasReleaseSigning && allTasks.any {
+        it.project == project && it.name.contains("Release", ignoreCase = true)
+    }) {
+        throw GradleException("Release signing is missing. Configure android/key.properties before building a release.")
+    }
 }

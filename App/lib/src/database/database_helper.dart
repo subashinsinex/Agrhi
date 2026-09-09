@@ -8,12 +8,15 @@ import 'dart:convert';
 import '../../utils/constants.dart';
 import 'dart:io';
 import 'dart:async';
+import 'database_migrations.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
 
-  DatabaseHelper._init();
+  DatabaseHelper._init() : _providedDatabase = null;
+  DatabaseHelper.forDatabase(Database database) : _providedDatabase = database;
+  final Database? _providedDatabase;
 
   static const String baseUrl = AppConstants.baseUrl;
 
@@ -30,6 +33,7 @@ class DatabaseHelper {
   };
 
   Future<Database> get database async {
+    if (_providedDatabase != null) return _providedDatabase;
     if (_database != null) return _database!;
     _database = await _initDB('agrhi_offline.db');
     return _database!;
@@ -42,13 +46,17 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       path,
-      version: 1,
+      version: DatabaseMigrations.version,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
         final res = await db.rawQuery('PRAGMA foreign_keys');
         print('FK enforcement: ${res.first.values.first}');
       },
-      onCreate: _createDB,
+      onCreate: (db, version) async {
+        await _createDB(db, version);
+        await DatabaseMigrations.upgrade(db, 1, version);
+      },
+      onUpgrade: DatabaseMigrations.upgrade,
     );
 
     return db;
@@ -1808,7 +1816,9 @@ class DatabaseHelper {
       });
 
       final streamed = await req.send().timeout(const Duration(seconds: 30));
-      final resp = await http.Response.fromStream(streamed);
+      final resp = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(seconds: 30));
 
       if (resp.statusCode == 200 || resp.statusCode == 201) {
         String? serverUrl;

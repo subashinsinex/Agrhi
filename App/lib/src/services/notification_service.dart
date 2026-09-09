@@ -88,6 +88,7 @@ class NotificationService {
 
     const initializationSettings = InitializationSettings(
       android: androidSettings,
+      iOS: DarwinInitializationSettings(),
     );
 
     await plugin.initialize(
@@ -150,7 +151,10 @@ class NotificationService {
       visibility: NotificationVisibility.public,
     );
 
-    return const NotificationDetails(android: androidDetails);
+    return const NotificationDetails(
+      android: androidDetails,
+      iOS: DarwinNotificationDetails(),
+    );
   }
 
   static Future<void> showNotification({

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
@@ -18,7 +19,28 @@ class SmartCameraScreen extends StatefulWidget {
 }
 
 class _SmartCameraScreenState extends State<SmartCameraScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  int _cameraGeneration = 0;
+  bool _cameraActive = true;
+  Future<void> _cameraTransition = Future.value();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _cameraActive = state == AppLifecycleState.resumed;
+    if (_cameraActive) {
+      _initializeCamera();
+    } else {
+      _cameraGeneration++;
+      _detectionTimer?.cancel();
+      final old = _cameraController;
+      _cameraController = null;
+      if (mounted) setState(() => _isInitialized = false);
+      _cameraTransition = _cameraTransition.then((_) async {
+        await old?.dispose();
+      });
+    }
+  }
+
   CameraController? _cameraController;
   bool _isInitialized = false;
   bool _isDetecting = false;
@@ -47,6 +69,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
     _initializeAnimations();
   }
@@ -73,37 +96,53 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     );
   }
 
-  Future<void> _initializeCamera() async {
-    try {
-      final cameras = await availableCameras();
-      final backCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
-      );
-
-      _cameraController = CameraController(
-        backCamera,
-        ResolutionPreset.high,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
-      );
-
-      await _cameraController!.initialize();
-      await _cameraController!.setFlashMode(FlashMode.off);
-
-      if (!mounted) return;
-
-      setState(() => _isInitialized = true);
-      _startLiveDetection();
-    } catch (e) {
-      debugPrint('❌ Camera initialization error: $e');
-      if (mounted) {
-        _showErrorSnackBar('Camera error: ${e.toString()}');
-      }
-    }
+  Future<void> _initializeCamera() {
+    final generation = ++_cameraGeneration;
+    _cameraTransition = _cameraTransition
+        .then((_) async {
+          if (!mounted || !_cameraActive || generation != _cameraGeneration) {
+            return;
+          }
+          CameraController? controller;
+          try {
+            await _cameraController?.dispose();
+            _cameraController = null;
+            final cameras = await availableCameras();
+            if (cameras.isEmpty) throw StateError('No camera available');
+            final camera = cameras.firstWhere(
+              (camera) => camera.lensDirection == CameraLensDirection.back,
+              orElse: () => cameras.first,
+            );
+            controller = CameraController(
+              camera,
+              ResolutionPreset.high,
+              enableAudio: false,
+              imageFormatGroup: ImageFormatGroup.jpeg,
+            );
+            await controller.initialize();
+            await controller.setFlashMode(FlashMode.off);
+            if (!mounted || !_cameraActive || generation != _cameraGeneration) {
+              await controller.dispose();
+              return;
+            }
+            _cameraController = controller;
+            setState(() => _isInitialized = true);
+            _startLiveDetection();
+          } catch (error) {
+            await controller?.dispose();
+            if (mounted && _cameraActive) {
+              _showErrorSnackBar('Camera error: $error');
+            }
+          }
+        })
+        .catchError((Object error) {
+          debugPrint('Camera transition failed: $error');
+        });
+    return _cameraTransition;
   }
 
   void _startLiveDetection() {
+    _detectionTimer?.cancel();
     _detectionTimer = Timer.periodic(const Duration(milliseconds: 1000), (
       timer,
     ) async {
@@ -114,7 +153,9 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   }
 
   bool _canDetect() {
-    return !_isDetecting &&
+    return mounted &&
+        _cameraActive &&
+        !_isDetecting &&
         !_showPreview &&
         !_isCapturing &&
         _cameraController != null &&
@@ -123,78 +164,19 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   }
 
   Future<String?> _cropImageToFocusBox(String imagePath) async {
-    try {
-      debugPrint('🔪 Starting image crop...');
-
-      final imageBytes = await File(imagePath).readAsBytes();
-      final originalImage = img.decodeImage(imageBytes);
-
-      if (originalImage == null) {
-        debugPrint('❌ Failed to decode image');
-        return null;
-      }
-
-      debugPrint('📸 Original: ${originalImage.width}×${originalImage.height}');
-
-      final screenSize = MediaQuery.of(context).size;
-      final boxWidth = screenSize.width * _boxWidthRatio;
-      final boxHeight = screenSize.height * _boxHeightRatio;
-
-      // Calculate center of focus box
-      final centerX = screenSize.width / 2;
-      final centerY = (screenSize.height / 2) + _boxOffsetY;
-
-      // Calculate focus box position (top-left corner)
-      final boxLeft = centerX - (boxWidth / 2);
-      final boxTop = centerY - (boxHeight / 2);
-
-      // Calculate scale based on image/screen aspect ratio
-      final imageAspect = originalImage.width / originalImage.height;
-      final screenAspect = screenSize.width / screenSize.height;
-
-      final scale = imageAspect > screenAspect
-          ? originalImage.height / screenSize.height
-          : originalImage.width / screenSize.width;
-
-      // Convert box coordinates to image coordinates
-      final cropX = (boxLeft * scale).round().clamp(0, originalImage.width - 1);
-      final cropY = (boxTop * scale).round().clamp(0, originalImage.height - 1);
-      final cropWidth = (boxWidth * scale).round().clamp(
-        1,
-        originalImage.width - cropX,
-      );
-      final cropHeight = (boxHeight * scale).round().clamp(
-        1,
-        originalImage.height - cropY,
-      );
-
-      debugPrint('✂️ Crop: ($cropX, $cropY) $cropWidth×$cropHeight');
-
-      // Crop the image
-      final croppedImage = img.copyCrop(
-        originalImage,
-        x: cropX,
-        y: cropY,
-        width: cropWidth,
-        height: cropHeight,
-      );
-
-      debugPrint('✅ Cropped: ${croppedImage.width}×${croppedImage.height}');
-
-      // Save cropped image
-      final tempDir = await getTemporaryDirectory();
-      final croppedPath =
-          '${tempDir.path}/cropped_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      await File(
-        croppedPath,
-      ).writeAsBytes(img.encodeJpg(croppedImage, quality: 90));
-
-      debugPrint('💾 Saved: $croppedPath');
-      return croppedPath;
-    } catch (e) {
-      debugPrint('❌ Crop error: $e');
-      return null;
-    }
+    if (!mounted) return null;
+    final screen = MediaQuery.sizeOf(context);
+    final dir = await getTemporaryDirectory();
+    return compute(_cropFocusImage, {
+      'input': imagePath,
+      'output':
+          '${dir.path}/cropped_${DateTime.now().microsecondsSinceEpoch}.jpg',
+      'width': screen.width,
+      'height': screen.height,
+      'boxWidth': _boxWidthRatio,
+      'boxHeight': _boxHeightRatio,
+      'offset': _boxOffsetY,
+    });
   }
 
   Future<void> _detectPlantInFrame() async {
@@ -365,7 +347,6 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   }
 
   void _resetCapture() {
-
     setState(() {
       _showPreview = false;
       _verificationResult = null;
@@ -1058,6 +1039,9 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cameraActive = false;
+    _cameraGeneration++;
     _detectionTimer?.cancel();
     _cameraController?.dispose();
     _pulseController.dispose();
@@ -1069,4 +1053,35 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
     super.dispose();
   }
+}
+
+String? _cropFocusImage(Map<String, dynamic> args) {
+  final original = img.decodeImage(
+    File(args['input'] as String).readAsBytesSync(),
+  );
+  if (original == null) return null;
+  final width = args['width'] as double;
+  final height = args['height'] as double;
+  final boxWidth = width * (args['boxWidth'] as double);
+  final boxHeight = height * (args['boxHeight'] as double);
+  final scale = original.width / original.height > width / height
+      ? original.height / height
+      : original.width / width;
+  final x = (((width - boxWidth) / 2) * scale).round().clamp(
+    0,
+    original.width - 1,
+  );
+  final y = (((height - boxHeight) / 2 + (args['offset'] as double)) * scale)
+      .round()
+      .clamp(0, original.height - 1);
+  final cropped = img.copyCrop(
+    original,
+    x: x,
+    y: y,
+    width: (boxWidth * scale).round().clamp(1, original.width - x),
+    height: (boxHeight * scale).round().clamp(1, original.height - y),
+  );
+  final output = args['output'] as String;
+  File(output).writeAsBytesSync(img.encodeJpg(cropped, quality: 90));
+  return output;
 }

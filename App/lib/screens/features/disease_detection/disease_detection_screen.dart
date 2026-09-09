@@ -316,6 +316,9 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
   @override
   void dispose() {
+    ModelService.close().catchError((Object error) {
+      debugPrint('Model shutdown: $error');
+    });
     _progressController.dispose();
     _resultController.dispose();
     super.dispose();
@@ -376,9 +379,7 @@ class _DetectDiseaseScreenState extends State<DetectDiseaseScreen>
 
     final imagePath = await Navigator.push<String>(
       context,
-      smoothPageRoute(
-            SmartCameraScreen(cropName: _getCropName(selectedCrop!)),
-      ),
+      smoothPageRoute(SmartCameraScreen(cropName: _getCropName(selectedCrop!))),
     );
 
     if (imagePath != null && mounted) {

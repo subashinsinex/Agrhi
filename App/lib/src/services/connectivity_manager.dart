@@ -1,3 +1,4 @@
+import 'session_coordinator.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -35,8 +36,6 @@ class ConnectivityManager extends ChangeNotifier {
   static const Duration _syncInterval = Duration(minutes: 30);
   static const Duration _minAutoSyncGap = Duration(minutes: 5);
   static const Duration _minPeriodicSyncGap = Duration(minutes: 25);
-  static const Duration _autoSyncTimeout = Duration(seconds: 90);
-  static const Duration _manualSyncTimeout = Duration(seconds: 120);
 
   static const String _keySyncTime = 'last_sync_time';
   static const String _keyAccessToken = 'access_token';
@@ -90,12 +89,12 @@ class ConnectivityManager extends ChangeNotifier {
 
   void _startPeriodicSync() {
     _periodicSyncTimer = Timer.periodic(_syncInterval, (_) {
-      if (!_isOnline) {
+      if (SessionCoordinator.instance.isClosing || !_isOnline) {
         debugPrint('⏰ Periodic sync skipped - offline');
         return;
       }
 
-      if (_bootSyncInProgress) {
+      if (SessionCoordinator.instance.isClosing || _bootSyncInProgress) {
         debugPrint('⏰ Periodic sync skipped - boot sync in progress');
         return;
       }
@@ -145,21 +144,16 @@ class ConnectivityManager extends ChangeNotifier {
     return token;
   }
 
-  Future<_SyncResult> _runSync(String token, Duration timeout, {bool includeReminderSync = false}) async {
-    final results =
-        await Future.wait([
-          SyncService.instance.performFullSync(token),
-          CropCareSyncService.instance.performFullSync(token),
-        ], eagerError: false).timeout(
-          timeout,
-          onTimeout: () {
-            debugPrint('⚠️ Sync timed out after ${timeout.inSeconds}s');
-            return [
-              {'success': false, 'error': 'Sync timeout', 'timeout': true},
-              {'success': false, 'error': 'Sync timeout', 'timeout': true},
-            ];
-          },
-        );
+  Future<_SyncResult> _runSync(
+    String token, {
+    bool includeReminderSync = false,
+  }) async {
+    // Requests have their own deadlines. Keep the operation owned until all
+    // commits finish; Future.timeout would abandon only the waiter, not work.
+    final results = await Future.wait([
+      SyncService.instance.performFullSync(token),
+      CropCareSyncService.instance.performFullSync(token),
+    ], eagerError: false);
 
     final diseaseSync = results[0];
     final cropCareSync = results[1];
@@ -198,6 +192,7 @@ class ConnectivityManager extends ChangeNotifier {
       cropCareSuccess: cropCareSuccess,
       cropCarePartial: cropCarePartial,
       reminderSuccess: reminderSuccess,
+      reminderRequired: includeReminderSync,
       timedOut: timedOut,
     );
   }
@@ -212,153 +207,161 @@ class ConnectivityManager extends ChangeNotifier {
   }
 
   Future<void> _triggerAutoSync() async {
-    if (_bootSyncInProgress) {
-      debugPrint('⚠️ Auto-sync skipped - boot sync in progress');
-      return;
-    }
-
-    if (_isSyncing) {
-      debugPrint('⚠️ Sync already in progress, skipping');
-      return;
-    }
-
-    if (_lastSyncTime != null) {
-      final gap = DateTime.now().difference(_lastSyncTime!);
-      if (gap < _minAutoSyncGap) {
-        debugPrint('Skipping auto-sync - last synced ${gap.inMinutes}m ago');
+    if (SessionCoordinator.instance.isClosing) return;
+    return SessionCoordinator.instance.run(() async {
+      if (SessionCoordinator.instance.isClosing || _bootSyncInProgress) {
+        debugPrint('⚠️ Auto-sync skipped - boot sync in progress');
         return;
       }
-    }
 
-    _isSyncing = true;
-    notifyListeners();
-
-    try {
-      debugPrint('🔄 Auto-sync started...');
-
-      final token = await _getValidToken();
-      if (token == null) return;
-
-      debugPrint('✅ Token validated, starting auto-sync...');
-      final r = await _runSync(token, _autoSyncTimeout, includeReminderSync: false);
-
-      if (r.timedOut) {
-        debugPrint('⚠️ Auto-sync timed out - will retry later');
-      } else if (r.fullSuccess) {
-        debugPrint('✅ Auto-sync completed successfully');
-        await _saveLastSyncTime();
-      } else if (r.partialSuccess) {
-        debugPrint('⚠️ Auto-sync completed with partial success');
-        await _saveLastSyncTime();
-      } else {
-        debugPrint('⚠️ Auto-sync completed with errors');
+      if (_isSyncing) {
+        debugPrint('⚠️ Sync already in progress, skipping');
+        return;
       }
-    } catch (e) {
-      debugPrint('❌ Auto-sync failed: $e');
-    } finally {
-      _isSyncing = false;
+
+      if (_lastSyncTime != null) {
+        final gap = DateTime.now().difference(_lastSyncTime!);
+        if (gap < _minAutoSyncGap) {
+          debugPrint('Skipping auto-sync - last synced ${gap.inMinutes}m ago');
+          return;
+        }
+      }
+
+      _isSyncing = true;
       notifyListeners();
-    }
+
+      try {
+        debugPrint('🔄 Auto-sync started...');
+
+        final token = await _getValidToken();
+        if (token == null) return;
+
+        debugPrint('✅ Token validated, starting auto-sync...');
+        final r = await _runSync(token, includeReminderSync: false);
+
+        if (r.timedOut) {
+          debugPrint('⚠️ Auto-sync timed out - will retry later');
+        } else if (r.fullSuccess) {
+          debugPrint('✅ Auto-sync completed successfully');
+          await _saveLastSyncTime();
+        } else if (r.partialSuccess) {
+          debugPrint('⚠️ Auto-sync completed with partial success');
+          await _saveLastSyncTime();
+        } else {
+          debugPrint('⚠️ Auto-sync completed with errors');
+        }
+      } catch (e) {
+        debugPrint('❌ Auto-sync failed: $e');
+      } finally {
+        _isSyncing = false;
+        notifyListeners();
+      }
+    });
   }
 
   Future<Map<String, dynamic>> performManualSync({
     bool isBootSync = false,
   }) async {
-    if (!_isOnline) {
-      if (!isBootSync) {
-        await _showSyncNotification(
-          title: 'Sync Failed',
-          body: 'No internet connection. Please try again later.',
-        );
-      }
-      return {'success': false, 'error': 'No internet connection'};
+    if (SessionCoordinator.instance.isClosing) {
+      return {'success': false, 'error': 'Logout in progress'};
     }
-
-    if (_isSyncing) {
-      return {'success': false, 'error': 'Sync already in progress'};
-    }
-
-    if (isBootSync) {
-      _bootSyncInProgress = true;
-      notifyListeners();
-    }
-
-    _isSyncing = true;
-    notifyListeners();
-
-    try {
-      debugPrint('🔄 ${isBootSync ? "Boot" : "Manual"} sync started...');
-
-      final token = await _getValidToken();
-
-      if (token == null) {
+    return SessionCoordinator.instance.run(() async {
+      if (SessionCoordinator.instance.isClosing || !_isOnline) {
         if (!isBootSync) {
           await _showSyncNotification(
             title: 'Sync Failed',
-            body: 'Session expired. Please log in again.',
+            body: 'No internet connection. Please try again later.',
           );
         }
-        return {'success': false, 'error': 'Not authenticated'};
+        return {'success': false, 'error': 'No internet connection'};
       }
 
-      debugPrint('✅ Token validated, starting sync...');
-      final r = await _runSync(token, _manualSyncTimeout, includeReminderSync: true);
-
-      if (r.fullSuccess) {
-        await _saveLastSyncTime();
-        if (!isBootSync) {
-          await _showSyncNotification(
-            title: 'Sync Successful',
-            body: 'Your AGRHI data was synced successfully.',
-          );
-        }
-      } else if (r.partialSuccess) {
-        await _saveLastSyncTime();
-        if (!isBootSync) {
-          await _showSyncNotification(
-            title: 'Sync Partially Successful',
-            body: 'Some of your AGRHI data was synced. Tap to check details.',
-          );
-        }
-      } else {
-        if (!isBootSync) {
-          await _showSyncNotification(
-            title: 'Sync Failed',
-            body: _buildFailureMessage(r),
-          );
-        }
+      if (_isSyncing) {
+        return {'success': false, 'error': 'Sync already in progress'};
       }
-
-      return {
-        'success': r.fullSuccess,
-        'partial_success': r.partialSuccess,
-        'disease_success': r.diseaseSuccess,
-        'crop_care_success': r.cropCareSuccess,
-        'reminder_success': r.reminderSuccess,
-        'timed_out': r.timedOut,
-        'disease_sync': r.diseaseSync,
-        'crop_care_sync': r.cropCareSync,
-        'reminder_sync': r.reminderSync,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-    } catch (e) {
-      if (!isBootSync) {
-        await _showSyncNotification(
-          title: 'Sync Failed',
-          body: 'An unexpected error occurred during sync. Tap to retry.',
-        );
-      }
-      return {'success': false, 'error': e.toString()};
-    } finally {
-      _isSyncing = false;
 
       if (isBootSync) {
-        _bootSyncInProgress = false;
-        _bootSyncCompleted = true;
+        _bootSyncInProgress = true;
+        notifyListeners();
       }
 
+      _isSyncing = true;
       notifyListeners();
-    }
+
+      try {
+        debugPrint('🔄 ${isBootSync ? "Boot" : "Manual"} sync started...');
+
+        final token = await _getValidToken();
+
+        if (token == null) {
+          if (!isBootSync) {
+            await _showSyncNotification(
+              title: 'Sync Failed',
+              body: 'Session expired. Please log in again.',
+            );
+          }
+          return {'success': false, 'error': 'Not authenticated'};
+        }
+
+        debugPrint('✅ Token validated, starting sync...');
+        final r = await _runSync(token, includeReminderSync: true);
+
+        if (r.fullSuccess) {
+          await _saveLastSyncTime();
+          if (!isBootSync) {
+            await _showSyncNotification(
+              title: 'Sync Successful',
+              body: 'Your AGRHI data was synced successfully.',
+            );
+          }
+        } else if (r.partialSuccess) {
+          await _saveLastSyncTime();
+          if (!isBootSync) {
+            await _showSyncNotification(
+              title: 'Sync Partially Successful',
+              body: 'Some of your AGRHI data was synced. Tap to check details.',
+            );
+          }
+        } else {
+          if (!isBootSync) {
+            await _showSyncNotification(
+              title: 'Sync Failed',
+              body: _buildFailureMessage(r),
+            );
+          }
+        }
+
+        return {
+          'success': r.fullSuccess,
+          'partial_success': r.partialSuccess,
+          'disease_success': r.diseaseSuccess,
+          'crop_care_success': r.cropCareSuccess,
+          'reminder_success': r.reminderSuccess,
+          'timed_out': r.timedOut,
+          'disease_sync': r.diseaseSync,
+          'crop_care_sync': r.cropCareSync,
+          'reminder_sync': r.reminderSync,
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+      } catch (e) {
+        if (!isBootSync) {
+          await _showSyncNotification(
+            title: 'Sync Failed',
+            body: 'An unexpected error occurred during sync. Tap to retry.',
+          );
+        }
+        return {'success': false, 'error': e.toString()};
+      } finally {
+        _isSyncing = false;
+
+        if (isBootSync) {
+          _bootSyncInProgress = false;
+          _bootSyncCompleted = true;
+        }
+
+        notifyListeners();
+      }
+    });
   }
 
   Future<void> _showSyncNotification({
@@ -425,6 +428,7 @@ class _SyncResult {
   final bool cropCareSuccess;
   final bool cropCarePartial;
   final bool reminderSuccess;
+  final bool reminderRequired;
   final bool timedOut;
 
   const _SyncResult({
@@ -435,12 +439,16 @@ class _SyncResult {
     required this.cropCareSuccess,
     required this.cropCarePartial,
     required this.reminderSuccess,
+    this.reminderRequired = false,
     required this.timedOut,
   });
 
-  bool get fullSuccess => diseaseSuccess && cropCareSuccess && !timedOut;
+  bool get fullSuccess =>
+      diseaseSuccess &&
+      cropCareSuccess &&
+      (!reminderRequired || reminderSuccess) &&
+      !timedOut;
 
   bool get partialSuccess =>
-      !timedOut &&
-      (cropCarePartial || diseaseSuccess || cropCareSuccess);
+      !timedOut && (cropCarePartial || diseaseSuccess || cropCareSuccess);
 }

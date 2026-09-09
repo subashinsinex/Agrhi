@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../../src/services/post_upload_manager.dart';
+import 'package:agrhi/src/services/post_upload_manager.dart';
 
 class UploadingPostBanner extends StatelessWidget {
   const UploadingPostBanner({super.key});

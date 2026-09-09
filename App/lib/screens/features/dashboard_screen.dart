@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:async';
+import 'package:agrhi/src/services/session_coordinator.dart';
+import 'package:agrhi/src/services/pending_work_service.dart';
+import 'package:agrhi/src/services/post_upload_manager.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,13 +10,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../src/database/database_helper.dart';
-import '../../../../src/services/connectivity_manager.dart';
-import '../../../../src/services/language_service.dart';
-import '../../../../src/services/notification_service.dart';
-import '../../../../src/services/reminders_manager.dart';
-import '../../../../src/services/retail_service.dart';
-import '../../../../utils/colors.dart';
+import 'package:agrhi/src/database/database_helper.dart';
+import 'package:agrhi/src/services/connectivity_manager.dart';
+import 'package:agrhi/src/services/language_service.dart';
+import 'package:agrhi/src/services/notification_service.dart';
+import 'package:agrhi/src/services/reminders_manager.dart';
+import 'package:agrhi/src/services/retail_service.dart';
+import 'package:agrhi/utils/colors.dart';
 import '../auth/login_screen.dart';
 import '../components/feature_grid.dart';
 import '../components/profile_card.dart';
@@ -52,13 +54,12 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   bool isLoadingProfile = true;
   bool isRefreshingDashboard = false;
+  bool _loggingOut = false;
 
   final GlobalKey<WeatherCardState> weatherCardKey =
       GlobalKey<WeatherCardState>();
 
   int notificationRefreshKey = 0;
-  int profileRefreshKey = 0;
-  int featuresRefreshKey = 0;
 
   static const storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -74,6 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     WidgetsBinding.instance.addObserver(this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       refreshDashboard();
       preloadDashboardPhrases();
     });
@@ -92,33 +94,26 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  Future<void> refreshDashboard() async {
-    if (isRefreshingDashboard) return;
+  Future<void> refreshDashboard({bool forceWeatherRefresh = false}) async {
+    if (!mounted || isRefreshingDashboard) return;
 
-    if (mounted) {
-      setState(() => isRefreshingDashboard = true);
-    } else {
-      isRefreshingDashboard = true;
-    }
+    setState(() => isRefreshingDashboard = true);
 
     try {
       await loadUserData();
+      if (!mounted) return;
 
       final weatherState = weatherCardKey.currentState;
       if (weatherState != null) {
-        unawaited(
-          weatherState.refreshWeather(
-            forceRefresh: true,
-            showLoaderOnlyIfEmpty: false,
-          ),
+        await weatherState.refreshWeather(
+          forceRefresh: forceWeatherRefresh,
+          showLoaderOnlyIfEmpty: false,
         );
       }
       if (!mounted) return;
 
       setState(() {
         notificationRefreshKey++;
-        profileRefreshKey++;
-        featuresRefreshKey++;
       });
     } catch (e, stackTrace) {
       debugPrint('DASHBOARD_REFRESH_ERROR: $e');
@@ -229,7 +224,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> loadUserData() async {
     if (!mounted) return;
 
-    setState(() => isLoadingProfile = true);
+    if (userData == null) {
+      setState(() => isLoadingProfile = true);
+    }
 
     try {
       final allValues = await storage.readAll();
@@ -388,23 +385,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!mounted) return;
 
       if (hasShopPlace == 'true') {
-        Navigator.push(
-          context,
-          smoothPageRoute(const FarmProductsScreen()),
-        );
+        Navigator.push(context, smoothPageRoute(const FarmProductsScreen()));
       } else {
-        Navigator.push(
-          context,
-          smoothPageRoute(const SetupScreen()),
-        );
+        Navigator.push(context, smoothPageRoute(const SetupScreen()));
       }
     } catch (e) {
       debugPrint('Error reading shop place flag: $e');
       if (!mounted) return;
-      Navigator.push(
-        context,
-        smoothPageRoute(const SetupScreen()),
-      );
+      Navigator.push(context, smoothPageRoute(const SetupScreen()));
     }
   }
 
@@ -457,10 +445,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         FeatureItem(
           title: 'Crop Care',
           icon: Icons.agriculture_rounded,
-          onTap: () => Navigator.push(
-            context,
-            smoothPageRoute(const CropCareScreen()),
-          ),
+          onTap: () =>
+              Navigator.push(context, smoothPageRoute(const CropCareScreen())),
           backgroundColor: const Color(0xFFF8FAF4),
           iconColor: const Color(0xFF497F2C),
         ),
@@ -529,6 +515,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
 
     final result = await connectivityManager.performManualSync();
+    if (!mounted) return;
 
     if (result['success'] == true) {
       showSyncSuccessSnackBar();
@@ -600,7 +587,6 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> performBackgroundCleanup() async {
     try {
-      await storage.deleteAll();
       await RetailService.clearCache();
 
       await RemindersManager.instance.clearAllNotificationsOnLogout();
@@ -619,9 +605,74 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
 
       await clearCacheDirectory();
+      // Remove credentials last, only after cleanup has actually completed.
+      await storage.deleteAll();
     } catch (e, stackTrace) {
       debugPrint('Error during background cleanup: $e');
       debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<void> _logout() async {
+    if (_loggingOut) return;
+    setState(() => _loggingOut = true);
+    final session = SessionCoordinator.instance;
+    var ownsClose = false;
+    try {
+      showSnackBar(
+        'Finishing active work before logout...',
+        AppColors.infoColor,
+      );
+      await session.beginClose();
+      ownsClose = true;
+      if (!mounted) return;
+      final pending =
+          await PendingWorkService.hasPendingWork() ||
+          PostUploadManager.instance.activeTasks.any((task) => task.isFailed);
+      if (!mounted) return;
+      if (pending) {
+        final discard = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Unsynced changes'),
+            content: const Text(
+              'You have changes that have not been uploaded. '
+              'Stay signed in to sync them, or discard them and log out. '
+              'Discarded changes cannot be recovered.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Keep changes'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Discard and log out'),
+              ),
+            ],
+          ),
+        );
+        if (discard != true) return;
+      }
+      await performBackgroundCleanup();
+      PostUploadManager.instance.clearFinishedTasks();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        smoothPageRoute(const LoginScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(
+          'Logout could not finish. Please try again.',
+          AppColors.errorColor,
+        );
+      }
+    } finally {
+      if (ownsClose) session.reopen();
+      if (mounted) setState(() => _loggingOut = false);
     }
   }
 
@@ -756,22 +807,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           );
                           navigator.pop();
 
-                          try {
-                            await performBackgroundCleanup().timeout(
-                              const Duration(seconds: 8),
-                              onTimeout: () {},
-                            );
-                          } catch (e, stackTrace) {
-                            debugPrint('LOGOUT cleanup failed: $e');
-                            debugPrintStack(stackTrace: stackTrace);
-                          }
-
-                          if (!mounted) return;
-
-                          await navigator.pushAndRemoveUntil(
-                            smoothPageRoute(const LoginScreen()),
-                            (route) => false,
-                          );
+                          await _logout();
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.errorColor,
@@ -814,16 +850,10 @@ class _DashboardScreenState extends State<DashboardScreen>
         performManualSync();
         break;
       case 'feedback':
-        Navigator.push(
-          context,
-          smoothPageRoute(const FeedbackScreen()),
-        );
+        Navigator.push(context, smoothPageRoute(const FeedbackScreen()));
         break;
       case 'about':
-        Navigator.push(
-          context,
-          smoothPageRoute(const AboutScreen()),
-        );
+        Navigator.push(context, smoothPageRoute(const AboutScreen()));
         break;
       case 'logout':
         showLogoutConfirmation();
@@ -840,77 +870,79 @@ class _DashboardScreenState extends State<DashboardScreen>
     final category = userData?['category']?.toString().toLowerCase() ?? '';
     final isConsumer = category == 'consumer';
 
-    final bool showDashboardSkeleton =
-        isLoadingProfile || isRefreshingDashboard;
+    final bool showDashboardSkeleton = isLoadingProfile && userData == null;
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
-      ),
-      child: Scaffold(
-        extendBodyBehindAppBar: true,
-        backgroundColor: Colors.transparent,
-        body: RefreshIndicator(
-          onRefresh: refreshDashboard,
-          color: AppColors.primaryGreen,
-          backgroundColor: Colors.white,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Column(
-                  children: [
-                    DashboardHeroHeader(onMenuSelected: onMenuSelected),
-                    const SizedBox(height: 12),
-                    WeatherCard(key: weatherCardKey, useDeviceLocation: true),
-                    const SizedBox(height: 10),
-                    if (!isConsumer) ...[
+    return AbsorbPointer(
+      absorbing: _loggingOut,
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ),
+        child: Scaffold(
+          extendBodyBehindAppBar: true,
+          backgroundColor: Colors.transparent,
+          body: RefreshIndicator(
+            onRefresh: () => refreshDashboard(forceWeatherRefresh: true),
+            color: AppColors.primaryGreen,
+            backgroundColor: Colors.white,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      DashboardHeroHeader(onMenuSelected: onMenuSelected),
+                      const SizedBox(height: 12),
+                      WeatherCard(key: weatherCardKey, useDeviceLocation: true),
+                      const SizedBox(height: 10),
+                      if (!isConsumer) ...[
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: showDashboardSkeleton
+                              ? buildUpcomingNotificationSkeleton()
+                              : UpcomingNotificationCard(
+                                  key: ValueKey(
+                                    'notificationcard$notificationRefreshKey',
+                                  ),
+                                ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         child: showDashboardSkeleton
-                            ? buildUpcomingNotificationSkeleton()
-                            : UpcomingNotificationCard(
-                                key: ValueKey(
-                                  'notificationcard$notificationRefreshKey',
-                                ),
+                            ? buildProfileSkeleton()
+                            : ProfileCard(
+                                key: const ValueKey('profilecard'),
+                                name: userData?['name'] ?? 'Guest User',
+                                email: userData?['email'],
+                                category: userData?['category'],
+                                emailVerified:
+                                    userData?['emailverified'] ?? false,
+                                profileImagePath: userData?['profileimagepath'],
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    smoothPageRoute(const ProfileScreen()),
+                                  ).then((_) => refreshDashboard());
+                                },
                               ),
                       ),
                       const SizedBox(height: 10),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: showDashboardSkeleton
+                            ? buildFeaturesSkeleton()
+                            : buildModernFeatureBoard(currentLanguageCode),
+                      ),
+                      const SizedBox(height: 20),
                     ],
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: showDashboardSkeleton
-                          ? buildProfileSkeleton()
-                          : ProfileCard(
-                              key: ValueKey('profilecard$profileRefreshKey'),
-                              name: userData?['name'] ?? 'Guest User',
-                              email: userData?['email'],
-                              category: userData?['category'],
-                              emailVerified:
-                                  userData?['emailverified'] ?? false,
-                              profileImagePath: userData?['profileimagepath'],
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  smoothPageRoute(const ProfileScreen()),
-                                ).then((_) => refreshDashboard());
-                              },
-                            ),
-                    ),
-                    const SizedBox(height: 10),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: showDashboardSkeleton
-                          ? buildFeaturesSkeleton()
-                          : buildModernFeatureBoard(currentLanguageCode),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -921,9 +953,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: FeatureGrid(
-        key: ValueKey(
-          '$currentLanguageCode${userData?['category'] ?? 'none'}$featuresRefreshKey',
-        ),
+        key: ValueKey('$currentLanguageCode${userData?['category'] ?? 'none'}'),
         features: buildFeatures(),
         childAspectRatio: 1.02,
         spacing: 10,
@@ -1246,6 +1276,7 @@ class DashboardHeroHeader extends StatelessWidget {
     );
   }
 }
+
 class _DashboardSettingsButton extends StatelessWidget {
   final ValueChanged<String> onSelected;
 

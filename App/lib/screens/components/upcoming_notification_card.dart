@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../src/database/database_helper.dart';
-import '../../../../src/services/language_service.dart';
-import '../../../../utils/routes.dart';
+import 'package:agrhi/src/database/database_helper.dart';
+import 'package:agrhi/src/services/language_service.dart';
+import 'package:agrhi/utils/routes.dart';
 import '../shared/smart_retranslator.dart';
 
 class UpcomingNotificationCard extends StatefulWidget {
@@ -36,7 +36,7 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await loadTranslations();
+      if (!mounted) return;
       await loadCardData();
     });
   }
@@ -63,6 +63,7 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard> {
   }
 
   Future<void> loadTranslations() async {
+    if (!mounted) return;
     final langService = Provider.of<LanguageService>(context, listen: false);
 
     const keys = {
@@ -121,7 +122,9 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard> {
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_pageController.hasClients || reminders.isEmpty){return;}
+        if (!mounted || !_pageController.hasClients || reminders.isEmpty) {
+          return;
+        }
         _pageController.jumpToPage(0);
       });
 
@@ -238,10 +241,7 @@ class _UpcomingNotificationCardState extends State<UpcomingNotificationCard> {
       margin: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            const Color(0xFF082E1B),
-            const Color(0xFF005A2B),
-          ],
+          colors: [const Color(0xFF082E1B), const Color(0xFF005A2B)],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),

@@ -228,7 +228,9 @@ class FarmStoreService {
         },
       );
 
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await http.Response.fromStream(
+        streamedResponse,
+      ).timeout(const Duration(seconds: 30));
 
       debugPrint('📥 Upload response status: ${response.statusCode}');
       debugPrint('📥 Upload response body: ${response.body}');

@@ -1,3 +1,4 @@
+import 'session_coordinator.dart';
 import 'dart:async';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'connectivity_service.dart';
@@ -6,7 +7,31 @@ import '../../utils/storage_helper.dart';
 import '../../utils/constants.dart';
 
 class AuthService {
-  final _storageHelper = StorageHelper();
+  static final AuthService _instance = AuthService._();
+  factory AuthService() => _instance;
+  AuthService._() : _storageHelper = StorageHelper(), _refreshRequest = null;
+  AuthService.withDependencies({
+    required StorageHelper storage,
+    required Future<ApiResponse> Function(String) this._refreshRequest,
+  }) : _storageHelper = storage;
+
+  /// Fast local routing check; no networking or credential deletion.
+  Future<AuthStatus> cachedStatus() async {
+    try {
+      final access = await _storageHelper.getAccessToken();
+      final refresh = await _storageHelper.getRefreshToken();
+      if (access == null || refresh == null || JwtDecoder.isExpired(refresh)) {
+        return AuthStatus.unauthenticated;
+      }
+      JwtDecoder.decode(access);
+      return AuthStatus.authenticatedOffline;
+    } catch (_) {
+      return AuthStatus.unauthenticated;
+    }
+  }
+
+  final StorageHelper _storageHelper;
+  final Future<ApiResponse> Function(String)? _refreshRequest;
   final _connectivityService = ConnectivityService();
 
   static const String _baseUrl = AppConstants.baseUrl;
@@ -27,132 +52,140 @@ class AuthService {
 
   /// Check authentication status on app startup
   Future<AuthStatus> checkAuthStatus() async {
-    try {
-      final accessToken = await _storageHelper.getAccessToken();
-      final refreshToken = await _storageHelper.getRefreshToken();
+    return SessionCoordinator.instance.run(() async {
+      try {
+        final accessToken = await _storageHelper.getAccessToken();
+        final refreshToken = await _storageHelper.getRefreshToken();
 
-      print('🔍 Checking auth status...');
-      print('  Access token: ${accessToken != null ? "Found" : "NULL"}');
-      print('  Refresh token: ${refreshToken != null ? "Found" : "NULL"}');
+        print('🔍 Checking auth status...');
+        print('  Access token: ${accessToken != null ? "Found" : "NULL"}');
+        print('  Refresh token: ${refreshToken != null ? "Found" : "NULL"}');
 
-      // No tokens found
-      if (accessToken == null || refreshToken == null) {
-        print('❌ No tokens found');
-        return AuthStatus.unauthenticated;
-      }
+        // No tokens found
+        if (accessToken == null || refreshToken == null) {
+          print('❌ No tokens found');
+          return AuthStatus.unauthenticated;
+        }
 
-      // Validate token format before decoding
-      if (!_isValidJwtFormat(accessToken) || !_isValidJwtFormat(refreshToken)) {
-        print('❌ Invalid token format');
-        await clearTokens();
-        return AuthStatus.unauthenticated;
-      }
+        // Validate token format before decoding
+        if (!_isValidJwtFormat(accessToken) ||
+            !_isValidJwtFormat(refreshToken)) {
+          print('❌ Invalid token format');
+          await clearTokens();
+          return AuthStatus.unauthenticated;
+        }
 
-      // Check if refresh token is expired
-      if (JwtDecoder.isExpired(refreshToken)) {
-        print('❌ Refresh token expired');
-        await clearTokens();
-        return AuthStatus.unauthenticated;
-      }
+        // Check if refresh token is expired
+        if (JwtDecoder.isExpired(refreshToken)) {
+          print('❌ Refresh token expired');
+          await clearTokens();
+          return AuthStatus.unauthenticated;
+        }
 
-      // Check internet connectivity
-      final hasInternet = await _connectivityService.hasInternetConnection();
-      print('📶 Internet: ${hasInternet ? "Available" : "Offline"}');
+        // Check internet connectivity
+        final hasInternet = await _connectivityService.hasInternetConnection();
+        print('📶 Internet: ${hasInternet ? "Available" : "Offline"}');
 
-      if (hasInternet) {
-        // Online mode
-        final isAccessExpired = JwtDecoder.isExpired(accessToken);
+        if (hasInternet) {
+          // Online mode
+          final isAccessExpired = JwtDecoder.isExpired(accessToken);
 
-        if (isAccessExpired) {
-          print('! Access token expired - attempting refresh...');
+          if (isAccessExpired) {
+            print('! Access token expired - attempting refresh...');
 
-          // ✅ Use manual lock for token refresh
-          final refreshResult = await _lockedRefreshToken(refreshToken);
+            // ✅ Use manual lock for token refresh
+            final refreshResult = await _lockedRefreshToken(refreshToken);
 
-          if (!refreshResult.success) {
-            if (refreshResult.isNetworkError) {
-              print(
-                '⚠️ Refresh failed (network error) - switching to offline mode',
-              );
-              return AuthStatus.authenticatedOffline;
-            } else {
-              print('❌ Failed to refresh expired access token');
-              await clearTokens();
+            if (!refreshResult.success) {
+              if (!refreshResult.isAuthError) {
+                print(
+                  '⚠️ Refresh failed (network error) - switching to offline mode',
+                );
+                return AuthStatus.authenticatedOffline;
+              } else {
+                print('❌ Failed to refresh expired access token');
+                await clearTokens();
+                return AuthStatus.unauthenticated;
+              }
+            }
+
+            print('✅ Tokens refreshed - authenticated');
+            return AuthStatus.authenticated;
+          } else {
+            // Access token is still valid - try preemptive refresh
+            print('✅ Access token valid');
+
+            final refreshed = await _refreshTokensIfNeeded(
+              accessToken,
+              refreshToken,
+            );
+            if (!refreshed && await _storageHelper.getAccessToken() == null) {
               return AuthStatus.unauthenticated;
             }
+
+            print(
+              '✅ Authenticated ${refreshed ? "(tokens refreshed)" : "(using current tokens)"}',
+            );
+            return AuthStatus.authenticated;
           }
-
-          print('✅ Tokens refreshed - authenticated');
-          return AuthStatus.authenticated;
         } else {
-          // Access token is still valid - try preemptive refresh
-          print('✅ Access token valid');
-
-          final refreshed = await _refreshTokensIfNeeded(
-            accessToken,
-            refreshToken,
-          );
-
-          print(
-            '✅ Authenticated ${refreshed ? "(tokens refreshed)" : "(using current tokens)"}',
-          );
-          return AuthStatus.authenticated;
-        }
-      } else {
-        // Offline mode
-        print('📴 Offline mode - using cached authentication');
-        return AuthStatus.authenticatedOffline;
-      }
-    } catch (e) {
-      print('❌ checkAuthStatus error: $e');
-
-      try {
-        final refreshToken = await _storageHelper.getRefreshToken();
-        if (refreshToken != null &&
-            _isValidJwtFormat(refreshToken) &&
-            !JwtDecoder.isExpired(refreshToken)) {
-          print(
-            '⚠️ Error during check, but tokens valid - allowing offline mode',
-          );
+          // Offline mode
+          print('📴 Offline mode - using cached authentication');
           return AuthStatus.authenticatedOffline;
         }
-      } catch (_) {}
+      } catch (e) {
+        print('❌ checkAuthStatus error: $e');
 
-      return AuthStatus.unauthenticated;
-    }
+        try {
+          final refreshToken = await _storageHelper.getRefreshToken();
+          if (refreshToken != null &&
+              _isValidJwtFormat(refreshToken) &&
+              !JwtDecoder.isExpired(refreshToken)) {
+            print(
+              '⚠️ Error during check, but tokens valid - allowing offline mode',
+            );
+            return AuthStatus.authenticatedOffline;
+          }
+        } catch (_) {}
+
+        return AuthStatus.unauthenticated;
+      }
+    });
   }
 
-  /// Public method to refresh access token (called by TokenRefreshService)
+  /// Refresh the access token through the shared session coordinator
   Future<void> refreshAccessToken() async {
-    try {
-      final refreshToken = await _storageHelper.getRefreshToken();
+    return SessionCoordinator.instance.run(() async {
+      try {
+        final refreshToken = await _storageHelper.getRefreshToken();
 
-      if (refreshToken == null) {
-        throw Exception('No refresh token available');
-      }
-
-      if (JwtDecoder.isExpired(refreshToken)) {
-        await clearTokens();
-        throw Exception('Refresh token expired');
-      }
-
-      // ✅ Use manual lock to prevent concurrent refresh
-      final result = await _lockedRefreshToken(refreshToken);
-
-      if (!result.success) {
-        if (result.isNetworkError) {
-          throw Exception('Network error: ${result.error}');
-        } else {
-          await clearTokens();
-          throw Exception('Failed to refresh tokens from server');
+        if (refreshToken == null) {
+          throw Exception('No refresh token available');
         }
-      }
 
-      print('✅ Access token refreshed successfully');
-    } catch (e) {
-      print('❌ Error in refreshAccessToken: $e');
-      rethrow;
-    }
+        if (JwtDecoder.isExpired(refreshToken)) {
+          await clearTokens();
+          throw Exception('Refresh token expired');
+        }
+
+        // ✅ Use manual lock to prevent concurrent refresh
+        final result = await _lockedRefreshToken(refreshToken);
+
+        if (!result.success) {
+          if (!result.isAuthError) {
+            throw Exception('Network error: ${result.error}');
+          } else {
+            await clearTokens();
+            throw Exception('Failed to refresh tokens from server');
+          }
+        }
+
+        print('✅ Access token refreshed successfully');
+      } catch (e) {
+        print('❌ Error in refreshAccessToken: $e');
+        rethrow;
+      }
+    });
   }
 
   /// Refresh tokens if they're expiring soon (non-critical refresh)
@@ -174,7 +207,7 @@ class AuthService {
         final result = await _lockedRefreshToken(refreshToken);
 
         if (!result.success) {
-          if (result.isNetworkError) {
+          if (!result.isAuthError) {
             print(
               '⚠️ Refresh failed (network) - continuing with current tokens',
             );
@@ -187,6 +220,7 @@ class AuthService {
             return true;
           } else {
             print('❌ Refresh failed with auth error');
+            await clearTokens();
             return false;
           }
         }
@@ -282,12 +316,14 @@ class AuthService {
       print('🔄 Calling refresh token API...');
       print('🔄 Endpoint: $_baseUrl/refreshtoken');
 
-      final response = await ApiService.instance.post(
-        '/refreshtoken',
-        body: {'refresh_token': refreshToken},
-        timeout: const Duration(seconds: 10),
-        requiresAuth: false,
-      );
+      final response =
+          await (_refreshRequest?.call(refreshToken) ??
+              ApiService.instance.post(
+                '/refreshtoken',
+                body: {'refresh_token': refreshToken},
+                timeout: const Duration(seconds: 10),
+                requiresAuth: false,
+              ));
 
       print('🔄 Refresh API Status: ${response.statusCode}');
 
@@ -300,7 +336,14 @@ class AuthService {
           return RefreshResult.failure('Missing access_token');
         }
 
-        await _storageHelper.write('access_token', newAccessToken as String);
+        // Validate both values before modifying the stored session.
+        JwtDecoder.decode(newAccessToken as String);
+        final newRefreshToken = data['refresh_token'];
+        if (newRefreshToken != null) {
+          JwtDecoder.decode(newRefreshToken as String);
+          await _storageHelper.write('refresh_token', newRefreshToken);
+        }
+        await _storageHelper.write('access_token', newAccessToken);
         print('✅ New access token stored successfully');
 
         return RefreshResult.success();
@@ -358,10 +401,11 @@ class RefreshResult {
     : success = false,
       errorType = RefreshErrorType.server;
 
+  bool get isAuthError => errorType == RefreshErrorType.auth;
+
   bool get isNetworkError => errorType == RefreshErrorType.network;
 }
 
 enum RefreshErrorType { none, network, auth, server, unknown }
 
 enum AuthStatus { authenticated, authenticatedOffline, unauthenticated }
-

@@ -1,10 +1,45 @@
 // lib/src/models/model_service.dart
 import 'dart:io';
+import 'inference_worker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 class ModelService {
+  static final _worker = InferenceWorker();
+  static Future<void> loadGateModel(String path) async {
+    await _worker.request('gate', [path]);
+  }
+
+  static Future<void> loadModel(String path) async {
+    await _worker.request('model', [path]);
+  }
+
+  static Future<Map<String, dynamic>> runGateInference(String path) async =>
+      Map<String, dynamic>.from(await _worker.request('detect', [path]) as Map);
+  static Future<List<Map<String, dynamic>>> runInference(
+    String path,
+    List<String> labels,
+    String crop, {
+    double gateThreshold = 0.7,
+  }) async =>
+      (await _worker.request('infer', [path, labels, crop, gateThreshold])
+              as List)
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+  static Future<void> close() => _worker.close();
+}
+
+// Only used inside InferenceWorker. Native objects never cross isolate boundaries.
+class ModelRuntime {
+  static void close() {
+    _gateInterpreter?.close();
+    _mainInterpreter?.close();
+    _gateInterpreter = null;
+    _mainInterpreter = null;
+    _gateModelLoaded = false;
+  }
+
   static Interpreter? _gateInterpreter;
   static Interpreter? _mainInterpreter;
 
@@ -22,7 +57,9 @@ class ModelService {
       }
 
       debugPrint('🔧 Loading gate model from: $modelPath');
-      _gateInterpreter = Interpreter.fromFile(modelFile);
+      final replacement = Interpreter.fromFile(modelFile);
+      _gateInterpreter?.close();
+      _gateInterpreter = replacement;
       _gateInputShape = _gateInterpreter!.getInputTensor(0).shape;
       _gateModelLoaded = true;
 
@@ -51,7 +88,9 @@ class ModelService {
       }
 
       debugPrint('🔧 Loading disease model from: $modelPath');
-      _mainInterpreter = Interpreter.fromFile(modelFile);
+      final replacement = Interpreter.fromFile(modelFile);
+      _mainInterpreter?.close();
+      _mainInterpreter = replacement;
       _mainInputShape = _mainInterpreter!.getInputTensor(0).shape;
       debugPrint('✅ Disease model loaded: $modelPath');
       debugPrint('📐 Shape: $_mainInputShape');
