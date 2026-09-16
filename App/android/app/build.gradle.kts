@@ -18,7 +18,9 @@ val hasReleaseSigning = listOf("keyAlias", "keyPassword", "storeFile", "storePas
 android {
     namespace = "app.agrhi.com"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // NDK r28c builds native code with 16 KB page support by default.
+    // Prebuilt SDK libraries still need verification in the final artifact.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -50,6 +52,13 @@ android {
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
+
+    packagingOptions {
+        jniLibs {
+            // AGP 8.5.1+ aligns uncompressed native libraries to 16 KB in APKs.
+            useLegacyPackaging = false
+        }
+    }
 }
 
 kotlin {
@@ -59,6 +68,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
@@ -73,4 +83,5 @@ gradle.taskGraph.whenReady {
     }) {
         throw GradleException("Release signing is missing. Configure android/key.properties before building a release.")
     }
+
 }

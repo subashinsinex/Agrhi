@@ -1,7 +1,7 @@
 name: agrhi
 description: "Smart Farming Solutions - Offline-First Agricultural App"
 publish_to: "none"
-version: 1.1.0+8
+version: 1.1.2+10
 
 environment:
   sdk: ^3.12.0
@@ -12,7 +12,6 @@ dependencies:
     sdk: flutter
 
   # Core
-  package_info_plus: ^9.0.1
   uuid: ^4.5.3
   path: any
   http_parser: any
@@ -47,13 +46,8 @@ dependencies:
 
   # Image Processing
   image: ^4.8.0
-  flutter_image_compress: ^2.3.0
-
   # Video
   video_player: ^2.10.1
-  video_compress: ^3.1.2
-  ffmpeg_kit_flutter_new: ^4.3.2
-
   # ML & AI
   tflite_flutter: 0.12.1
   google_mlkit_translation: ^0.13.1
@@ -75,8 +69,11 @@ dependencies:
 
   # Notifications
   flutter_local_notifications: ^17.2.3
+  light_compressor_v2: 1.9.1
 
 dev_dependencies:
+  flutter_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
