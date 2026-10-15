@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:agrhi/core/utils/decimal_input.dart';
 import 'package:agrhi/core/errors/app_failure.dart';
+import 'package:agrhi/core/utils/storage_helper.dart';
 // lib/views/features/crop_care/add_edit_crop_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +24,7 @@ class AddCropScreen extends StatefulWidget {
 
 class _AddCropScreenState extends State<AddCropScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _storage = StorageHelper();
   final _fieldSizeController = TextEditingController();
 
   String? _selectedFarmId;
@@ -84,10 +88,17 @@ class _AddCropScreenState extends State<AddCropScreen> {
   Future<void> _loadReferenceData() async {
     setState(() => _isLoading = true);
 
+    var shouldRetry = false;
+
     try {
       final db = DatabaseHelper.instance;
+      final accessToken = await _storage.getAccessToken();
+      await db.ensureCropCatalogsLoaded(accessToken);
+
       final farms = await db.getAllFarmsWithRelations();
       final plants = await db.getAllPlants();
+
+      if (!mounted) return;
 
       setState(() {
         _farms = farms;
@@ -99,18 +110,16 @@ class _AddCropScreenState extends State<AddCropScreen> {
       }
     } catch (e) {
       debugPrint('❌ Error loading reference data: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SmartReTranslator(text: AppFailure.from(e).message),
-            backgroundColor: AppColors.errorColor,
-          ),
-        );
-      }
+      shouldRetry = true;
     } finally {
-      if (mounted) {
+      if (mounted && !shouldRetry) {
         setState(() => _isLoading = false);
       }
+    }
+
+    if (shouldRetry && mounted) {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (mounted) unawaited(_loadReferenceData());
     }
   }
 
@@ -271,18 +280,25 @@ class _AddCropScreenState extends State<AddCropScreen> {
           selectedPlant?['name']?.toString() ??
           'Crop';
 
-      await RemindersManager.instance.cancelCropReminders(cropId);
+      // Crop persistence must not be rolled back in the UI by a best-effort
+      // local reminder operation, including a corrupted notification cache.
+      try {
+        await RemindersManager.instance.cancelCropReminders(cropId);
 
-      final bool shouldScheduleReminders =
-          _harvestDate != null && _isActive && _status != 'Harvested';
+        final bool shouldScheduleReminders =
+            _harvestDate != null && _isActive && _status != 'Harvested';
 
-      if (shouldScheduleReminders) {
-        await RemindersManager.instance.scheduleCropReminders(
-          cropId: cropId,
-          plantName: plantName,
-          plantingDate: _plantingDate!,
-          harvestDate: _harvestDate,
-        );
+        if (shouldScheduleReminders) {
+          await RemindersManager.instance.scheduleCropReminders(
+            cropId: cropId,
+            plantName: plantName,
+            plantingDate: _plantingDate!,
+            harvestDate: _harvestDate,
+          );
+        }
+      } catch (e, stackTrace) {
+        debugPrint('Crop $cropId saved, but reminder refresh failed: $e');
+        debugPrintStack(stackTrace: stackTrace);
       }
 
       debugPrint(

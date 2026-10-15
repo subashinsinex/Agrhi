@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:agrhi/core/utils/decimal_input.dart';
 import 'package:agrhi/core/errors/app_failure.dart';
+import 'package:agrhi/core/utils/storage_helper.dart';
 // lib/views/features/crop_care/add_edit_farm_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +23,7 @@ class AddFarmScreen extends StatefulWidget {
 
 class _AddFarmScreenState extends State<AddFarmScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _storage = StorageHelper();
   final _surveyNumberController = TextEditingController();
   final _farmSizeController = TextEditingController();
 
@@ -68,37 +72,43 @@ class _AddFarmScreenState extends State<AddFarmScreen> {
 
   Future<void> _loadReferenceData() async {
     setState(() => _isLoading = true);
+
+    var shouldRetry = false;
+
     try {
       final db = DatabaseHelper.instance;
-      final soilTypes = await db.getAllSoilTypes();
-      final irrigationTypes = await db.getAllIrrigationTypes();
-      final waterSources = await db.getAllWaterSources();
+
+      final accessToken = await _storage.getAccessToken();
+      await db.ensureFarmCatalogsLoaded(accessToken);
+
+      // Read again after sync.
+      final updatedSoilTypes = await db.getAllSoilTypes();
+      final updatedIrrigationTypes = await db.getAllIrrigationTypes();
+      final updatedWaterSources = await db.getAllWaterSources();
 
       if (!mounted) return;
 
       setState(() {
-        _soilTypes = soilTypes;
-        _irrigationTypes = irrigationTypes;
-        _waterSources = waterSources;
+        _soilTypes = updatedSoilTypes;
+        _irrigationTypes = updatedIrrigationTypes;
+        _waterSources = updatedWaterSources;
       });
 
       if (_isEditing) {
         await _populateFormData();
       }
     } catch (e) {
-      debugPrint('❌ Error loading reference data: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SmartReTranslator(text: AppFailure.from(e).message),
-            backgroundColor: AppColors.errorColor,
-          ),
-        );
-      }
+      debugPrint('❌ Error loading farm catalogs: $e');
+      shouldRetry = true;
     } finally {
-      if (mounted) {
+      if (mounted && !shouldRetry) {
         setState(() => _isLoading = false);
       }
+    }
+
+    if (shouldRetry && mounted) {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (mounted) unawaited(_loadReferenceData());
     }
   }
 

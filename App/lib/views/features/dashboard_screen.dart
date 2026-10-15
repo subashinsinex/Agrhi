@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:agrhi/core/utils/system_ui.dart';
 import 'package:agrhi/services/session_coordinator.dart';
-import 'package:agrhi/services/pending_work_service.dart';
 import 'package:agrhi/controllers/post_upload_controller.dart';
 
 import 'package:flutter/material.dart';
@@ -627,38 +626,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
       await session.beginClose();
       ownsClose = true;
-      if (!mounted) return;
-      final pending =
-          await PendingWorkService.hasPendingWork() ||
-          PostUploadController.instance.activeTasks.any(
-            (task) => task.isFailed,
-          );
-      if (!mounted) return;
-      if (pending) {
-        final discard = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Text('Unsynced changes'),
-            content: const Text(
-              'You have changes that have not been uploaded. '
-              'Stay signed in to sync them, or discard them and log out. '
-              'Discarded changes cannot be recovered.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Keep changes'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Discard and log out'),
-              ),
-            ],
-          ),
-        );
-        if (discard != true) return;
-      }
       await performBackgroundCleanup();
       PostUploadController.instance.clearFinishedTasks();
       if (!mounted) return;

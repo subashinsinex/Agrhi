@@ -154,7 +154,6 @@ class RemindersManager {
     } catch (e, stackTrace) {
       debugPrint('❌ Error cancelling reminders for crop $cropId: $e');
       debugPrintStack(stackTrace: stackTrace);
-      rethrow;
     }
   }
 

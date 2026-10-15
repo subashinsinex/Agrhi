@@ -1369,6 +1369,103 @@ class DatabaseHelper {
     }
   }
 
+  Future<void> ensureFarmCatalogsLoaded(String? accessToken) {
+    return _ensureCatalogsLoaded(
+      accessToken: accessToken,
+      catalogName: 'farm',
+      loaders: [
+        getAllSoilTypes,
+        getAllIrrigationTypes,
+        getAllWaterSources,
+      ],
+      referenceTables: const {
+        'soil_types',
+        'irrigation_method',
+        'water_src',
+      },
+    );
+  }
+
+  Future<void> ensureCropCatalogsLoaded(String? accessToken) {
+    return _ensureCatalogsLoaded(
+      accessToken: accessToken,
+      catalogName: 'crop',
+      loaders: [getAllPlants, getAllSoilTypes],
+      referenceTables: const {'plants', 'soil_types'},
+    );
+  }
+
+  Future<void> _ensureCatalogsLoaded({
+    required String? accessToken,
+    required String catalogName,
+    required List<Future<List<Map<String, dynamic>>> Function()> loaders,
+    required Set<String> referenceTables,
+  }) async {
+    Future<bool> catalogsAreLoaded() async {
+      final catalogs = await Future.wait(loaders.map((loader) => loader()));
+      return catalogs.every((catalog) => catalog.isNotEmpty);
+    }
+
+    final catalogsLoaded = await catalogsAreLoaded();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      if (catalogsLoaded) return;
+      throw StateError(
+        'Unable to load $catalogName options without an access token',
+      );
+    }
+
+    final serverVersions = await fetchServerTableVersions(accessToken);
+    if (serverVersions.isEmpty) {
+      throw StateError('Unable to verify $catalogName options');
+    }
+
+    final versionsCurrent = await _referenceTablesAreCurrent(
+      serverVersions,
+      referenceTables,
+    );
+    if (catalogsLoaded && versionsCurrent) return;
+
+    debugPrint('📦 Syncing $catalogName catalogs...');
+    final result = await smartSyncCatalogs(accessToken);
+    final refreshedVersions = await fetchServerTableVersions(accessToken);
+    final refreshedVersionsCurrent = refreshedVersions.isNotEmpty &&
+        await _referenceTablesAreCurrent(refreshedVersions, referenceTables);
+
+    if (result['success'] != true ||
+        !await catalogsAreLoaded() ||
+        !refreshedVersionsCurrent) {
+      throw StateError(
+        result['message'] ?? 'Unable to load $catalogName options',
+      );
+    }
+
+    debugPrint('✅ $catalogName catalogs are loaded and current');
+  }
+
+  Future<bool> _referenceTablesAreCurrent(
+    Map<String, String> serverVersions,
+    Set<String> referenceTables,
+  ) async {
+    final localVersions = await getReferenceTableVersions();
+    final localByTable = {
+      for (final version in localVersions)
+        version['ref_table_name']?.toString(): version['updated_at']?.toString(),
+    };
+
+    for (final tableName in referenceTables) {
+      final serverUpdatedAt = DateTime.tryParse(serverVersions[tableName] ?? '');
+      final localUpdatedAt = DateTime.tryParse(localByTable[tableName] ?? '');
+      if (serverUpdatedAt == null ||
+          localUpdatedAt == null ||
+          serverUpdatedAt.isAfter(localUpdatedAt)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   Future<Map<String, dynamic>> smartSyncCatalogs(String accessToken) async {
     try {
       debugPrint('🔄 smartSyncCatalogs starting...');

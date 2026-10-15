@@ -14,7 +14,7 @@ router.post("/config", async (req, res) => {
     const config = await getAppConfig();
     const currentBuild = parseInt(build_number) || 0;
     const latestBuild = parseInt(config.latest_build_number) || 0;
-    const needsUpdate = currentBuild !== latestBuild;
+    const needsUpdate = currentBuild < latestBuild;
 
     res.json({
       needs_update: needsUpdate,

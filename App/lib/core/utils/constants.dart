@@ -6,7 +6,7 @@ class AppConstants {
   // API Configuration
   static const String baseUrl = 'https://www.farmlead.in/v1/api';
 
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.1.3';
 
   // Validation Constants
   static const int minPasswordLength = 4;

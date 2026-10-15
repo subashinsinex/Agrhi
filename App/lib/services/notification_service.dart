@@ -114,11 +114,6 @@ class NotificationService {
 
     debugPrint('AGRHI_NOTIFICATION_PERMISSION granted=$notificationsGranted');
 
-    final bool? exactAlarmGranted = await androidPlugin
-        ?.requestExactAlarmsPermission();
-
-    debugPrint('AGRHI_EXACT_ALARM_PERMISSION granted=$exactAlarmGranted');
-
     const channel = AndroidNotificationChannel(
       agrhiChannelId,
       agrhiChannelName,
@@ -197,14 +192,6 @@ class NotificationService {
       return;
     }
 
-    final androidPlugin = plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-
-    final bool? exactAlarmsAllowed = await androidPlugin
-        ?.canScheduleExactNotifications();
-
     final zonedDate = tz.TZDateTime.from(scheduledDate, tz.local);
 
     await _plugin.zonedSchedule(
@@ -213,9 +200,7 @@ class NotificationService {
       body,
       zonedDate,
       _notificationDetails(),
-      androidScheduleMode: (exactAlarmsAllowed ?? false)
-          ? AndroidScheduleMode.exactAllowWhileIdle
-          : AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: payload,
@@ -367,8 +352,6 @@ class NotificationService {
       );
 
       debugPrintStack(stackTrace: stackTrace);
-
-      rethrow;
     }
   }
 
